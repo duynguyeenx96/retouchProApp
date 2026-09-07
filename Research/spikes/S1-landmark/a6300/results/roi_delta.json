@@ -1,0 +1,76 @@
+{
+ "per_image": [
+  {
+   "image": "DSC05123.jpg",
+   "mp_side_over_swift_side": 0.879546323325618,
+   "rotation_delta_rad": 0.06647240226271267,
+   "center_delta_over_side": 0.05608969548537552
+  },
+  {
+   "image": "DSC05146.jpg",
+   "mp_side_over_swift_side": 1.0607394435099073,
+   "rotation_delta_rad": 0.028342866823856783,
+   "center_delta_over_side": 0.09817159652105889
+  },
+  {
+   "image": "DSC05164.jpg",
+   "mp_side_over_swift_side": 0.9485507030204893,
+   "rotation_delta_rad": 0.005231425377194676,
+   "center_delta_over_side": 0.020272212546869044
+  },
+  {
+   "image": "DSC05172.jpg",
+   "mp_side_over_swift_side": 0.9913367481612564,
+   "rotation_delta_rad": 0.04493215103974802,
+   "center_delta_over_side": 0.01631771168061953
+  },
+  {
+   "image": "DSC05193.jpg",
+   "mp_side_over_swift_side": 0.9245450351580002,
+   "rotation_delta_rad": -0.04282102566857138,
+   "center_delta_over_side": 0.06253199245454252
+  },
+  {
+   "image": "DSC05239.jpg",
+   "mp_side_over_swift_side": 0.8295589861962435,
+   "rotation_delta_rad": 0.06604624656706193,
+   "center_delta_over_side": 0.17949561512714582
+  },
+  {
+   "image": "DSC05259.jpg",
+   "mp_side_over_swift_side": 0.8483988662746468,
+   "rotation_delta_rad": 0.09722327833930022,
+   "center_delta_over_side": 0.007563122386289058
+  },
+  {
+   "image": "DSC05275.jpg",
+   "mp_side_over_swift_side": 0.8444780698602912,
+   "rotation_delta_rad": 0.04415247193718824,
+   "center_delta_over_side": 0.03645666846614842
+  },
+  {
+   "image": "DSC05304.jpg",
+   "mp_side_over_swift_side": 0.9360923367771128,
+   "rotation_delta_rad": 0.0059705047327729965,
+   "center_delta_over_side": 0.030963096723060524
+  },
+  {
+   "image": "DSC05327.jpg",
+   "mp_side_over_swift_side": 0.9249697337372084,
+   "rotation_delta_rad": -0.03965590844885722,
+   "center_delta_over_side": 0.08220751934938661
+  },
+  {
+   "image": "DSC05403.jpg",
+   "mp_side_over_swift_side": 0.9560263482927196,
+   "rotation_delta_rad": -0.026757622671385324,
+   "center_delta_over_side": 0.018683234730525317
+  }
+ ],
+ "mean_mp_side_over_swift_side": 0.9222038722103176,
+ "sd_mp_side_over_swift_side": 0.06599367431815914,
+ "mean_abs_rotation_delta_rad": 0.04250962762442268,
+ "sd_rotation_delta_rad": 0.044258822625000006,
+ "mean_center_delta_over_side": 0.055341133224638295,
+ "note": "Vision (DetectFaceLandmarksRequest box + eye-centroid roll, scale = FaceCrop.visionBoxScale = 1.40) vs MediaPipe BlazeFace ROI (square_long, scale = 1.5), 11 real a6300 frames."
+}

@@ -1,0 +1,257 @@
+{
+  "environment" : {
+    "generated_at" : "2026-09-04T14:58:36Z",
+    "has_unified_memory" : true,
+    "host_cpu_cores" : 8,
+    "metal_device" : "Apple M1 Pro",
+    "os" : "Version 26.3 (Build 25D125)",
+    "physical_memory_gb" : 17.179869184000001,
+    "recommended_working_set_gb" : 12.713115648
+  },
+  "images" : [
+    {
+      "check_eye_separation_over_face_width" : 0.45630624549856041,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.95022624434389136,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.11391887250218935,
+      "face_width_px" : 683.51323501313607,
+      "faces_detected" : 1,
+      "image" : "DSC05123",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999841,
+      "max_displacement_px" : 16.404317640315156
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.45969065817160754,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.92533936651583715,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.07674275608765288,
+      "face_width_px" : 460.45653652591727,
+      "faces_detected" : 1,
+      "image" : "DSC05146",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999553,
+      "max_displacement_px" : 11.050956876621809
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.44966695573504506,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.9773755656108597,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.13208339596914592,
+      "face_width_px" : 792.50037581487561,
+      "faces_detected" : 1,
+      "image" : "DSC05164",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999935,
+      "max_displacement_px" : 19.020009019556962
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.45600046438626846,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.99321266968325794,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.28309730304512587,
+      "face_width_px" : 1698.5838182707553,
+      "faces_detected" : 1,
+      "image" : "DSC05172",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023801137463329819,
+      "max_displacement_px" : 40.428226951649883
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.4484508787514222,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.99095022624434392,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.057070387338520406,
+      "face_width_px" : 342.42232403112246,
+      "faces_detected" : 1,
+      "image" : "DSC05193",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999879,
+      "max_displacement_px" : 8.2181357767468981
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.43985411798104501,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.96380090497737558,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.094770393805399936,
+      "face_width_px" : 568.62236283239963,
+      "faces_detected" : 1,
+      "image" : "DSC05239",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999987,
+      "max_displacement_px" : 13.646936707977584
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.43843071159086455,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 1,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.070886934948914279,
+      "face_width_px" : 425.32160969348564,
+      "faces_detected" : 1,
+      "image" : "DSC05259",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.024000000000000733,
+      "max_displacement_px" : 10.207718632643967
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.44973294917054035,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.9773755656108597,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.11444186578617467,
+      "face_width_px" : 686.65119471704804,
+      "faces_detected" : 1,
+      "image" : "DSC05275",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.024000000000000143,
+      "max_displacement_px" : 16.479628673209252
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.45600106041838578,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 1,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.15914371878153419,
+      "face_width_px" : 954.86231268920505,
+      "faces_detected" : 1,
+      "image" : "DSC05304",
+      "image_size" : [
+        4000,
+        6000
+      ],
+      "max_displacement_over_face_width" : 0.023999999999999886,
+      "max_displacement_px" : 22.916695504540812
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.46346113538304523,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 0.9773755656108597,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.12571365593417408,
+      "face_width_px" : 754.28193560504451,
+      "faces_detected" : 1,
+      "image" : "DSC05327",
+      "image_size" : [
+        6000,
+        4000
+      ],
+      "max_displacement_over_face_width" : 0.024000000000000087,
+      "max_displacement_px" : 18.102766454521134
+    },
+    {
+      "check_eye_separation_over_face_width" : 0.43445745616148235,
+      "check_eyes_on_opposite_sides_of_midline" : true,
+      "check_left_eye_above_chin" : true,
+      "check_left_eye_below_forehead" : true,
+      "check_oval_encloses_fraction" : 1,
+      "check_right_eye_above_chin" : true,
+      "check_right_eye_below_forehead" : true,
+      "control_points" : 84,
+      "face_presence_score" : 1,
+      "face_width_fraction_of_long_edge" : 0.071081919652269773,
+      "face_width_px" : 426.49151791361862,
+      "faces_detected" : 2,
+      "image" : "DSC05403",
+      "image_size" : [
+        6000,
+        4000
+      ],
+      "max_displacement_over_face_width" : 0.023787835884641086,
+      "max_displacement_px" : 10.145310234320624
+    }
+  ],
+  "index_list_checks" : {
+    "check_eyes_on_opposite_sides_of_midline_pass_count" : 11,
+    "check_left_eye_above_chin_pass_count" : 11,
+    "check_left_eye_below_forehead_pass_count" : 11,
+    "check_right_eye_above_chin_pass_count" : 11,
+    "check_right_eye_below_forehead_pass_count" : 11,
+    "eye_separation_over_face_width_mean" : 0.45018660302256969,
+    "images" : 11,
+    "oval_encloses_fraction_mean" : 0.97778691896338965,
+    "oval_encloses_fraction_min" : 0.92533936651583715
+  },
+  "sliders" : "faceSlim 60 \/ eyeEnlarge 40, deltas relative to face width",
+  "source" : "Sony a6300 ARW in Research\/data\/, sips-decoded, EXIF orientation baked, RPVision Vision→FaceLandmark478 (spike S1) on the full-resolution frame."
+}

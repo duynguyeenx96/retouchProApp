@@ -1,0 +1,268 @@
+{
+  "note": "No ground-truth masks exist for these frames. No IoU is reported. See the report's a6300 section; the visual check is results/overlays/.",
+  "images": 11,
+  "coreml_vs_torch_pixel_agreement": {
+    "mean": 0.999771464954723,
+    "min": 0.9994850158691406
+  },
+  "frames_with_all_expected_parts": 9,
+  "expected_parts": {
+    "skin": [
+      "skin"
+    ],
+    "hair": [
+      "hair"
+    ],
+    "nose": [
+      "nose"
+    ],
+    "brow_left": [
+      "l_brow"
+    ],
+    "brow_right": [
+      "r_brow"
+    ],
+    "upper_lip": [
+      "u_lip"
+    ],
+    "lower_lip": [
+      "l_lip"
+    ],
+    "eyes_or_glasses": [
+      "l_eye",
+      "r_eye",
+      "eye_g"
+    ]
+  },
+  "min_fraction_to_count_as_present": 0.0005,
+  "per_image": {
+    "DSC05123": {
+      "coreml_vs_torch_pixel_agreement": 0.9998359680175781,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.2668,
+        "skin": 0.1432,
+        "l_brow": 0.0008,
+        "r_brow": 0.0023,
+        "eye_g": 0.0434,
+        "nose": 0.013,
+        "mouth": 0.0069,
+        "u_lip": 0.0039,
+        "l_lip": 0.0056,
+        "neck": 0.052,
+        "cloth": 0.0013,
+        "hair": 0.4609
+      },
+      "skin_fraction": 0.14323043823242188,
+      "hair_fraction": 0.4608573913574219
+    },
+    "DSC05146": {
+      "coreml_vs_torch_pixel_agreement": 0.9998512268066406,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.2984,
+        "skin": 0.1124,
+        "l_brow": 0.0012,
+        "r_brow": 0.0009,
+        "eye_g": 0.0392,
+        "nose": 0.0134,
+        "mouth": 0.0063,
+        "u_lip": 0.0036,
+        "l_lip": 0.0054,
+        "neck": 0.0003,
+        "cloth": 0.0642,
+        "hair": 0.4547
+      },
+      "skin_fraction": 0.11242294311523438,
+      "hair_fraction": 0.4546546936035156
+    },
+    "DSC05164": {
+      "coreml_vs_torch_pixel_agreement": 0.9997673034667969,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.2065,
+        "skin": 0.1372,
+        "l_brow": 0.0028,
+        "r_brow": 0.0022,
+        "eye_g": 0.0433,
+        "l_ear": 0.0016,
+        "nose": 0.014,
+        "mouth": 0.0048,
+        "u_lip": 0.0023,
+        "l_lip": 0.0054,
+        "neck": 0.0875,
+        "neck_l": 0.0027,
+        "cloth": 0.0607,
+        "hair": 0.429
+      },
+      "skin_fraction": 0.13716506958007812,
+      "hair_fraction": 0.42897796630859375
+    },
+    "DSC05172": {
+      "coreml_vs_torch_pixel_agreement": 0.9998016357421875,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.3645,
+        "skin": 0.1404,
+        "l_brow": 0.0027,
+        "r_brow": 0.0025,
+        "eye_g": 0.0426,
+        "l_ear": 0.0007,
+        "nose": 0.0154,
+        "mouth": 0.0064,
+        "u_lip": 0.0036,
+        "l_lip": 0.0055,
+        "neck": 0.0182,
+        "cloth": 0.0414,
+        "hair": 0.3562
+      },
+      "skin_fraction": 0.14036941528320312,
+      "hair_fraction": 0.3561515808105469
+    },
+    "DSC05193": {
+      "coreml_vs_torch_pixel_agreement": 0.9998054504394531,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.308,
+        "skin": 0.1475,
+        "l_brow": 0.0028,
+        "r_brow": 0.0029,
+        "eye_g": 0.0455,
+        "nose": 0.0136,
+        "mouth": 0.003,
+        "u_lip": 0.0038,
+        "l_lip": 0.0049,
+        "neck": 0.0483,
+        "hair": 0.4197
+      },
+      "skin_fraction": 0.14746856689453125,
+      "hair_fraction": 0.41965484619140625
+    },
+    "DSC05239": {
+      "coreml_vs_torch_pixel_agreement": 0.9994850158691406,
+      "missing_parts": [
+        "brow_left",
+        "eyes_or_glasses"
+      ],
+      "class_fraction": {
+        "background": 0.3156,
+        "skin": 0.2004,
+        "r_brow": 0.0015,
+        "nose": 0.0008,
+        "u_lip": 0.0039,
+        "l_lip": 0.007,
+        "neck": 0.0277,
+        "cloth": 0.0077,
+        "hair": 0.4355
+      },
+      "skin_fraction": 0.2003631591796875,
+      "hair_fraction": 0.435546875
+    },
+    "DSC05259": {
+      "coreml_vs_torch_pixel_agreement": 0.9997787475585938,
+      "missing_parts": [
+        "nose",
+        "brow_left",
+        "brow_right",
+        "eyes_or_glasses"
+      ],
+      "class_fraction": {
+        "background": 0.244,
+        "skin": 0.2515,
+        "eye_g": 0.0005,
+        "mouth": 0.0064,
+        "u_lip": 0.0026,
+        "l_lip": 0.0056,
+        "neck": 0.0918,
+        "neck_l": 0.0046,
+        "cloth": 0.0476,
+        "hair": 0.3453
+      },
+      "skin_fraction": 0.2514915466308594,
+      "hair_fraction": 0.3453178405761719
+    },
+    "DSC05275": {
+      "coreml_vs_torch_pixel_agreement": 0.9998207092285156,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.2451,
+        "skin": 0.1526,
+        "l_brow": 0.003,
+        "r_brow": 0.0024,
+        "l_eye": 0.0002,
+        "eye_g": 0.0384,
+        "nose": 0.0092,
+        "mouth": 0.0066,
+        "u_lip": 0.0038,
+        "l_lip": 0.0058,
+        "neck": 0.0716,
+        "neck_l": 0.0003,
+        "cloth": 0.0033,
+        "hair": 0.4578
+      },
+      "skin_fraction": 0.1525726318359375,
+      "hair_fraction": 0.4578056335449219
+    },
+    "DSC05304": {
+      "coreml_vs_torch_pixel_agreement": 0.9998512268066406,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.3596,
+        "skin": 0.1464,
+        "l_brow": 0.0016,
+        "r_brow": 0.0029,
+        "l_eye": 0.0003,
+        "eye_g": 0.0423,
+        "nose": 0.015,
+        "u_lip": 0.0044,
+        "l_lip": 0.0045,
+        "neck": 0.0494,
+        "cloth": 0.0053,
+        "hair": 0.3684
+      },
+      "skin_fraction": 0.14638519287109375,
+      "hair_fraction": 0.3684043884277344
+    },
+    "DSC05327": {
+      "coreml_vs_torch_pixel_agreement": 0.9998855590820312,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.285,
+        "skin": 0.1557,
+        "l_brow": 0.003,
+        "r_brow": 0.0036,
+        "eye_g": 0.0507,
+        "r_ear": 0.0012,
+        "nose": 0.0145,
+        "u_lip": 0.005,
+        "l_lip": 0.0048,
+        "neck": 0.0452,
+        "hair": 0.4312
+      },
+      "skin_fraction": 0.15568161010742188,
+      "hair_fraction": 0.4312171936035156
+    },
+    "DSC05403": {
+      "coreml_vs_torch_pixel_agreement": 0.999603271484375,
+      "missing_parts": [],
+      "class_fraction": {
+        "background": 0.5218,
+        "skin": 0.1147,
+        "l_brow": 0.0063,
+        "r_brow": 0.0031,
+        "eye_g": 0.0484,
+        "l_ear": 0.0102,
+        "r_ear": 0.0004,
+        "nose": 0.0146,
+        "u_lip": 0.0039,
+        "l_lip": 0.0048,
+        "neck": 0.0812,
+        "neck_l": 0.0041,
+        "cloth": 0.0492,
+        "hair": 0.1373
+      },
+      "skin_fraction": 0.11470413208007812,
+      "hair_fraction": 0.13733673095703125
+    }
+  }
+}

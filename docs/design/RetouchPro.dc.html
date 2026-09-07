@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><script src="./image-slot.js"></script><style>body{margin:0;background:#e8e6e1;font-family:'Be Vietnam Pro',system-ui,sans-serif}a{color:#0f766e}a:hover{color:#0d5f59}::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08)}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 'Be Vietnam Pro',sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Be Vietnam Pro',sans-serif;color:rgba(0,0,0,.55)}.dv-next{margin:24px 0 0;font:12px/1.6 'Be Vietnam Pro',sans-serif;color:rgba(0,0,0,.5)}</style></helmet>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Màn hình bổ sung cho handoff</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>iPhone · Thư viện / trạng thái rỗng</div>
+<div style="width:393px;height:852px;border-radius:52px;padding:11px;background:#111214;box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.06)">
+<div style="width:371px;height:830px;border-radius:42px;overflow:hidden;background:#0c0d0f;display:flex;flex-direction:column;color:#f2f4f7">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 26px 4px;font-size:13px;font-weight:600"><span style="font-family:'JetBrains Mono',monospace">9:41</span><span style="opacity:.75;font-size:11px;font-family:'JetBrains Mono',monospace">Dev build</span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px">
+<div><div style="font-size:22px;font-weight:700;letter-spacing:-.3px">Thư viện</div><div style="font-size:12px;color:#6e757f;margin-top:2px">Lưu trong ứng dụng · 12 ảnh</div></div>
+<div style="display:flex;gap:8px">
+<div style="width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:rgba(255,255,255,.07);font-size:15px;cursor:pointer">⌕</div>
+<div style="width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#7de3c3;color:#06231c;font-size:19px;font-weight:600;cursor:pointer">+</div>
+</div>
+</div>
+<div style="display:flex;gap:8px;padding:0 18px 12px">
+<div style="padding:6px 14px;border-radius:999px;font-size:12.5px;font-weight:600;background:#f2f4f7;color:#111214">Tất cả</div>
+<div style="padding:6px 14px;border-radius:999px;font-size:12.5px;background:rgba(255,255,255,.07);color:#9aa1ab">Đã chỉnh</div>
+<div style="padding:6px 14px;border-radius:999px;font-size:12.5px;background:rgba(255,255,255,.07);color:#9aa1ab">RAW</div>
+</div>
+<div style="flex:1;min-height:0;overflow-y:auto;padding:0 18px 12px">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+<sc-for list="{{ libItems }}" as="p" hint-placeholder-count="9">
+<div style="position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:repeating-linear-gradient(135deg,#212327 0 6px,#191b1f 6px 12px)">
+<div style="position:absolute;left:5px;bottom:5px;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:#c9ccd1">{{ p.name }}</div>
+<div style="position:absolute;right:5px;top:5px;font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(0,0,0,.6);color:{{ p.tagFg }}">{{ p.tag }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="flex:none;margin:0 18px 10px;padding:16px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);text-align:center">
+<div style="font-size:13px;font-weight:600;margin-bottom:3px">Nhập ảnh để bắt đầu</div>
+<div style="font-size:11.5px;color:#6e757f;line-height:1.5">JPEG · HEIC · RAW (Sony ARW)<br>Từ Files hoặc Photos</div>
+<div style="display:flex;gap:8px;margin-top:12px"><div style="flex:1;padding:9px;border-radius:9px;background:#7de3c3;color:#06231c;font-size:12.5px;font-weight:600;cursor:pointer">Files</div><div style="flex:1;padding:9px;border-radius:9px;background:rgba(255,255,255,.08);font-size:12.5px;font-weight:500;cursor:pointer">Photos</div></div>
+</div>
+<div style="display:grid;place-items:center;padding:4px 0 9px"><div style="width:128px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)"></div></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>iPhone · Sheet xuất ảnh</div>
+<div style="width:393px;height:852px;border-radius:52px;padding:11px;background:#111214;box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.06)">
+<div style="position:relative;width:371px;height:830px;border-radius:42px;overflow:hidden;background:#0c0d0f;display:flex;flex-direction:column">
+<div style="flex:1;background:#000;position:relative"><image-slot id="rp-phone-exp" shape="rect" placeholder="ảnh đang chỉnh"></image-slot><div style="position:absolute;inset:0;background:rgba(6,8,10,.62)"></div></div>
+<div style="position:absolute;left:0;right:0;bottom:0;background:#17191d;border-radius:20px 20px 0 0;color:#f2f4f7;padding:8px 18px 0">
+<div style="display:grid;place-items:center;padding:2px 0 12px"><div style="width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.22)"></div></div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px"><span style="font-size:17px;font-weight:700">Xuất ảnh</span><span style="font-size:12px;color:#6e757f;font-family:'JetBrains Mono',monospace">A012 · 6048×4024</span></div>
+<sc-for list="{{ exportRows }}" as="r" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+<span style="font-size:13.5px;color:#d6dae0">{{ r.label }}</span>
+<div style="display:flex;gap:6px">
+<sc-for list="{{ r.options }}" as="o" hint-placeholder-count="3">
+<div onClick="{{ o.select }}" style="padding:5px 12px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0 6px"><span style="font-size:12px;color:#6e757f">Ước tính 8,4 MB · xử lý on-device</span><span style="font-size:12px;color:#6e757f">Batch: Phase 3</span></div>
+<div style="display:flex;gap:10px;padding:6px 0 10px"><div style="flex:1;text-align:center;padding:13px;border-radius:12px;background:rgba(255,255,255,.07);font-size:14px;font-weight:500;cursor:pointer">Huỷ</div><div style="flex:2;text-align:center;padding:13px;border-radius:12px;background:#7de3c3;color:#06231c;font-size:14px;font-weight:600;cursor:pointer">Xuất 1 ảnh</div></div>
+<div style="display:grid;place-items:center;padding:0 0 9px"><div style="width:128px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)"></div></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>macOS · tab Thư viện (duyệt, lọc, chấm sao)</div>
+<div style="width:1280px;height:800px;border-radius:14px;overflow:hidden;background:#0c0d0f;color:#f2f4f7;box-shadow:0 30px 70px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 14px;background:#141518;border-bottom:1px solid rgba(255,255,255,.06)">
+<div style="display:flex;gap:8px"><div style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></div><div style="width:12px;height:12px;border-radius:50%;background:#febc2e"></div><div style="width:12px;height:12px;border-radius:50%;background:#28c840"></div></div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:22px;font-size:13.5px;font-weight:500"><span style="color:#f2f4f7;padding-bottom:2px;border-bottom:2px solid #7de3c3">Thư viện</span><span style="color:#9aa1ab;cursor:pointer">Chỉnh sửa</span></div>
+<div style="flex:1"></div>
+<div style="padding:6px 14px;border-radius:8px;background:rgba(255,255,255,.07);font-size:12.5px;cursor:pointer">Nhập…</div>
+<div style="padding:7px 18px;border-radius:8px;background:#7de3c3;color:#06231c;font-size:13px;font-weight:600;cursor:pointer">Xuất</div>
+</div>
+<div style="flex:1;min-height:0;display:flex">
+<div style="width:212px;flex:none;background:#141518;border-right:1px solid rgba(255,255,255,.06);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
+<div style="font-size:10.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#6e757f;padding:6px 8px">Nguồn</div>
+<sc-for list="{{ sources }}" as="s" hint-placeholder-count="4">
+<div onClick="{{ s.select }}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;font-size:12.5px;cursor:pointer;background:{{ s.bg }};color:{{ s.fg }}"><span>{{ s.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e757f">{{ s.count }}</span></div>
+</sc-for>
+<div style="font-size:10.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#6e757f;padding:16px 8px 6px">Lọc</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 8px">
+<div style="padding:4px 10px;border-radius:6px;font-size:11.5px;background:rgba(125,227,195,.14);color:#7de3c3">★ 3+</div>
+<div style="padding:4px 10px;border-radius:6px;font-size:11.5px;background:rgba(255,255,255,.06);color:#9aa1ab">RAW</div>
+<div style="padding:4px 10px;border-radius:6px;font-size:11.5px;background:rgba(255,255,255,.06);color:#9aa1ab">Đã chỉnh</div>
+</div>
+<div style="flex:1"></div>
+<div style="padding:10px;border-radius:10px;background:rgba(255,255,255,.04);font-size:11px;line-height:1.55;color:#6e757f">Tethering qua cáp<br><span style="color:#8b929c">Phase 4 · chưa bật</span></div>
+</div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
+<span style="font-size:13px;font-weight:600">Buổi chụp · 06/09</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#6e757f">18 ảnh · 3 chọn</span>
+<div style="flex:1"></div>
+<div style="display:flex;gap:3px;font-size:14px;letter-spacing:1px">
+<sc-for list="{{ stars }}" as="st" hint-placeholder-count="5"><span onClick="{{ st.set }}" style="cursor:pointer;color:{{ st.fg }}">★</span></sc-for>
+</div>
+</div>
+<div style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+<sc-for list="{{ grid }}" as="p" hint-placeholder-count="15">
+<div onClick="{{ p.select }}" style="position:relative;aspect-ratio:3/4;border-radius:6px;overflow:hidden;cursor:pointer;background:repeating-linear-gradient(135deg,#212327 0 6px,#191b1f 6px 12px);outline:2px solid {{ p.bd }};outline-offset:-2px">
+<div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;padding:4px 6px;background:rgba(0,0,0,.55);font-family:'JetBrains Mono',monospace;font-size:9px;color:#c9ccd1"><span>{{ p.name }}</span><span style="color:#e8c46a">{{ p.stars }}</span></div>
+<div style="position:absolute;top:5px;right:5px;font-size:8.5px;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,.6);color:{{ p.tagFg }}">{{ p.tag }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+<div style="width:268px;flex:none;background:#141518;border-left:1px solid rgba(255,255,255,.06);padding:16px;display:flex;flex-direction:column;gap:14px">
+<div style="aspect-ratio:3/4;border-radius:8px;background:repeating-linear-gradient(135deg,#212327 0 6px,#191b1f 6px 12px)"></div>
+<div>
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">A012.ARW</div>
+<sc-for list="{{ meta }}" as="m" hint-placeholder-count="6">
+<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:11.5px;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#6e757f">{{ m.k }}</span><span style="font-family:'JetBrains Mono',monospace;color:#c9ccd1">{{ m.v }}</span></div>
+</sc-for>
+</div>
+<div style="flex:1"></div>
+<div style="padding:11px;border-radius:9px;background:#7de3c3;color:#06231c;font-size:13px;font-weight:600;text-align:center;cursor:pointer">Mở trong Chỉnh sửa</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2d">
+<div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>macOS · hộp thoại Xuất + tiến trình</div>
+<div style="width:1280px;height:800px;border-radius:14px;overflow:hidden;background:#0c0d0f;position:relative;box-shadow:0 30px 70px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.07)">
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;filter:blur(1.5px);opacity:.55">
+<div style="height:46px;background:#141518;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;gap:8px"><div style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></div><div style="width:12px;height:12px;border-radius:50%;background:#febc2e"></div><div style="width:12px;height:12px;border-radius:50%;background:#28c840"></div></div>
+<div style="flex:1;display:flex"><div style="flex:1;background:#000;margin:16px;border-radius:4px"></div><div style="width:326px;background:#141518"></div><div style="width:56px;background:#141518"></div></div>
+</div>
+<div style="position:absolute;inset:0;background:rgba(6,8,10,.55)"></div>
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;border-radius:14px;background:#191b1f;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 80px rgba(0,0,0,.6);color:#f2f4f7;overflow:hidden">
+<div style="padding:18px 22px 14px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:16px;font-weight:700">Xuất 3 ảnh</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#6e757f">on-device</span></div>
+<div style="padding:6px 22px 14px">
+<sc-for list="{{ exportRows }}" as="r" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+<span style="font-size:12.5px;color:#d6dae0">{{ r.label }}</span>
+<div style="display:flex;gap:6px">
+<sc-for list="{{ r.options }}" as="o" hint-placeholder-count="3">
+<div onClick="{{ o.select }}" style="padding:5px 12px;border-radius:7px;font-size:11.5px;font-weight:500;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0"><span style="font-size:12.5px;color:#d6dae0">Thư mục</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#9aa1ab;cursor:pointer;text-decoration:underline">~/Pictures/RetouchPro ⌄</span></div>
+<div style="padding:12px 14px;border-radius:10px;background:rgba(255,255,255,.04)">
+<div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:8px"><span style="color:#c9ccd1">Đang xử lý A012.ARW</span><span style="font-family:'JetBrains Mono',monospace;color:#7de3c3">2 / 3</span></div>
+<div style="height:4px;border-radius:2px;background:rgba(255,255,255,.1)"><div style="width:62%;height:100%;border-radius:2px;background:#7de3c3"></div></div>
+</div>
+</div>
+<div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 22px 18px;border-top:1px solid rgba(255,255,255,.07)"><div style="padding:9px 18px;border-radius:8px;background:rgba(255,255,255,.07);font-size:13px;cursor:pointer">Huỷ</div><div style="padding:9px 20px;border-radius:8px;background:#7de3c3;color:#06231c;font-size:13px;font-weight:600;cursor:pointer">Xuất</div></div>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">RetouchPro — layout iPhone &amp; macOS (bản 1)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>iPhone · canvas tối đa, sheet công cụ, tab nhóm dưới cùng</div>
+<div style="width:393px;height:852px;border-radius:52px;padding:11px;background:#111214;box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.06)">
+<div style="position:relative;width:371px;height:830px;border-radius:42px;overflow:hidden;background:#0c0d0f;display:flex;flex-direction:column;color:#f2f4f7">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 26px 4px;font-size:13px;font-weight:600;letter-spacing:.2px">
+<span style="font-family:'JetBrains Mono',monospace">9:41</span>
+<div style="display:flex;gap:5px;align-items:center;opacity:.9"><div style="width:16px;height:9px;border-radius:2px;background:#f2f4f7"></div><div style="width:14px;height:9px;border-radius:2px;background:#f2f4f7"></div><div style="width:22px;height:10px;border-radius:3px;border:1px solid rgba(255,255,255,.5);padding:1px"><div style="width:12px;height:100%;border-radius:1px;background:#f2f4f7"></div></div></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:14px;padding:8px 14px 10px;flex:none">
+<div onClick="{{ noop }}" style="width:30px;height:30px;display:grid;place-items:center;border-radius:9px;font-size:19px;line-height:1;color:#e6e9ee;cursor:pointer" style-hover="background:rgba(255,255,255,.08)">‹</div>
+<div style="display:flex;align-items:center;gap:4px;font-size:12.5px;color:#9aa1ab;cursor:pointer" onClick="{{ noop }}"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="3.5" width="12" height="9" rx="2" stroke="#9aa1ab" stroke-width="1.3"></rect><circle cx="8" cy="8" r="2" stroke="#9aa1ab" stroke-width="1.3"></circle></svg>Nhập</div>
+<div style="flex:1"></div>
+<div onPointerDown="{{ holdOn }}" onPointerUp="{{ holdOff }}" onPointerLeave="{{ holdOff }}" style="width:30px;height:30px;display:grid;place-items:center;border-radius:9px;cursor:pointer;background:{{ holdBg }}"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M1.5 9C3.5 5.2 6 3.4 9 3.4s5.5 1.8 7.5 5.6c-2 3.8-4.5 5.6-7.5 5.6S3.5 12.8 1.5 9Z" stroke="#e6e9ee" stroke-width="1.3"></path><circle cx="9" cy="9" r="2.2" stroke="#e6e9ee" stroke-width="1.3"></circle></svg></div>
+<div onClick="{{ noop }}" style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#9aa1ab;padding:6px 9px;border-radius:8px;background:rgba(255,255,255,.06);cursor:pointer">Fit</div>
+<div onClick="{{ noop }}" style="width:30px;height:30px;display:grid;place-items:center;border-radius:9px;font-size:17px;color:#e6e9ee;letter-spacing:1px;cursor:pointer">···</div>
+<div onClick="{{ noop }}" style="padding:7px 16px;border-radius:999px;background:#7de3c3;color:#06231c;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#93e9ce">Xuất</div>
+</div>
+
+<div style="position:relative;flex:1;min-height:0;background:#000;overflow:hidden">
+<image-slot id="rp-phone" shape="rect" placeholder="ảnh chân dung"></image-slot>
+<div style="position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:12px 12px 28px">
+<div style="display:flex;gap:8px;pointer-events:auto">
+<sc-for list="{{ faces }}" as="f" hint-placeholder-count="2">
+<div onClick="{{ f.select }}" style="padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:500;white-space:nowrap;backdrop-filter:blur(12px);cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;pointer-events:auto">
+<div style="display:flex;gap:8px">
+<div onClick="{{ toggleSync }}" style="padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;background:rgba(18,19,22,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);cursor:pointer;color:{{ syncFg }}">Đồng bộ</div>
+<div onClick="{{ cycleSubject }}" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;background:rgba(18,19,22,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);cursor:pointer">{{ subject }} <span style="opacity:.6;font-size:10px">▾</span></div>
+</div>
+<div onClick="{{ toggleCompare }}" style="width:34px;height:34px;display:grid;place-items:center;border-radius:999px;background:rgba(18,19,22,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="5.5" height="11" rx="1.2" stroke="#e6e9ee" stroke-width="1.2"></rect><rect x="9" y="2.5" width="5.5" height="11" rx="1.2" fill="#e6e9ee" opacity=".55"></rect></svg></div>
+</div>
+</div>
+</div>
+
+<div style="flex:none;background:#141518;border-top:1px solid rgba(255,255,255,.07);border-radius:16px 16px 0 0;margin-top:-14px;position:relative;z-index:2">
+<div style="display:grid;place-items:center;padding:7px 0 3px"><div style="width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.22)"></div></div>
+<div style="height:250px;overflow-y:auto;padding:2px 16px 10px">
+<sc-for list="{{ sliders }}" as="s" hint-placeholder-count="4">
+<div style="padding:9px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px"><span style="font-size:13px;color:#d6dae0">{{ s.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ s.numFg }}">{{ s.value }}</span></div>
+<div onPointerDown="{{ s.onDown }}" style="position:relative;height:16px;cursor:pointer;touch-action:none">
+<div style="position:absolute;top:7px;left:0;right:0;height:2px;border-radius:2px;background:rgba(255,255,255,.13)"></div>
+<div style="position:absolute;top:7px;left:0;height:2px;border-radius:2px;background:#7de3c3;width:{{ s.pct }}"></div>
+<div style="position:absolute;top:2px;width:13px;height:13px;margin-left:-6.5px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.7);left:{{ s.pct }}"></div>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:2px;padding:6px 6px 4px;border-top:1px solid rgba(255,255,255,.07)">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+<div onClick="{{ g.select }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 2px;border-radius:12px;cursor:pointer;opacity:{{ g.op }}">
+<div style="color:{{ g.fg }}">{{ g.icon }}</div>
+<div style="font-size:9.5px;font-weight:500;text-align:center;line-height:1.15;color:{{ g.fg }}">{{ g.label }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;place-items:center;padding:4px 0 9px"><div style="width:128px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)"></div></div>
+</div>
+
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>macOS · rail icon phải, panel theo tool đang chọn, filmstrip + sao</div>
+<div style="width:1280px;height:800px;border-radius:14px;overflow:hidden;background:#0c0d0f;color:#f2f4f7;box-shadow:0 30px 70px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column">
+
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 14px;background:#141518;border-bottom:1px solid rgba(255,255,255,.06);flex:none">
+<div style="display:flex;gap:8px"><div style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></div><div style="width:12px;height:12px;border-radius:50%;background:#febc2e"></div><div style="width:12px;height:12px;border-radius:50%;background:#28c840"></div></div>
+<div style="width:1px;height:20px;background:rgba(255,255,255,.09);margin-left:6px"></div>
+<div style="display:flex;gap:2px">
+<sc-for list="{{ macTools }}" as="m" hint-placeholder-count="4">
+<div onClick="{{ m.select }}" title="{{ m.label }}" style="width:30px;height:30px;display:grid;place-items:center;border-radius:8px;cursor:pointer;background:{{ m.bg }};color:{{ m.fg }}">{{ m.icon }}</div>
+</sc-for>
+</div>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:22px;font-size:13.5px;font-weight:500">
+<span onClick="{{ noop }}" style="color:#9aa1ab;cursor:pointer">Thư viện</span>
+<span style="color:#f2f4f7;cursor:pointer;padding-bottom:2px;border-bottom:2px solid #7de3c3">Chỉnh sửa</span>
+</div>
+<div style="flex:1"></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e757f">on-device · Metal</div>
+<div onClick="{{ noop }}" style="padding:7px 18px;border-radius:8px;background:#7de3c3;color:#06231c;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#93e9ce">Xuất</div>
+</div>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#0c0d0f">
+<div style="flex:1;min-height:0;display:flex;gap:2px;padding:16px">
+<div style="position:relative;flex:1;min-width:0;background:#000;border-radius:4px;overflow:hidden">
+<image-slot id="rp-mac-before" shape="rect" placeholder="ảnh gốc"></image-slot>
+<div style="position:absolute;top:10px;left:10px;padding:4px 12px;border-radius:6px;font-size:11.5px;font-weight:500;background:rgba(18,19,22,.78);backdrop-filter:blur(10px)">Trước</div>
+</div>
+<div style="position:relative;flex:1;min-width:0;background:#000;border-radius:4px;overflow:hidden">
+<image-slot id="rp-mac-after" shape="rect" placeholder="ảnh sau chỉnh"></image-slot>
+<div style="position:absolute;top:10px;left:10px;padding:4px 12px;border-radius:6px;font-size:11.5px;font-weight:500;background:rgba(125,227,195,.9);color:#06231c">Sau</div>
+<div style="position:absolute;bottom:12px;left:12px;display:flex;gap:6px">
+<sc-for list="{{ faces }}" as="f" hint-placeholder-count="2">
+<div onClick="{{ f.select }}" style="padding:5px 11px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap;cursor:pointer;backdrop-filter:blur(10px);background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</div>
+</sc-for>
+</div>
+</div>
+</div>
+<div style="height:104px;flex:none;background:#111214;border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:14px;padding:0 16px">
+<div style="display:flex;gap:8px">
+<sc-for list="{{ film }}" as="p" hint-placeholder-count="6">
+<div onClick="{{ p.select }}" style="position:relative;width:68px;height:76px;border-radius:4px;overflow:hidden;cursor:pointer;background:repeating-linear-gradient(135deg,#212327 0 6px,#191b1f 6px 12px);border:2px solid {{ p.bd }}">
+<div style="position:absolute;left:0;right:0;bottom:0;padding:2px 4px;font-family:'JetBrains Mono',monospace;font-size:8px;color:#c9ccd1;background:rgba(0,0,0,.55);display:flex;justify-content:space-between"><span>{{ p.name }}</span><span style="color:#e8c46a">{{ p.stars }}</span></div>
+</div>
+</sc-for>
+</div>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:10px;font-size:12px;color:#9aa1ab">
+<span style="font-family:'JetBrains Mono',monospace">{{ filmCount }}</span>
+<div style="width:1px;height:16px;background:rgba(255,255,255,.1)"></div>
+<div style="display:flex;gap:3px;font-size:15px;letter-spacing:1px;cursor:pointer">
+<sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
+<span onClick="{{ st.set }}" style="color:{{ st.fg }}">★</span>
+</sc-for>
+</div>
+<div style="width:1px;height:16px;background:rgba(255,255,255,.1)"></div>
+<span style="font-family:'JetBrains Mono',monospace">Fit · 24%</span>
+</div>
+</div>
+</div>
+
+<div style="width:326px;flex:none;background:#141518;border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column">
+<div style="padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:9px"><div style="color:#7de3c3">{{ activeIcon }}</div><span style="font-size:14px;font-weight:600">{{ activeTitle }}</span></div>
+<div style="display:flex;gap:6px;color:#6e757f;font-size:12px"><span onClick="{{ resetGroup }}" style="cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.06)">Đặt lại</span></div>
+</div>
+<div style="flex:1;min-height:0;overflow-y:auto;padding:6px 16px 12px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#6e757f;padding:12px 0 4px">{{ activeSection }}</div>
+<sc-for list="{{ sliders }}" as="s" hint-placeholder-count="6">
+<div style="padding:8px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span style="font-size:12.5px;color:#d6dae0">{{ s.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:{{ s.numFg }}">{{ s.value }}</span></div>
+<div onPointerDown="{{ s.onDown }}" style="position:relative;height:14px;cursor:pointer;touch-action:none">
+<div style="position:absolute;top:6px;left:0;right:0;height:2px;border-radius:2px;background:rgba(255,255,255,.13)"></div>
+<div style="position:absolute;top:6px;left:0;height:2px;border-radius:2px;background:#7de3c3;width:{{ s.pct }}"></div>
+<div style="position:absolute;top:1px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.7);left:{{ s.pct }}"></div>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="flex:none;padding:12px 16px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px">
+<div style="flex:1;text-align:center;padding:8px;border-radius:8px;font-size:12.5px;color:#6e757f;background:rgba(255,255,255,.04);cursor:not-allowed">Lưu preset · Phase 3</div>
+<div onClick="{{ toggleSync }}" style="flex:1;text-align:center;padding:8px;border-radius:8px;font-size:12.5px;font-weight:500;cursor:pointer;background:{{ syncBg }};color:{{ syncFgMac }}">Đồng bộ</div>
+</div>
+</div>
+
+<div style="width:56px;flex:none;background:#141518;border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="6">
+<div onClick="{{ g.select }}" title="{{ g.label }}" style="width:40px;height:40px;display:grid;place-items:center;border-radius:10px;cursor:pointer;background:{{ g.railBg }};color:{{ g.fg }};opacity:{{ g.op }}">{{ g.icon }}</div>
+</sc-for>
+</div>
+
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Thử tiếp: “panel phải của <a class="dv-oid" href="#1b">1b</a> gộp Color thành 2 cột” · “<a class="dv-oid" href="#1a">1a</a> thêm trạng thái chọn mặt khi có 3 người” · “làm bản sáng (light mode)”</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultTool&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;skin&quot;,&quot;face&quot;,&quot;eyes&quot;,&quot;color&quot;],&quot;default&quot;:&quot;skin&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Trạng thái&quot;}}">
+const ico = (paths, c) => React.createElement('svg', {width:19,height:19,viewBox:'0 0 20 20',fill:'none'},
+  paths.map((p,i)=>React.createElement('path',{key:i,d:p,stroke:'currentColor','strokeWidth':1.4,'strokeLinecap':'round','strokeLinejoin':'round'})));
+
+const GROUPS = [
+  {id:'skin', label:'Da', title:'Làm mịn da', section:'Da mặt', icon:['M10 3c3.3 0 5.5 2.6 5.5 6.2S13.3 17 10 17 4.5 12.8 4.5 9.2 6.7 3 10 3Z','M8 9.2h.01','M12 11h.01'],
+   subtabs:['Da mặt','Toàn thân','Kết cấu','Tông da'],
+   sliders:[['Mịn da',34],['Giữ texture',62],['Đều màu da',18],['Khử đỏ',0],['Khử bóng dầu',25],['Sáng da',12],['Quầng thâm',40],['Nếp nhăn',0]]},
+  {id:'face', label:'Mặt', title:'Tạo hình khuôn mặt', section:'Hình học · 478 điểm', icon:['M10 3.2c3.2 0 5.4 2.4 5.4 6S13.2 16.8 10 16.8 4.6 12.8 4.6 9.2s2.2-6 5.4-6Z','M7.4 8.4h1.6','M11 8.4h1.6','M8.4 12.4c1 .8 2.2.8 3.2 0'],
+   subtabs:['Đường nét','Mũi','Mắt','Miệng'],
+   sliders:[['Bóp mặt',22],['Gò má',0],['Hàm',15],['Cằm',0],['Trán',0],['Thái dương',8],['Sống mũi',0],['Cánh mũi',12],['Đầu nhũi',0],['To mắt',10],['Khoảng cách mắt',0],['Nghiêng mắt',0],['Rộng miệng',0],['Cao miệng',0],['Môi đầy',18]]},
+  {id:'eyes', label:'Mắt & Răng', title:'Mắt và răng', section:'Chi tiết', icon:['M2.5 10c2-3.4 4.4-5 7.5-5s5.5 1.6 7.5 5c-2 3.4-4.4 5-7.5 5s-5.5-1.6-7.5-5Z','M10 8.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z'],
+   subtabs:['Mắt','Răng'],
+   sliders:[['Sáng mắt',28],['Trắng lòng trắng',20],['Nét mắt',35],['Trắng răng',30]]},
+  {id:'color', label:'Màu', title:'Màu & ánh sáng', section:'Cơ bản', icon:['M10 2.8a7.2 7.2 0 1 0 0 14.4c1 0 1.6-.7 1.6-1.5 0-1.4 1-1.9 2-1.9h1.1a2.5 2.5 0 0 0 2.5-2.5c0-4.2-3.2-8.5-7.2-8.5Z','M6.8 8.6h.01','M10 6.4h.01','M13.2 8.6h.01'],
+   subtabs:['Cơ bản','Cân bằng trắng','HSL','Curves'],
+   sliders:[['Phơi sáng',12],['Tương phản',8],['Vùng sáng',-0],['Vùng tối',22],['Nhiệt độ',6],['Sắc độ',0],['Rực rỡ',18],['Bão hoà',0],['Curves',0],['HSL · Đỏ',0],['HSL · Cam',14],['HSL · Vàng',0],['HSL · Lục',0],['HSL · Lam',0],['HSL · Lơ',0],['HSL · Tím',0],['HSL · Hồng',0],['Dodge & Burn tự động',45]]},
+  {id:'makeup', label:'Trang điểm', title:'Trang điểm', section:'Phase 5', icon:['M7.5 17h5V9.5l-2.5-6-2.5 6V17Z','M7.5 12.4h5'], locked:'Phase 5', subtabs:['Môi','Mắt','Má'], sliders:[]},
+  {id:'hair', label:'Tóc', title:'Tóc', section:'Phase 5', icon:['M4.5 15c-.6-6 2-11 5.5-11s4.1 5 5.5 11','M6.8 15c0-4 1.2-7 3.2-7s3.2 3 3.2 7'], locked:'Phase 5', subtabs:['Bay tóc','Màu tóc'], sliders:[]}
+];
+
+class Component extends DCLogic {
+  constructor(p){ super(p);
+    const vals = {};
+    GROUPS.forEach(g => g.sliders.forEach(([l,v]) => vals[g.id+'|'+l] = v));
+    this.state = { group: p.defaultTool || 'skin', sub: 0, vals, face: 0, subject: 'Nữ',
+      sync: true, hold: false, rating: 3, photo: 0, macTool: 'pan' };
+  }
+  g(){ return GROUPS.find(x => x.id === this.state.group) || GROUPS[0]; }
+  set(k, v){ this.setState(s => ({ vals: { ...s.vals, [k]: Math.max(0, Math.min(100, Math.round(v))) } })); }
+  drag(k){ return e => {
+    const track = e.currentTarget; const r = track.getBoundingClientRect();
+    const move = ev => this.set(k, ((ev.clientX - r.left) / r.width) * 100);
+    move(e); e.target.setPointerCapture?.(e.pointerId);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }; }
+  renderVals(){
+    const st = this.state, g = this.g(), A = '#7de3c3';
+    const sliders = g.sliders.map(([label]) => {
+      const k = g.id + '|' + label, v = st.vals[k] ?? 0;
+      return { label, value: v, pct: v + '%', numFg: v ? A : '#6e757f', onDown: this.drag(k) };
+    });
+    const faceLabels = ['Mặt 1', 'Mặt 2'];
+    return {
+      noop: () => {},
+      groups: GROUPS.map(x => ({
+        label: x.label, icon: ico(x.icon), op: x.locked ? .38 : 1,
+        fg: x.id === st.group ? A : '#8b929c',
+        railBg: x.id === st.group ? 'rgba(125,227,195,.12)' : 'transparent',
+        select: () => { if (!x.locked) this.setState({ group: x.id, sub: 0 }); }
+      })),
+      subtabs: g.subtabs.map((label, i) => ({
+        label, weight: i === st.sub ? 600 : 500,
+        bg: i === st.sub ? '#f2f4f7' : 'rgba(255,255,255,.07)',
+        fg: i === st.sub ? '#111214' : '#9aa1ab',
+        select: () => this.setState({ sub: i })
+      })),
+      sliders,
+      activeTitle: g.title, activeSection: g.locked ? g.locked + ' · chưa khả dụng' : g.section,
+      activeIcon: ico(g.icon),
+      faces: faceLabels.map((label, i) => ({
+        label, bg: i === st.face ? 'rgba(125,227,195,.92)' : 'rgba(18,19,22,.72)',
+        fg: i === st.face ? '#06231c' : '#e6e9ee',
+        bd: i === st.face ? 'transparent' : 'rgba(255,255,255,.14)',
+        select: () => this.setState({ face: i })
+      })),
+      subjects: ['Nữ','Nam','Trẻ em','Tất cả'].map(label => ({
+        label, bg: label === st.subject ? 'rgba(125,227,195,.14)' : 'rgba(255,255,255,.05)',
+        fg: label === st.subject ? A : '#9aa1ab',
+        select: () => this.setState({ subject: label })
+      })),
+      subject: st.subject,
+      cycleSubject: () => { const o = ['Nữ','Nam','Trẻ em','Tất cả']; this.setState({ subject: o[(o.indexOf(st.subject)+1) % o.length] }); },
+      toggleSync: () => this.setState({ sync: !st.sync }),
+      syncFg: st.sync ? A : '#e6e9ee',
+      syncBg: st.sync ? 'rgba(125,227,195,.14)' : 'rgba(255,255,255,.05)',
+      syncFgMac: st.sync ? A : '#9aa1ab',
+      holdOn: () => this.setState({ hold: true }), holdOff: () => this.setState({ hold: false }),
+      holdBg: st.hold ? 'rgba(125,227,195,.18)' : 'transparent',
+      toggleCompare: () => {}, resetGroup: () => {
+        this.setState(s => { const v = { ...s.vals }; g.sliders.forEach(([l]) => v[g.id+'|'+l] = 0); return { vals: v }; });
+      },
+      macTools: [['Bàn tay','pan'],['Tẩy vết','heal'],['Cọ','brush'],['Hoàn tác','undo']].map(([label, id]) => ({
+        label, icon: ico(id === 'pan' ? ['M7 9V5.4a1.4 1.4 0 0 1 2.8 0V9','M9.8 9V4.6a1.4 1.4 0 0 1 2.8 0V9','M12.6 9.4V6.6a1.4 1.4 0 0 1 2.8 0V12a5 5 0 0 1-5 5H9l-4-4.6a1.3 1.3 0 0 1 1.9-1.8L7 11.6V9']
+          : id === 'heal' ? ['M12.6 3.9 3.9 12.6a2.6 2.6 0 0 0 3.5 3.5l8.7-8.7a2.6 2.6 0 0 0-3.5-3.5Z','M6.6 9.9l3.5 3.5']
+          : id === 'brush' ? ['M15.5 4.5 8 12','M8 12l-1.5 3.5L10 14','M6.5 15.5H4'] : ['M4.5 8.5h6a4 4 0 1 1-4 4','M4.5 8.5 7 6','M4.5 8.5 7 11']),
+        bg: st.macTool === id ? 'rgba(255,255,255,.1)' : 'transparent',
+        fg: st.macTool === id ? '#f2f4f7' : '#8b929c',
+        select: () => this.setState({ macTool: id })
+      })),
+      film: [0,1,2,3,4,5].map(i => ({
+        name: 'A0' + (i+1), stars: '★'.repeat(i % 3 + 2),
+        bd: i === st.photo ? A : 'transparent',
+        select: () => this.setState({ photo: i })
+      })),
+      filmCount: '6 ảnh · 1 chọn',
+      libItems: [0,1,2,3,4,5,6,7,8].map(i => ({ name: 'A0' + (i+4), tag: i % 3 === 0 ? 'RAW' : 'HEIC', tagFg: i % 3 === 0 ? '#e8c46a' : '#9aa1ab' })),
+      grid: Array.from({length:15}, (_,i) => ({
+        name: 'A0' + (i+1), stars: '★'.repeat(i % 3 + 2), tag: i % 4 === 0 ? 'RAW' : 'JPEG',
+        tagFg: i % 4 === 0 ? '#e8c46a' : '#9aa1ab',
+        bd: i === st.photo ? A : 'transparent', select: () => this.setState({ photo: i })
+      })),
+      sources: [['Buổi chụp · 06/09','18'],['Đã nhập','12'],['Nháp chưa xuất','4'],['Tất cả ảnh','34']].map(([label,count], i) => ({
+        label, count, bg: i === 0 ? 'rgba(125,227,195,.12)' : 'transparent', fg: i === 0 ? A : '#c9ccd1',
+        select: () => {}
+      })),
+      meta: [['Định dạng','ARW'],['Kích thước','6048×4024'],['ISO','400'],['Khẩu độ','f/1.8'],['Tốc độ','1/200'],['Số mặt nhận diện','2']].map(([k,v]) => ({k,v})),
+      exportRows: [['Định dạng',['JPEG','HEIF','TIFF']],['Chất lượng',['80','92','100']],['Kích thước',['Gốc','Dài 4000px','Dài 2048px']],['Không gian màu',['sRGB','Display P3']]]
+        .map(([label, opts]) => ({ label, options: opts.map((o, i) => ({
+          label: o, bg: i === 0 ? 'rgba(125,227,195,.16)' : 'rgba(255,255,255,.06)',
+          fg: i === 0 ? A : '#9aa1ab', select: () => {} })) })),
+      stars: [1,2,3,4,5].map(n => ({ fg: n <= st.rating ? '#e8c46a' : 'rgba(255,255,255,.2)', set: () => this.setState({ rating: n }) }))
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+ "source": "SpikeS1/face_crop_256.png resized to 128 with PIL BILINEAR",
+ "model": "BlazeFaceShortRange.mlpackage (fp16)",
+ "n_cluster": 26,
+ "score": 0.9432430863380432,
+ "box_xywh_normalised": [
+  0.1314016182685134,
+  0.20064645298339168,
+  0.6546927886694548,
+  0.6546475677956871
+ ],
+ "keypoints_normalised": [
+  [
+   0.34379169494506884,
+   0.34905623128294244
+  ],
+  [
+   0.6314368375725847,
+   0.346089762587962
+  ],
+  [
+   0.5139737887536626,
+   0.4788482116072216
+  ],
+  [
+   0.5035230119110425,
+   0.6432115211769985
+  ],
+  [
+   0.15801272012367001,
+   0.45142729404439974
+  ],
+  [
+   0.7428651650684853,
+   0.44297271238740465
+  ]
+ ],
+ "note": "Decoded by the Python side (verify_blazeface_vs_tflite.decode + the weighted NMS above), so the Swift BlazeFaceDecoder is checked against an independent implementation of MediaPipe's calculators rather than against itself."
+}

@@ -1,0 +1,48 @@
+{
+ "note": "Point-weighted pooling of the two ROI-scale sweeps: 20 Wikimedia portraits (results/) and 11 real Sony a6300 frames (a6300/results/). mean_px_at_256 vs the MediaPipe Python reference.",
+ "per_scale": {
+  "scale_1.300": {
+   "wikimedia_mean_px": 1.1275797770854503,
+   "a6300_mean_px": 1.2931020359239511,
+   "pooled_mean_px": 1.1863134818345957,
+   "n_points": 14818
+  },
+  "scale_1.350": {
+   "wikimedia_mean_px": 0.9731244389809296,
+   "a6300_mean_px": 1.3034677458598054,
+   "pooled_mean_px": 1.0903430317444016,
+   "n_points": 14818
+  },
+  "scale_1.400": {
+   "wikimedia_mean_px": 0.9113649530286042,
+   "a6300_mean_px": 1.399076936652419,
+   "pooled_mean_px": 1.0844240439918935,
+   "n_points": 14818
+  },
+  "scale_1.425": {
+   "wikimedia_mean_px": 0.9260013841938546,
+   "a6300_mean_px": 1.4571010392783788,
+   "pooled_mean_px": 1.1144561005141698,
+   "n_points": 14818
+  },
+  "scale_1.450": {
+   "wikimedia_mean_px": 0.9653253232394985,
+   "a6300_mean_px": 1.5474529708284945,
+   "pooled_mean_px": 1.1718867465775293,
+   "n_points": 14818
+  },
+  "scale_1.500": {
+   "wikimedia_mean_px": 1.0143243352781046,
+   "a6300_mean_px": 1.588910092842933,
+   "pooled_mean_px": 1.2182096040914308,
+   "n_points": 14818
+  },
+  "scale_1.550": {
+   "wikimedia_mean_px": 1.0742932287282623,
+   "a6300_mean_px": 1.7616924389956194,
+   "pooled_mean_px": 1.3182090775328084,
+   "n_points": 14818
+  }
+ },
+ "pooled_argmin": "scale_1.400"
+}

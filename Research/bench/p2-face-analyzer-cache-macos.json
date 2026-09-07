@@ -1,0 +1,27 @@
+{
+  "cache_capacity" : 4,
+  "cold" : {
+    "max_ms" : 98.887625,
+    "mean_ms" : 50.520409666666666,
+    "median_ms" : 46.680208,
+    "min_ms" : 21.668084,
+    "p95_ms" : 98.887625
+  },
+  "dataset" : "a6300",
+  "evictions" : 2,
+  "hits" : 4,
+  "host" : "duys-macbook-pro.local",
+  "images" : 6,
+  "misses" : 6,
+  "note" : "cold = first analysis of each image, warm = same key again while resident. The eviction count is the LRU doing its job: 6 images through a 4-entry cache. three_concurrent_same_key_ms should be one cold analysis, not three.",
+  "resident" : 4,
+  "speedup_median" : 895.54355875299768,
+  "three_concurrent_same_key_ms" : 35.389457999999998,
+  "warm" : {
+    "max_ms" : 0.113667,
+    "mean_ms" : 0.061083249999999999,
+    "median_ms" : 0.052124999999999998,
+    "min_ms" : 0.036332999999999997,
+    "p95_ms" : 0.113667
+  }
+}

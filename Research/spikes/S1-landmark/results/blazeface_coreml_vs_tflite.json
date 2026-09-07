@@ -1,0 +1,24 @@
+{
+ "n_cases": 21,
+ "builds": {
+  "fp32": {
+   "max_abs_regressor_diff": 0.0001220703125,
+   "mean_abs_regressor_diff": 5.958193651167676e-05,
+   "max_abs_logit_diff": 0.0001373291015625,
+   "max_abs_score_diff": 1.9371509552001953e-06,
+   "n_boxes_compared": 20,
+   "max_top1_box_diff_px_at_128": 2.288818359375e-05,
+   "mean_top1_box_diff_px_at_128": 1.004338264465332e-05
+  },
+  "fp16": {
+   "max_abs_regressor_diff": 0.611724853515625,
+   "mean_abs_regressor_diff": 0.41626420617103577,
+   "max_abs_logit_diff": 0.7213592529296875,
+   "max_abs_score_diff": 0.00584036111831665,
+   "n_boxes_compared": 20,
+   "max_top1_box_diff_px_at_128": 0.14150238037109375,
+   "mean_top1_box_diff_px_at_128": 0.0713010549545288
+  }
+ },
+ "note": "Identical input tensors on both sides (PIL-resized 128px crops + one noise frame), so the resampler is out of the comparison. fp32 is the control: it says the MIL translation is numerically the same network. The box diff is in 128px detector-input pixels for the highest-scoring anchor."
+}

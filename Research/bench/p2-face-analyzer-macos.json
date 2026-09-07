@@ -1,0 +1,65 @@
+{
+  "blazeface_model" : "BlazeFaceShortRange.mlpackage",
+  "dataset" : "a6300",
+  "feather_eyes_512" : {
+    "max_ms" : 4.2741670000000003,
+    "mean_ms" : 4.1454916499999994,
+    "median_ms" : 4.1212499999999999,
+    "min_ms" : 4.0902079999999996,
+    "p95_ms" : 4.2741670000000003
+  },
+  "host" : "duys-macbook-pro.local",
+  "image" : "DSC05123.jpg",
+  "image_size" : [
+    2691,
+    2691
+  ],
+  "iterations" : 30,
+  "note" : "Mac host measurement, compute units .all. The plan's device bar is a real iPhone (PLAN §0.1); like spikes S1\/S2 that number is still missing because no device is attached to this machine. Stage timings come from FaceAnalysis.timings, i.e. the product code's own clock.",
+  "os" : "Version 26.3 (Build 25D125)",
+  "parsing_enabled" : true,
+  "pixel_hash" : {
+    "max_ms" : 24.973125,
+    "mean_ms" : 15.550733299999999,
+    "median_ms" : 14.466041000000001,
+    "min_ms" : 14.362875000000001,
+    "p95_ms" : 24.973125
+  },
+  "stages" : {
+    "blazeface" : {
+      "max_ms" : 8.4692089999999993,
+      "mean_ms" : 7.5653473666666677,
+      "median_ms" : 7.5742079999999996,
+      "min_ms" : 7.0400419999999997,
+      "p95_ms" : 7.8952920000000004
+    },
+    "mesh" : {
+      "max_ms" : 5.8062079999999998,
+      "mean_ms" : 4.298477833333334,
+      "median_ms" : 4.2435419999999997,
+      "min_ms" : 3.977042,
+      "p95_ms" : 5.1994999999999996
+    },
+    "parsing" : {
+      "max_ms" : 10.763249999999999,
+      "mean_ms" : 9.3916081666666678,
+      "median_ms" : 9.2053329999999995,
+      "min_ms" : 8.684666,
+      "p95_ms" : 10.749207999999999
+    },
+    "total" : {
+      "max_ms" : 39.362457999999997,
+      "mean_ms" : 36.306895866666672,
+      "median_ms" : 36.346956999999996,
+      "min_ms" : 34.022500000000001,
+      "p95_ms" : 39.029541999999999
+    },
+    "vision_detect" : {
+      "max_ms" : 16.429167,
+      "mean_ms" : 15.042884766666669,
+      "median_ms" : 15.161083,
+      "min_ms" : 13.814208000000001,
+      "p95_ms" : 16.012875000000001
+    }
+  }
+}

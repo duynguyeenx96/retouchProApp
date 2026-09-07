@@ -1,0 +1,20 @@
+{
+  "compute_units" : {
+    "all" : {
+      "inference_median_ms" : 5.8162909999999997,
+      "resize_plus_inference_median_ms" : 6.968
+    },
+    "cpuAndNeuralEngine" : {
+      "inference_median_ms" : 5.8328749999999996,
+      "resize_plus_inference_median_ms" : 6.9808329999999996
+    },
+    "cpuOnly" : {
+      "inference_median_ms" : 14.328749999999999,
+      "resize_plus_inference_median_ms" : 15.641999999999999
+    }
+  },
+  "image" : "108.png",
+  "iterations" : 30,
+  "os" : "Version 26.3 (Build 25D125)",
+  "suite" : "S2 face parsing 19"
+}

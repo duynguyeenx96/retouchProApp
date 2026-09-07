@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:RetouchPro.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPCore">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPVision">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPEngine">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPImport">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPUI">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RPTestKit">
+   </FileRef>
+</Workspace>

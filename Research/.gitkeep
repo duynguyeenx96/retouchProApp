@@ -1,0 +1,3 @@
+# Research/ — spikes, test images, ground truth, bench output (docs/PLAN.md §2).
+# Populated in Phase 0 (spikes) and by the RPTestKit bench harness.
+# Subfolders to expect: data/, spikes/, bench/

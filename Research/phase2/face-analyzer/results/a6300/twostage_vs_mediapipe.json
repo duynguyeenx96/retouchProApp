@@ -1,0 +1,80 @@
+{
+ "dataset": "a6300",
+ "label": "a6300",
+ "blazeface_model": "BlazeFaceShortRange.mlpackage",
+ "summary": {
+  "twostage_vs_mediapipe": {
+   "n_images": 11,
+   "n_points": 5258,
+   "mean_px_at_256": 0.8664265486810298,
+   "median_px_at_256": 0.6976914336355057,
+   "p95_px_at_256": 1.994028284305439,
+   "max_px_at_256": 5.589881499358926,
+   "worst_image_mean_px_at_256": 1.5909238130770003
+  },
+  "twostage_roi_vs_mediapipe_roi": {
+   "n": 11,
+   "mp_side_over_ours_mean": 0.9805800808614261,
+   "mp_side_over_ours_std": 0.019775232600069293,
+   "centre_offset_frac_of_side_mean": 0.013536874667169395,
+   "roll_abs_deg_mean": 1.506307858289491,
+   "roll_abs_deg_max": 4.455985721337664
+  },
+  "control_s1_vision_pipeline_vs_mediapipe": {
+   "n_images": 11,
+   "n_points": 5258,
+   "mean_px_at_256": 1.399076936652419,
+   "median_px_at_256": 1.0366663229092874,
+   "p95_px_at_256": 3.595137459699982,
+   "max_px_at_256": 13.621819594155019,
+   "worst_image_mean_px_at_256": 2.8480416526606596
+  },
+  "control_roi_vs_mediapipe_roi": {
+   "n": 11,
+   "mp_side_over_ours_mean": 0.9222038722103175,
+   "mp_side_over_ours_std": 0.06599367431815914,
+   "centre_offset_frac_of_side_mean": 0.0553411332246383,
+   "roll_abs_deg_mean": 2.4356222515521555,
+   "roll_abs_deg_max": 5.570483519267578
+  },
+  "parsing_parts_present": {
+   "n": 11,
+   "ok": 11,
+   "failed": [],
+   "skin_fraction_mean": 0.1912626786665483
+  }
+ },
+ "per_image": {
+  "twostage": {
+   "DSC05123.jpg": 1.5909238130770003,
+   "DSC05146.jpg": 1.201166888202304,
+   "DSC05164.jpg": 0.55406612090941,
+   "DSC05172.jpg": 0.7344443806627856,
+   "DSC05193.jpg": 0.7763177887108555,
+   "DSC05239.jpg": 1.3853990329774888,
+   "DSC05259.jpg": 0.6081005679466815,
+   "DSC05275.jpg": 0.8739487331878717,
+   "DSC05304.jpg": 0.7182837411173633,
+   "DSC05327.jpg": 0.5810388721018299,
+   "DSC05403.jpg": 0.5070020965977363
+  },
+  "control": {
+   "DSC05123.jpg": 1.8243328879051715,
+   "DSC05146.jpg": 1.174825947092343,
+   "DSC05164.jpg": 0.8240344354636763,
+   "DSC05172.jpg": 0.7892911154235643,
+   "DSC05193.jpg": 1.247616491919036,
+   "DSC05239.jpg": 2.8480416526606596,
+   "DSC05259.jpg": 1.9481584068918698,
+   "DSC05275.jpg": 1.5790004252033667,
+   "DSC05304.jpg": 0.9719310814451844,
+   "DSC05327.jpg": 1.4459286185714344,
+   "DSC05403.jpg": 0.7366852406003009
+  }
+ },
+ "excluded": {
+  "twostage": [],
+  "control": []
+ },
+ "note": "Same reference, same normalisation and the same multi-face guard as spike S1's compare_vs_mediapipe.py, so 'twostage' is directly comparable with that report's row B. The control is S1's own recorded run rescored here rather than quoted, so both sides of the comparison come out of one execution of one piece of code."
+}

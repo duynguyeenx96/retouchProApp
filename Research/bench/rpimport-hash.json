@@ -1,0 +1,36 @@
+{
+  "benchmark" : "RPImport.ContentHash chunk size",
+  "fastestChunkBytes" : 1048576,
+  "fileBytes" : 50331648,
+  "generatedAt" : "2026-09-04T04:39:12Z",
+  "host" : "Version 26.3 (Build 25D125)",
+  "measurements" : [
+    {
+      "chunkBytes" : 262144,
+      "hashMillisecondsMedian" : 34.193709,
+      "megabytesPerSecond" : 1403.7669911737275,
+      "readOnlyMillisecondsMedian" : 10.603209
+    },
+    {
+      "chunkBytes" : 1048576,
+      "hashMillisecondsMedian" : 30.658667,
+      "megabytesPerSecond" : 1565.6257984079998,
+      "readOnlyMillisecondsMedian" : 15.975334
+    },
+    {
+      "chunkBytes" : 4194304,
+      "hashMillisecondsMedian" : 31.030667,
+      "megabytesPerSecond" : 1546.8568561545906,
+      "readOnlyMillisecondsMedian" : 15.281834
+    },
+    {
+      "chunkBytes" : 16777216,
+      "hashMillisecondsMedian" : 32.748708,
+      "megabytesPerSecond" : 1465.7066776496954,
+      "readOnlyMillisecondsMedian" : 13.101583
+    }
+  ],
+  "note" : "Median of 5 runs after one warm-up, page cache warm. `readOnly` is the control: same read pattern, no SHA-256, so the difference is the hashing cost.",
+  "repeats" : 5,
+  "secondsPerGigabyteAtFastest" : 0.6540515626666668
+}

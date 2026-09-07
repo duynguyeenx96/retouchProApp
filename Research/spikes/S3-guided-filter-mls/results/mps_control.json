@@ -1,0 +1,190 @@
+{
+  "environment" : {
+    "generated_at" : "2026-09-04T14:59:36Z",
+    "has_unified_memory" : true,
+    "host_cpu_cores" : 8,
+    "metal_device" : "Apple M1 Pro",
+    "os" : "Version 26.3 (Build 25D125)",
+    "physical_memory_gb" : 17.179869184000001,
+    "recommended_working_set_gb" : 12.713115648
+  },
+  "images" : [
+    {
+      "epsilon" : 0.0040000001899898052,
+      "image" : "DSC05123",
+      "mps_full_res_regression" : {
+        "coefficient_size" : [
+          1365,
+          2048
+        ],
+        "gpu_median_ms" : 122.751604183577,
+        "gpu_p95_ms" : 123.76054166816175,
+        "iterations" : 20,
+        "kernel_diameter" : 33,
+        "psnr_vs_rpengine_exact_db" : 68.951068356300183,
+        "psnr_vs_rpengine_s4_db" : 59.364128378616599,
+        "psnr_vs_source_db" : 36.778751253237957,
+        "wall_median_ms" : 123.16075000000001,
+        "wall_min_ms" : 114.743167,
+        "wall_p95_ms" : 124.172875
+      },
+      "mps_quarter_res_regression" : {
+        "coefficient_size" : [
+          342,
+          512
+        ],
+        "gpu_median_ms" : 1.0674166696844622,
+        "gpu_p95_ms" : 1.4215833507478237,
+        "iterations" : 20,
+        "kernel_diameter" : 9,
+        "psnr_vs_rpengine_exact_db" : 47.510646616512119,
+        "psnr_vs_rpengine_s4_db" : 48.061435980485953,
+        "psnr_vs_source_db" : 35.73502408906927,
+        "wall_median_ms" : 1.3722920000000001,
+        "wall_min_ms" : 1.318875,
+        "wall_p95_ms" : 1.772167
+      },
+      "psnr_rpengine_s4_vs_exact_db" : 59.611940496302196,
+      "radius_px" : 16,
+      "rpengine_s1" : {
+        "gpu_median_ms" : 19.279375002952293,
+        "gpu_p95_ms" : 20.504833344602957,
+        "iterations" : 20,
+        "wall_median_ms" : 19.606812999999999,
+        "wall_min_ms" : 19.505959000000001,
+        "wall_p95_ms" : 20.827375
+      },
+      "rpengine_s4" : {
+        "gpu_median_ms" : 1.3150000013411045,
+        "gpu_p95_ms" : 1.3419583556242287,
+        "iterations" : 20,
+        "wall_median_ms" : 1.555771,
+        "wall_min_ms" : 1.5242910000000001,
+        "wall_p95_ms" : 1.6020000000000001
+      },
+      "size" : [
+        1365,
+        2048
+      ]
+    },
+    {
+      "epsilon" : 0.0040000001899898052,
+      "image" : "DSC05146",
+      "mps_full_res_regression" : {
+        "coefficient_size" : [
+          1365,
+          2048
+        ],
+        "gpu_median_ms" : 122.7657708368497,
+        "gpu_p95_ms" : 123.97375001455657,
+        "iterations" : 20,
+        "kernel_diameter" : 33,
+        "psnr_vs_rpengine_exact_db" : 67.764314234701231,
+        "psnr_vs_rpengine_s4_db" : 60.672410036313252,
+        "psnr_vs_source_db" : 37.393187422881397,
+        "wall_median_ms" : 123.238187,
+        "wall_min_ms" : 122.300084,
+        "wall_p95_ms" : 124.536834
+      },
+      "mps_quarter_res_regression" : {
+        "coefficient_size" : [
+          342,
+          512
+        ],
+        "gpu_median_ms" : 1.0710208298405632,
+        "gpu_p95_ms" : 1.0751249792519957,
+        "iterations" : 20,
+        "kernel_diameter" : 9,
+        "psnr_vs_rpengine_exact_db" : 49.349254447188315,
+        "psnr_vs_rpengine_s4_db" : 49.919323825945384,
+        "psnr_vs_source_db" : 36.441940419548494,
+        "wall_median_ms" : 1.3668334999999998,
+        "wall_min_ms" : 1.3180829999999999,
+        "wall_p95_ms" : 1.3896660000000001
+      },
+      "psnr_rpengine_s4_vs_exact_db" : 61.078404101246505,
+      "radius_px" : 16,
+      "rpengine_s1" : {
+        "gpu_median_ms" : 19.25554167246446,
+        "gpu_p95_ms" : 19.447875005425885,
+        "iterations" : 20,
+        "wall_median_ms" : 19.596375500000001,
+        "wall_min_ms" : 19.541,
+        "wall_p95_ms" : 19.756625
+      },
+      "rpengine_s4" : {
+        "gpu_median_ms" : 1.3049374974798411,
+        "gpu_p95_ms" : 1.3094999885652214,
+        "iterations" : 20,
+        "wall_median_ms" : 1.5469379999999999,
+        "wall_min_ms" : 1.5105839999999999,
+        "wall_p95_ms" : 1.563833
+      },
+      "size" : [
+        1365,
+        2048
+      ]
+    },
+    {
+      "epsilon" : 0.0040000001899898052,
+      "image" : "DSC05164",
+      "mps_full_res_regression" : {
+        "coefficient_size" : [
+          1365,
+          2048
+        ],
+        "gpu_median_ms" : 122.84295834251679,
+        "gpu_p95_ms" : 123.06062501738779,
+        "iterations" : 20,
+        "kernel_diameter" : 33,
+        "psnr_vs_rpengine_exact_db" : 67.71117427825574,
+        "psnr_vs_rpengine_s4_db" : 62.265066990829148,
+        "psnr_vs_source_db" : 38.603943690507435,
+        "wall_median_ms" : 123.4078755,
+        "wall_min_ms" : 122.314916,
+        "wall_p95_ms" : 123.55575
+      },
+      "mps_quarter_res_regression" : {
+        "coefficient_size" : [
+          342,
+          512
+        ],
+        "gpu_median_ms" : 1.0704791639000177,
+        "gpu_p95_ms" : 1.3083750091027468,
+        "iterations" : 20,
+        "kernel_diameter" : 9,
+        "psnr_vs_rpengine_exact_db" : 48.695187425500713,
+        "psnr_vs_rpengine_s4_db" : 49.141646472280755,
+        "psnr_vs_source_db" : 37.509574687838395,
+        "wall_median_ms" : 1.3715625,
+        "wall_min_ms" : 1.3057080000000001,
+        "wall_p95_ms" : 1.5837909999999999
+      },
+      "psnr_rpengine_s4_vs_exact_db" : 62.456574011441759,
+      "radius_px" : 16,
+      "rpengine_s1" : {
+        "gpu_median_ms" : 19.361854167073034,
+        "gpu_p95_ms" : 20.427250012289733,
+        "iterations" : 20,
+        "wall_median_ms" : 19.66825,
+        "wall_min_ms" : 19.592167,
+        "wall_p95_ms" : 20.717917
+      },
+      "rpengine_s4" : {
+        "gpu_median_ms" : 1.3193124905228615,
+        "gpu_p95_ms" : 1.3290416682139039,
+        "iterations" : 20,
+        "wall_median_ms" : 1.5663750000000001,
+        "wall_min_ms" : 1.538667,
+        "wall_p95_ms" : 2.0267919999999999
+      },
+      "size" : [
+        1365,
+        2048
+      ]
+    }
+  ],
+  "note" : "MPSImageGuidedFilter's per-channel regression fits a per-pixel affine map and does not box-filter the coefficients; the smoothing of a and b is meant to come from upsampling a low-resolution coefficient texture. It is therefore not expected to reproduce the textbook filter, and the PSNR columns say how far apart they are.",
+  "resolution" : "2048 px long edge",
+  "supported" : true
+}

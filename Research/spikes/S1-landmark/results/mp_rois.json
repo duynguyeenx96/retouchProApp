@@ -1,0 +1,122 @@
+{
+ "c000.jpg": {
+  "center_x": 724.0,
+  "center_y": 686.0,
+  "side": 651.0,
+  "rotation": 0.08621200647809678
+ },
+ "c002.jpg": {
+  "center_x": 1248.0,
+  "center_y": 796.0,
+  "side": 867.0,
+  "rotation": 0.19982635401140258
+ },
+ "c003.jpg": {
+  "center_x": 994.0,
+  "center_y": 1336.0,
+  "side": 1671.0,
+  "rotation": -0.15488582721320038
+ },
+ "c004.jpg": {
+  "center_x": 697.5,
+  "center_y": 829.5,
+  "side": 1154.0,
+  "rotation": 0.040807943909916794
+ },
+ "c008.jpg": {
+  "center_x": 1063.0,
+  "center_y": 456.0,
+  "side": 579.0,
+  "rotation": 0.011931847983648818
+ },
+ "c009.jpg": {
+  "center_x": 507.5,
+  "center_y": 631.5,
+  "side": 830.0,
+  "rotation": 0.0361296328698533
+ },
+ "c011.jpg": {
+  "center_x": 924.5,
+  "center_y": 540.5,
+  "side": 704.0,
+  "rotation": -0.0020482838643391013
+ },
+ "c016.jpg": {
+  "center_x": 969.0,
+  "center_y": 792.0,
+  "side": 714.0,
+  "rotation": 0.10838182538505581
+ },
+ "c017.jpg": {
+  "center_x": 1118.5,
+  "center_y": 451.5,
+  "side": 524.0,
+  "rotation": -0.05801195310408266
+ },
+ "c018.jpg": {
+  "center_x": 508.0,
+  "center_y": 377.0,
+  "side": 438.0,
+  "rotation": 0.11990565278405467
+ },
+ "c023.jpg": {
+  "center_x": 1137.0,
+  "center_y": 590.0,
+  "side": 732.0,
+  "rotation": 0.1650475628784658
+ },
+ "c029.jpg": {
+  "center_x": 978.5,
+  "center_y": 912.5,
+  "side": 1148.0,
+  "rotation": -0.019172685427651666
+ },
+ "c030.jpg": {
+  "center_x": 1242.0,
+  "center_y": 921.0,
+  "side": 915.0,
+  "rotation": 0.4503120968543176
+ },
+ "c033.jpg": {
+  "center_x": 997.5,
+  "center_y": 882.5,
+  "side": 664.0,
+  "rotation": 0.1254257711639866
+ },
+ "c034.jpg": {
+  "center_x": 927.0,
+  "center_y": 1385.0,
+  "side": 1404.0,
+  "rotation": -0.15015507652734977
+ },
+ "c035.jpg": {
+  "center_x": 942.5,
+  "center_y": 1178.5,
+  "side": 1732.0,
+  "rotation": -0.13253795847247887
+ },
+ "c037.jpg": {
+  "center_x": 953.5,
+  "center_y": 1373.5,
+  "side": 1642.0,
+  "rotation": 0.1732918791432525
+ },
+ "c039.jpg": {
+  "center_x": 927.5,
+  "center_y": 1195.0,
+  "side": 1490.0,
+  "rotation": -0.2215692706791159
+ },
+ "c040.jpg": {
+  "center_x": 754.5,
+  "center_y": 842.5,
+  "side": 1006.0,
+  "rotation": 0.06065710815919759
+ },
+ "c041.jpg": {
+  "center_x": 1062.0,
+  "center_y": 886.0,
+  "side": 1110.0,
+  "rotation": -0.1073914196425709
+ }
+}

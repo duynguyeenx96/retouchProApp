@@ -1,0 +1,239 @@
+{
+ "per_image": {
+  "c000.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.2446562465637033,
+   "matched_roi_tflite_mean_px_at_256": 0.23763719003131245,
+   "roi_side_px": 651.0,
+   "swift_e2e_mean_px_at_256": 0.551345429055755,
+   "swift_roi_side_px": 660.2757829785346
+  },
+  "c002.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.24113555424461258,
+   "matched_roi_tflite_mean_px_at_256": 0.23242976941919394,
+   "roi_side_px": 867.0,
+   "swift_e2e_mean_px_at_256": 1.1902595592409837,
+   "swift_roi_side_px": 881.2805442810059
+  },
+  "c003.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.26310822615161755,
+   "matched_roi_tflite_mean_px_at_256": 0.25847606597131273,
+   "roi_side_px": 1671.0,
+   "swift_e2e_mean_px_at_256": 0.9166002830532289,
+   "swift_roi_side_px": 1641.505874633789
+  },
+  "c004.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.13764838084707387,
+   "matched_roi_tflite_mean_px_at_256": 0.12300683033833096,
+   "roi_side_px": 1154.0,
+   "swift_e2e_mean_px_at_256": 0.660935435780964,
+   "swift_roi_side_px": 1051.0153930664062
+  },
+  "c008.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.34938872860878356,
+   "matched_roi_tflite_mean_px_at_256": 0.3422344352347117,
+   "roi_side_px": 579.0,
+   "swift_e2e_mean_px_at_256": 0.8577820344411607,
+   "swift_roi_side_px": 573.3977868676185
+  },
+  "c009.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.11281944910866651,
+   "matched_roi_tflite_mean_px_at_256": 0.10961657410583468,
+   "roi_side_px": 830.0,
+   "swift_e2e_mean_px_at_256": 0.7365270470785604,
+   "swift_roi_side_px": 818.9376304149628
+  },
+  "c011.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.23659615863981193,
+   "matched_roi_tflite_mean_px_at_256": 0.23637011633815164,
+   "roi_side_px": 704.0,
+   "swift_e2e_mean_px_at_256": 0.6207474580785787,
+   "swift_roi_side_px": 675.2424839258193
+  },
+  "c016.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.4569563426024213,
+   "matched_roi_tflite_mean_px_at_256": 0.4571767616979688,
+   "roi_side_px": 714.0,
+   "swift_e2e_mean_px_at_256": 1.3007484630975628,
+   "swift_roi_side_px": 769.8897972106934
+  },
+  "c017.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.20404440586308115,
+   "matched_roi_tflite_mean_px_at_256": 0.19519788701633262,
+   "roi_side_px": 524.0,
+   "swift_e2e_mean_px_at_256": 0.9999092487202362,
+   "swift_roi_side_px": 558.3341674804688
+  },
+  "c018.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.18219954780570144,
+   "matched_roi_tflite_mean_px_at_256": 0.1784794681627406,
+   "roi_side_px": 438.0,
+   "swift_e2e_mean_px_at_256": 0.5748922113357414,
+   "swift_roi_side_px": 427.6418037414551
+  },
+  "c023.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.63654077996635,
+   "matched_roi_tflite_mean_px_at_256": 0.6270009536080773,
+   "roi_side_px": 732.0,
+   "swift_e2e_mean_px_at_256": 1.1742561913520888,
+   "swift_roi_side_px": 714.5750198364258
+  },
+  "c029.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.2568889289241788,
+   "matched_roi_tflite_mean_px_at_256": 0.2520716743581831,
+   "roi_side_px": 1148.0,
+   "swift_e2e_mean_px_at_256": 0.9650593231539589,
+   "swift_roi_side_px": 1075.1854362487793
+  },
+  "c030.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.15868474030693674,
+   "matched_roi_tflite_mean_px_at_256": 0.14388314593145393,
+   "roi_side_px": 915.0,
+   "swift_e2e_mean_px_at_256": 1.1692472603746222,
+   "swift_roi_side_px": 927.4870491027831
+  },
+  "c033.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.15798617664746636,
+   "matched_roi_tflite_mean_px_at_256": 0.15074661955937121,
+   "roi_side_px": 664.0,
+   "swift_e2e_mean_px_at_256": 0.7266014958943592,
+   "swift_roi_side_px": 615.8687152862549
+  },
+  "c034.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.1305649595347469,
+   "matched_roi_tflite_mean_px_at_256": 0.11916352429329508,
+   "roi_side_px": 1404.0,
+   "swift_e2e_mean_px_at_256": 1.0704775611292119,
+   "swift_roi_side_px": 1447.8123092651367
+  },
+  "c035.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.11719374894068312,
+   "matched_roi_tflite_mean_px_at_256": 0.10622618578702459,
+   "roi_side_px": 1732.0,
+   "swift_e2e_mean_px_at_256": 0.7579050487233365,
+   "swift_roi_side_px": 1679.4462890625
+  },
+  "c037.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.2647499195555698,
+   "matched_roi_tflite_mean_px_at_256": 0.2512739897692321,
+   "roi_side_px": 1642.0,
+   "swift_e2e_mean_px_at_256": 1.2480996435053615,
+   "swift_roi_side_px": 1439.3835983276367
+  },
+  "c039.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.1884785675028081,
+   "matched_roi_tflite_mean_px_at_256": 0.1899459047720627,
+   "roi_side_px": 1490.0,
+   "swift_e2e_mean_px_at_256": 1.1523212752167027,
+   "swift_roi_side_px": 1423.1474990844727
+  },
+  "c040.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.25738563747617504,
+   "matched_roi_tflite_mean_px_at_256": 0.24930972213078742,
+   "roi_side_px": 1006.0,
+   "swift_e2e_mean_px_at_256": 0.7704686696458238,
+   "swift_roi_side_px": 1041.2465286254883
+  },
+  "c041.jpg": {
+   "matched_roi_coreml_mean_px_at_256": 0.10573371853451012,
+   "matched_roi_tflite_mean_px_at_256": 0.09674946201522813,
+   "roi_side_px": 1110.0,
+   "swift_e2e_mean_px_at_256": 0.7831154216938456,
+   "swift_roi_side_px": 1126.7239723205566
+  }
+ },
+ "summary": {
+  "A_matched_roi_coreml_vs_mediapipe": {
+   "n_images": 20,
+   "n_points": 9560,
+   "mean_px_at_256": 0.23513801089124492,
+   "median_px_at_256": 0.1806914039786054,
+   "p95_px_at_256": 0.64343609734039,
+   "max_px_at_256": 1.4982708750587252,
+   "worst_image_mean_px_at_256": 0.63654077996635
+  },
+  "A_control_tflite_vs_mediapipe": {
+   "n_images": 20,
+   "n_points": 9560,
+   "mean_px_at_256": 0.22784981402703028,
+   "median_px_at_256": 0.1727382422324143,
+   "p95_px_at_256": 0.627694653151819,
+   "max_px_at_256": 1.508327524000837,
+   "worst_image_mean_px_at_256": 0.6270009536080773
+  },
+  "B_swift_pipeline_vs_mediapipe": {
+   "n_images": 20,
+   "n_points": 9560,
+   "mean_px_at_256": 0.9113649530286041,
+   "median_px_at_256": 0.783671345829502,
+   "p95_px_at_256": 1.9197831248976258,
+   "max_px_at_256": 7.473679909530582,
+   "worst_image_mean_px_at_256": 1.3007484630975628
+  },
+  "C_swift_roi_scale_sweep": {
+   "scale_1.300": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 1.1275797770854503,
+    "median_px_at_256": 0.9114484390579168,
+    "p95_px_at_256": 2.8626794789178573,
+    "max_px_at_256": 9.849133516349639,
+    "worst_image_mean_px_at_256": 1.7026182520160769
+   },
+   "scale_1.350": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 0.9731244389809296,
+    "median_px_at_256": 0.8222567387792723,
+    "p95_px_at_256": 2.165805712508373,
+    "max_px_at_256": 8.062254509163909,
+    "worst_image_mean_px_at_256": 1.4805877970954566
+   },
+   "scale_1.400": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 0.9113649530286042,
+    "median_px_at_256": 0.783671345829502,
+    "p95_px_at_256": 1.9197831248976258,
+    "max_px_at_256": 7.473679909530582,
+    "worst_image_mean_px_at_256": 1.3007484630975628
+   },
+   "scale_1.425": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 0.9260013841938546,
+    "median_px_at_256": 0.8153349501234664,
+    "p95_px_at_256": 1.9329480349947115,
+    "max_px_at_256": 8.217409216607717,
+    "worst_image_mean_px_at_256": 1.3874378075424656
+   },
+   "scale_1.450": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 0.9653253232394985,
+    "median_px_at_256": 0.8340025826179988,
+    "p95_px_at_256": 2.053016384596475,
+    "max_px_at_256": 8.672854156282819,
+    "worst_image_mean_px_at_256": 1.3751956215469971
+   },
+   "scale_1.500": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 1.0143243352781046,
+    "median_px_at_256": 0.8639283171583472,
+    "p95_px_at_256": 2.209972029273769,
+    "max_px_at_256": 9.82205260720731,
+    "worst_image_mean_px_at_256": 1.4624792783047766
+   },
+   "scale_1.550": {
+    "n_images": 20,
+    "n_points": 9560,
+    "mean_px_at_256": 1.0742932287282623,
+    "median_px_at_256": 0.9079245884103597,
+    "p95_px_at_256": 2.3463911027558533,
+    "max_px_at_256": 9.272538967056285,
+    "worst_image_mean_px_at_256": 1.8114487337757292
+   }
+  }
+ },
+ "note": "A: Core ML model on MediaPipe's own ROI crop, landmarks mapped back to image pixels and compared with mediapipe.tasks FaceLandmarker output, then rescaled to a 256px face crop. The tflite control is the same measurement with the unconverted model, so the residual there is the ROI resampler (cv2.warpAffine vs MediaPipe's ImageToTensor), not the conversion. B: RPVision's Vision-detector pipeline end to end; its extra error is the different face box, not the model."
+}

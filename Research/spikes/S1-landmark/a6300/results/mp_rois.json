@@ -1,0 +1,68 @@
+{
+ "DSC05123.jpg": {
+  "center_x": 1397.0,
+  "center_y": 1354.0,
+  "side": 957.0,
+  "rotation": -0.40076159042594967
+ },
+ "DSC05146.jpg": {
+  "center_x": 1054.0,
+  "center_y": 980.0,
+  "side": 825.0,
+  "rotation": -0.2749301359311853
+ },
+ "DSC05164.jpg": {
+  "center_x": 1589.5,
+  "center_y": 1572.5,
+  "side": 1190.0,
+  "rotation": -0.3207127314740317
+ },
+ "DSC05172.jpg": {
+  "center_x": 2366.5,
+  "center_y": 2029.5,
+  "side": 2674.0,
+  "rotation": -0.10498011446709192
+ },
+ "DSC05193.jpg": {
+  "center_x": 667.5,
+  "center_y": 674.5,
+  "side": 482.0,
+  "rotation": 0.23735044843324177
+ },
+ "DSC05239.jpg": {
+  "center_x": 1112.5,
+  "center_y": 1073.5,
+  "side": 700.0,
+  "rotation": -0.859886495547534
+ },
+ "DSC05259.jpg": {
+  "center_x": 763.5,
+  "center_y": 760.5,
+  "side": 512.0,
+  "rotation": 0.7948429790981056
+ },
+ "DSC05275.jpg": {
+  "center_x": 1381.0,
+  "center_y": 1365.0,
+  "side": 924.0,
+  "rotation": -0.5188940714134549
+ },
+ "DSC05304.jpg": {
+  "center_x": 1820.5,
+  "center_y": 1854.5,
+  "side": 1358.0,
+  "rotation": -0.1387639578762889
+ },
+ "DSC05327.jpg": {
+  "center_x": 1438.5,
+  "center_y": 1171.5,
+  "side": 998.0,
+  "rotation": 0.28324181481609817
+ },
+ "DSC05403.jpg": {
+  "center_x": 871.5,
+  "center_y": 652.5,
+  "side": 658.0,
+  "rotation": -0.028419520008066433
+ }
+}

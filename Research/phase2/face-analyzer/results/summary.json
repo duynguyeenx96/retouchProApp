@@ -1,0 +1,213 @@
+{
+ "headline": {
+  "stock": {
+   "n_images": 20,
+   "n_points": 9560,
+   "mean_px_at_256": 0.857995815460864,
+   "median_px_at_256": 0.7507480001413238,
+   "p95_px_at_256": 1.8893032322820023,
+   "max_px_at_256": 5.681028480423124,
+   "worst_image_mean_px_at_256": 1.309656564700443,
+   "roi_vs_mediapipe": {
+    "n": 20,
+    "mp_side_over_ours_mean": 0.9790985929183806,
+    "mp_side_over_ours_std": 0.04271529914825557,
+    "centre_offset_frac_of_side_mean": 0.021112305908443534,
+    "roll_abs_deg_mean": 2.530979884045813,
+    "roll_abs_deg_max": 6.8772541381502315
+   },
+   "excluded": []
+  },
+  "a6300": {
+   "n_images": 11,
+   "n_points": 5258,
+   "mean_px_at_256": 0.8664265486810298,
+   "median_px_at_256": 0.6976914336355057,
+   "p95_px_at_256": 1.994028284305439,
+   "max_px_at_256": 5.589881499358926,
+   "worst_image_mean_px_at_256": 1.5909238130770003,
+   "roi_vs_mediapipe": {
+    "n": 11,
+    "mp_side_over_ours_mean": 0.9805800808614261,
+    "mp_side_over_ours_std": 0.019775232600069293,
+    "centre_offset_frac_of_side_mean": 0.013536874667169395,
+    "roll_abs_deg_mean": 1.506307858289491,
+    "roll_abs_deg_max": 4.455985721337664
+   },
+   "excluded": []
+  },
+  "pooled": {
+   "n_points": 14818,
+   "mean_px_at_256": 0.8609873659583422
+  }
+ },
+ "control_s1_vision_pipeline": {
+  "stock": {
+   "n_images": 20,
+   "n_points": 9560,
+   "mean_px_at_256": 0.9113649530286042,
+   "median_px_at_256": 0.783671345829502,
+   "p95_px_at_256": 1.9197831248976258,
+   "max_px_at_256": 7.473679909530582,
+   "worst_image_mean_px_at_256": 1.3007484630975628,
+   "roi_vs_mediapipe": {
+    "n": 20,
+    "mp_side_over_ours_mean": 1.0169288221592925,
+    "mp_side_over_ours_std": 0.05154366712655871,
+    "centre_offset_frac_of_side_mean": 0.037012614645676734,
+    "roll_abs_deg_mean": 2.6595854935258165,
+    "roll_abs_deg_max": 9.879826310118004
+   }
+  },
+  "a6300": {
+   "n_images": 11,
+   "n_points": 5258,
+   "mean_px_at_256": 1.399076936652419,
+   "median_px_at_256": 1.0366663229092874,
+   "p95_px_at_256": 3.595137459699982,
+   "max_px_at_256": 13.621819594155019,
+   "worst_image_mean_px_at_256": 2.8480416526606596,
+   "roi_vs_mediapipe": {
+    "n": 11,
+    "mp_side_over_ours_mean": 0.9222038722103175,
+    "mp_side_over_ours_std": 0.06599367431815914,
+    "centre_offset_frac_of_side_mean": 0.0553411332246383,
+    "roll_abs_deg_mean": 2.4356222515521555,
+    "roll_abs_deg_max": 5.570483519267578
+   }
+  },
+  "pooled": {
+   "n_points": 14818,
+   "mean_px_at_256": 1.0844240439918935
+  }
+ },
+ "detector_scale": {
+  "1.5": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.896268427997129,
+    "roll_abs_deg_mean": 2.804046561841546
+   },
+   "a6300": {
+    "n_images": 11,
+    "mean_px_at_256": 1.1597672387482174,
+    "roll_abs_deg_mean": 3.6207280870611727
+   },
+   "pooled": {
+    "n_points": 14818,
+    "mean_px_at_256": 0.9897680060055798
+   }
+  },
+  "2.0": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.8612215928478477,
+    "roll_abs_deg_mean": 2.460323690392569
+   },
+   "a6300": {
+    "n_images": 10,
+    "mean_px_at_256": 1.023387383795429,
+    "roll_abs_deg_mean": 4.011824790093218
+   },
+   "pooled": {
+    "n_points": 14340,
+    "mean_px_at_256": 0.9152768564970415
+   }
+  },
+  "2.5": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.9060416730305607,
+    "roll_abs_deg_mean": 2.393267094341214
+   },
+   "a6300": {
+    "n_images": 11,
+    "mean_px_at_256": 0.9955713028206548,
+    "roll_abs_deg_mean": 2.364248660004054
+   },
+   "pooled": {
+    "n_points": 14818,
+    "mean_px_at_256": 0.9378102513431748
+   }
+  },
+  "3.0": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.830953235316409,
+    "roll_abs_deg_mean": 2.7207393721422557
+   },
+   "a6300": {
+    "n_images": 11,
+    "mean_px_at_256": 0.9549718830109384,
+    "roll_abs_deg_mean": 2.377668521449379
+   },
+   "pooled": {
+    "n_points": 14818,
+    "mean_px_at_256": 0.8749598522402743
+   }
+  },
+  "3.5": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.857995815460864,
+    "roll_abs_deg_mean": 2.530979884045813
+   },
+   "a6300": {
+    "n_images": 11,
+    "mean_px_at_256": 0.8664265486810298,
+    "roll_abs_deg_mean": 1.506307858289491
+   },
+   "pooled": {
+    "n_points": 14818,
+    "mean_px_at_256": 0.8609873659583422
+   }
+  },
+  "4.0": {
+   "stock": {
+    "n_images": 20,
+    "mean_px_at_256": 0.9326081664187151,
+    "roll_abs_deg_mean": 3.167221611194701
+   },
+   "a6300": {
+    "n_images": 11,
+    "mean_px_at_256": 0.9758086638765963,
+    "roll_abs_deg_mean": 1.5303900059516955
+   },
+   "pooled": {
+    "n_points": 14818,
+    "mean_px_at_256": 0.9479373751940924
+   }
+  }
+ },
+ "detector_precision": {
+  "stock": {
+   "fp16_mean_px_at_256": 0.857995815460864,
+   "fp32_mean_px_at_256": 0.8569603956392856,
+   "fp16_minus_fp32_px": 0.0010354198215783983
+  },
+  "a6300": {
+   "fp16_mean_px_at_256": 0.8664265486810298,
+   "fp32_mean_px_at_256": 0.8642379406277871,
+   "fp16_minus_fp32_px": 0.0021886080532426133
+  }
+ },
+ "parsing": {
+  "stock": {
+   "n": 20,
+   "parts_present": 19,
+   "failed": [
+    "c003.jpg"
+   ],
+   "skin_fraction_mean": 0.23137855529785156,
+   "skin_fraction_max": 0.2968711853027344
+  },
+  "a6300": {
+   "n": 11,
+   "parts_present": 11,
+   "failed": [],
+   "skin_fraction_mean": 0.1912626786665483,
+   "skin_fraction_max": 0.2747688293457031
+  }
+ },
+ "note": "Bar: docs/PLAN.md \u00a73 spike S1, landmark error < 1 px at a 256px face crop against the MediaPipe Python reference. 'control' is the pipeline spike S1 shipped (Apple Vision's box straight into the mesh model), rescored here by the same function as the treatment. Neither number says anything about device speed; that is the bench file."
+}

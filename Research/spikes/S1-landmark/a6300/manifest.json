@@ -1,0 +1,259 @@
+{
+  "crop_scale_k" : 3.5,
+  "images" : [
+    {
+      "crop_rect" : [
+        516,
+        644,
+        2691,
+        2691
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05123.jpg",
+      "source_raw" : "Research\/data\/DSC05123.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1476.9353866577148,
+        1605.2969992160797,
+        768.82988214492798,
+        768.82991194725037
+      ]
+    },
+    {
+      "crop_rect" : [
+        1359,
+        1043,
+        1947,
+        1947
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05146.jpg",
+      "source_raw" : "Research\/data\/DSC05146.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        2054.4817447662354,
+        1738.7069910764694,
+        556.20604753494263,
+        556.20606243610382
+      ]
+    },
+    {
+      "crop_rect" : [
+        623,
+        188,
+        3137,
+        3137
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05164.jpg",
+      "source_raw" : "Research\/data\/DSC05164.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1743.2101964950562,
+        1308.2557618618011,
+        896.32803201675415,
+        896.32800221443176
+      ]
+    },
+    {
+      "crop_rect" : [
+        0,
+        135,
+        4000,
+        4000
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05172.jpg",
+      "source_raw" : "Research\/data\/DSC05172.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1417.5722599029541,
+        1165.1363968849182,
+        1940.0728940963745,
+        1940.0728940963745
+      ]
+    },
+    {
+      "crop_rect" : [
+        1601,
+        1596,
+        1296,
+        1296
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05193.jpg",
+      "source_raw" : "Research\/data\/DSC05193.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        2063.6234283447266,
+        2059.2685416340828,
+        370.35971879959106,
+        370.35971134901047
+      ]
+    },
+    {
+      "crop_rect" : [
+        747,
+        1863,
+        2175,
+        2175
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05239.jpg",
+      "source_raw" : "Research\/data\/DSC05239.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1523.5698223114014,
+        2640.0501430034637,
+        621.38247489929199,
+        621.3824450969696
+      ]
+    },
+    {
+      "crop_rect" : [
+        1930,
+        2086,
+        1523,
+        1523
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05259.jpg",
+      "source_raw" : "Research\/data\/DSC05259.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        2473.4535217285156,
+        2629.5446455478668,
+        435.13771891593933,
+        435.13771891593933
+      ]
+    },
+    {
+      "crop_rect" : [
+        591,
+        1065,
+        2702,
+        2702
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05275.jpg",
+      "source_raw" : "Research\/data\/DSC05275.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1555.5582046508789,
+        2030.1990509033203,
+        771.88432216644287,
+        771.88432216644287
+      ]
+    },
+    {
+      "crop_rect" : [
+        186,
+        26,
+        3628,
+        3628
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 8,
+      "image" : "DSC05304.jpg",
+      "source_raw" : "Research\/data\/DSC05304.ARW",
+      "upright_size" : [
+        4000,
+        6000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        1482.1972846984863,
+        1321.988582611084,
+        1036.5239381790161,
+        1036.5239381790161
+      ]
+    },
+    {
+      "crop_rect" : [
+        2170,
+        0,
+        2762,
+        2762
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 1,
+      "image" : "DSC05327.jpg",
+      "source_raw" : "Research\/data\/DSC05327.ARW",
+      "upright_size" : [
+        6000,
+        4000
+      ],
+      "vision_faces" : 1,
+      "vision_largest_box" : [
+        3156.2193632125854,
+        728.34652662277222,
+        789.05734419822693,
+        789.05731439590454
+      ]
+    },
+    {
+      "crop_rect" : [
+        2251,
+        0,
+        1737,
+        1737
+      ],
+      "crop_scale_k" : 3.5,
+      "exif_orientation" : 1,
+      "image" : "DSC05403.jpg",
+      "source_raw" : "Research\/data\/DSC05403.ARW",
+      "upright_size" : [
+        6000,
+        4000
+      ],
+      "vision_faces" : 2,
+      "vision_largest_box" : [
+        2871.7778921127319,
+        395.478755235672,
+        496.4284747838974,
+        496.42845988273621
+      ]
+    }
+  ],
+  "source" : "Sony a6300 ARW in Research\/data\/, decoded with sips (ImageIO RAW), then orientation-baked and cut to a square of k x face width around Vision's largest face."
+}

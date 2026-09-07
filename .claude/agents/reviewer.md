@@ -25,6 +25,28 @@ delete project files. Use Bash only for read-only commands (git diff, xcodebuild
    a device; third-party dependencies only where the plan allows and documented in `docs/ADR-*.md`.
 6. **Tests.** Did `xcodebuild test` actually run? Run it yourself if the report does not show output. Golden tests and
    fixtures present for new render nodes.
+7. **Real-device build (required for UI/import/render/wiring changes).** Don't accept "tests pass on macOS/Simulator" as
+   done for anything user-facing — the model-embedding bug (docs/PLAN.md, models loaded via a `#filePath`-derived dev-machine
+   path that only works because macOS/Simulator share the Mac's filesystem) proves Simulator can hide real bugs. Confirm the
+   coder actually built, installed, and launched on the real device:
+   - `xcrun xctrace list devices` → find the online device under "== Devices ==" (today: "IphoneDuy"), not Simulators.
+   - Re-run the build/install yourself if the coder's report doesn't show a real device UDID and a successful
+     `devicectl device install app` / `devicectl device process launch` — `xcodebuild build -workspace RetouchPro.xcworkspace
+     -scheme RetouchPro -destination 'platform=iOS,id=<udid>' -allowProvisioningUpdates`.
+   - Launch with `xcrun devicectl device process launch --console --device <udid> <bundle-id>` and read the console output
+     for the relevant log lines (`[RPUI] live preview: …`, `render groups: …`, FaceAnalyzer/model-load errors). A silent
+     failure (feature quietly no-ops, e.g. `isReady == false`, models() returning nil) is a **must-fix**, not a suggestion,
+     even if nothing crashed.
+   - There's no scripted screenshot capture for the real iPhone (see `Research/device-review/README.md` — deliberately not
+     set up; the user airdrops screenshots on request instead). If you need to see the actual screen to judge a UI/visual
+     claim, say exactly what screen/state you need in your findings ("cần screenshot màn hình X sau khi làm Y") rather than
+     guessing from code, and check `Research/device-review/incoming/` / `~/Downloads` for one the user already sent.
+8. **Design conformance (UI work only).** Compare against `docs/design/SPEC.md` (distilled checklist) and
+   `docs/design/RetouchPro.dc.html` (exact colors/spacing/copy — ground truth for pixel values) and
+   `docs/design/screenshots/*.png` (rendered reference for 2a/2b so far). Check: exact slider group/label list and order
+   against the mapping table in SPEC.md, exact copy strings (Vietnamese, verbatim), color values (`#7de3c3` accent, etc.),
+   and that locked groups (Trang điểm, Tóc) render dimmed rather than being hidden. Do not accept invented layouts that
+   deviate from SPEC.md without the coder having flagged the deviation and a reason.
 
 ## Output
 Ranked list, most severe first. For each finding: `file:line`, one-sentence defect, concrete failure scenario, and the

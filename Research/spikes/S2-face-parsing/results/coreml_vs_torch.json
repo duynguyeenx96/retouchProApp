@@ -1,0 +1,62 @@
+{
+  "note": "Core ML vs PyTorch on identical 512x512 uint8 RGB inputs (images/in512). Difference = conversion + precision only.",
+  "images": 30,
+  "builds": {
+    "logits_fp32": {
+      "logit_mean_abs": {
+        "mean": 1.9619415178659255e-06,
+        "min": 1.5994184277584794e-06,
+        "max": 2.9832277819781286e-06
+      },
+      "logit_max_abs": {
+        "mean": 6.069367130597433e-05,
+        "min": 4.00543212890625e-05,
+        "max": 8.035451173782349e-05
+      },
+      "label_agreement": {
+        "mean": 0.9999997456868489,
+        "min": 0.9999961853027344,
+        "max": 1.0
+      },
+      "group_iou_vs_torch": {
+        "skin": 0.9999989462414256,
+        "hair": 1.0,
+        "eye": 1.0
+      }
+    },
+    "logits_fp16": {
+      "logit_mean_abs": {
+        "mean": 0.002226569929237318,
+        "min": 0.0017463952450177513,
+        "max": 0.0029574715336800144
+      },
+      "logit_max_abs": {
+        "mean": 0.032610773605604965,
+        "min": 0.022916555404663086,
+        "max": 0.04491567611694336
+      },
+      "label_agreement": {
+        "mean": 0.9997628529866537,
+        "min": 0.9989471435546875,
+        "max": 0.9998779296875
+      },
+      "group_iou_vs_torch": {
+        "skin": 0.999635554571133,
+        "hair": 0.9996277028419539,
+        "eye": 0.9971993493990469
+      }
+    },
+    "image_argmax_fp16": {
+      "label_agreement": {
+        "mean": 0.9997628529866537,
+        "min": 0.9989471435546875,
+        "max": 0.9998779296875
+      },
+      "group_iou_vs_torch": {
+        "skin": 0.999635554571133,
+        "hair": 0.9996277028419539,
+        "eye": 0.9971993493990469
+      }
+    }
+  }
+}
