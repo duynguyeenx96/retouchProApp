@@ -9,8 +9,9 @@ import RPCore
 ///
 /// docs/PLAN.md Phase 2: *Exposure, Contrast, Highlights, Shadows, WB, Vibrance,
 /// Saturation, Curves, HSL, Auto D&B.* Ten names, 18 sliders (WB is two axes,
-/// HSL is eight hue bands — see ``ColorSliders``), all 0–100, all default 0, all
-/// exact no-ops at 0.
+/// HSL is eight hue bands — see ``ColorSliders``), all default 0 and all exact
+/// no-ops at 0. Sixteen of them are **−100…100** (docs/ADR-0016); `curves` and
+/// `autoDodgeBurn` stay 0…100 and say why in ``ColorSliders``.
 ///
 /// ## This node has no face input, on purpose
 /// Every other Phase 2 node reads `FaceRenderInput`. A colour grade is global:
@@ -73,8 +74,11 @@ import RPCore
 ///   operation physically is and is **not tuned against a retoucher's eye** — the
 ///   same disclosure the "Mặt" (ADR-0010) and "Mắt / Răng" (ADR-0011) groups make.
 ///   What is measured is that the GPU computes the documented formula.
-/// * Each slider moves in **one direction** (0–100 is a fixed project decision;
-///   see ``ColorSliders``). There is no darken, no cool, no desaturate.
+/// * Two of the eighteen (`curves`, `autoDodgeBurn`) are still one-directional,
+///   argued in ``ColorSliders`` and docs/ADR-0016 rather than left as an
+///   omission. The other sixteen are signed, and their negative halves carry the
+///   **same** untuned constants as their positive halves — nobody has looked at a
+///   −100 render either.
 /// * "Curves" is the amount of a fixed film curve, not a knot editor
 ///   (``ColorToneCurve``), and its per-channel split moves the white balance
 ///   slightly at high values — that is what the look is.

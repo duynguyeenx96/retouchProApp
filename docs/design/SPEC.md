@@ -6,7 +6,9 @@ for pixel values). Rendered reference screenshots: `docs/design/screenshots/*.pn
 checklist coder/reviewer use instead of re-parsing the HTML each time.
 
 **Scope note:** the mockup is app-shell/chrome only (colors, layout, copy, interaction affordances). It does not
-change any Fixed Decision in `docs/PLAN.md` (Evoto-style layout, sliders 0-100 default 0, on-device only). Its
+change any Fixed Decision in `docs/PLAN.md` (Evoto-style layout, sliders 0-100 default 0, on-device only) — except
+that the Màu (Color) group is now **-100…100, default 0** for 16 of its 18 sliders (`curves`/`autoDodgeBurn` stay
+0-100); see `docs/ADR-0016-bidirectional-color-sliders.md`. Da/Mặt/Mắt-Răng stay 0-100 as originally specced. Its
 slider taxonomy already matches the Phase 2 RenderGraph groups exactly (see mapping table below) — implementing
 this spec is primarily an RPUI wiring/visual task, not a new-feature task.
 

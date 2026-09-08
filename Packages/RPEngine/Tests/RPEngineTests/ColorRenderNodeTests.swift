@@ -41,6 +41,15 @@ struct ColorRenderNodeTests {
         wbTint: 25, vibrance: 50, saturation: 20, curves: 60, autoDodgeBurn: 70,
         hsl: [40, 15, 30, 20, 10, 45, 25, 35])
 
+    /// The same idea on the **negative** side (docs/ADR-0016): every slider that
+    /// went bidirectional, mixed in sign so a signed sum would cancel several of
+    /// them against each other. `curves` and `autoDodgeBurn` stay positive —
+    /// they are the two that stayed one-directional.
+    static let allSlidersSigned = ColorSliders(
+        exposure: -30, contrast: -40, highlights: -55, shadows: -45, wbTemperature: -35,
+        wbTint: 25, vibrance: -50, saturation: 20, curves: 60, autoDodgeBurn: 70,
+        hsl: [-40, 15, -30, 20, -10, 45, -25, 35])
+
     /// One case per key, at 100, for the per-slider isolation level.
     static let singleSliderCases: [(String, ColorSliders)] = [
         ("exposure", ColorSliders(exposure: 100)),
@@ -57,6 +66,25 @@ struct ColorRenderNodeTests {
         + HueBand.allCases.map { band in
             var sliders = ColorSliders()
             sliders[band] = 100
+            return (band.key, sliders)
+        }
+
+    /// One case per **bidirectional** key, at −100. `curves` and `autoDodgeBurn`
+    /// are absent because they are the two that stayed 0…100; the test that says
+    /// so is `oneDirectionalSlidersIgnoreNegativeValues`.
+    static let negativeSliderCases: [(String, ColorSliders)] = [
+        ("exposure", ColorSliders(exposure: -100)),
+        ("contrast", ColorSliders(contrast: -100)),
+        ("highlights", ColorSliders(highlights: -100)),
+        ("shadows", ColorSliders(shadows: -100)),
+        ("wbTemperature", ColorSliders(wbTemperature: -100)),
+        ("wbTint", ColorSliders(wbTint: -100)),
+        ("vibrance", ColorSliders(vibrance: -100)),
+        ("saturation", ColorSliders(saturation: -100)),
+    ]
+        + HueBand.allCases.map { band in
+            var sliders = ColorSliders()
+            sliders[band] = -100
             return (band.key, sliders)
         }
 
@@ -147,6 +175,33 @@ struct ColorRenderNodeTests {
         #expect(change > 1e-3, "\(name) changed the picture by only \(change)")
     }
 
+    /// docs/ADR-0016: the same isolation level on the negative side. Without it
+    /// a sign error in one term would only show up in the mixed composite, where
+    /// the other seventeen sliders hide it.
+    @Test(
+        "Each bidirectional Color slider at −100 matches the reference",
+        arguments: negativeSliderCases)
+    func eachNegativeSliderAloneMatchesReference(name: String, sliders: ColorSliders) throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let output = try Self.runNode(node, context: context, request: Self.request(sliders))
+        let reference = try Self.compositeReference(node: node, context: context, sliders: sliders)
+        let psnr = SpikeTextureIO.psnr(reference, output)
+        print("P2 color slider '\(name)' at -100 vs Double reference: PSNR = \(psnr) dB")
+        #expect(psnr >= 45, "\(name) at -100 PSNR \(psnr) dB")
+
+        let change = SpikeTextureIO.maxAbsoluteDifference(Self.source, output)
+        #expect(change > 1e-3, "\(name) at -100 changed the picture by only \(change)")
+        // …and the two directions must not be the same picture.
+        let mirrored = try #require(Self.singleSliderCases.first { $0.0 == name }?.1)
+        let positive = try Self.runNode(node, context: context, request: Self.request(mirrored))
+        let split = SpikeTextureIO.maxAbsoluteDifference(positive, output)
+        #expect(split > 1e-3, "\(name) at +100 and -100 render the same picture")
+    }
+
     // MARK: - 2. Whole node
 
     @Test("The whole Color node matches the whole Double reference at ≥ 45 dB")
@@ -169,6 +224,28 @@ struct ColorRenderNodeTests {
         let worst = SpikeTextureIO.maxAbsoluteDifference(reference, output)
         print("P2 color node end-to-end vs Double reference: PSNR = \(psnr) dB, max abs = \(worst)")
         #expect(psnr >= 45, "end-to-end PSNR \(psnr) dB")
+    }
+
+    @Test("The whole Color node matches the reference with mixed-sign sliders")
+    func wholeNodeMatchesReferenceWithSignedSliders() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let graph = try RenderGraph.standard(context: context)
+        let (output, report) = try graph.renderPixels(
+            Self.source, width: Self.width, height: Self.height,
+            request: Self.request(Self.allSlidersSigned))
+        #expect(report.nodes == ["color"])
+
+        let node = try ColorRenderNode(context: context)
+        let reference = ColorReference.renderNode(
+            source: Self.source, width: Self.width, height: Self.height,
+            sliders: Self.allSlidersSigned, curveTable: node.curveTable)
+        let psnr = SpikeTextureIO.psnr(reference, output)
+        let worst = SpikeTextureIO.maxAbsoluteDifference(reference, output)
+        print("P2 color node end-to-end (signed) vs Double reference: PSNR = \(psnr) dB, max abs = \(worst)")
+        #expect(psnr >= 45, "signed end-to-end PSNR \(psnr) dB")
     }
 
     // MARK: - 3. Behaviour — the claims a PSNR cannot make
@@ -351,6 +428,276 @@ struct ColorRenderNodeTests {
         #expect(abs(ramp) < 0.01, "the flat ramp moved by \(ramp)")
     }
 
+    // MARK: - 4. The negative half (docs/ADR-0016)
+
+    /// The bug the whole signed change is one `fabs` away from: the kernel's
+    /// "is anything on" test is a **sum** of the eighteen amounts, and a signed
+    /// sum cancels. `exposure +50, contrast −50` sums to 0 and would have taken
+    /// the bit-exact passthrough branch on a picture the user has graded.
+    @Test("Sliders that cancel in a signed sum still change the picture")
+    func signedSlidersDoNotCancelInTheActiveTest() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let cancelling = ColorSliders(exposure: 50, contrast: -50)
+        #expect(!cancelling.isIdentity)
+        #expect(node.isActive(for: Self.request(cancelling)))
+        let output = try Self.runNode(node, context: context, request: Self.request(cancelling))
+        let change = SpikeTextureIO.maxAbsoluteDifference(Self.source, output)
+        print("P2 color signed-sum cancellation: max abs change = \(change)")
+        #expect(change > 1e-2, "the cancelling pair was treated as a passthrough (\(change))")
+
+        // Same trap one level down, in the HSL branch's own sum.
+        var bands = ColorSliders()
+        bands[.red] = 60
+        bands[.aqua] = -60
+        #expect(!bands.isIdentity)
+        let bandOutput = try Self.runNode(node, context: context, request: Self.request(bands))
+        let bandChange = SpikeTextureIO.maxAbsoluteDifference(Self.source, bandOutput)
+        print("P2 color signed HSL cancellation: max abs change = \(bandChange)")
+        #expect(bandChange > 1e-2, "the cancelling bands were skipped (\(bandChange))")
+    }
+
+    @Test("Exposure at −100 is −1 EV, the exact inverse of +100")
+    func exposureIsSymmetricInStops() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let output = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(exposure: -100)))
+        let x = Self.width / 2
+        let y = 120
+        let o = (y * Self.width + x) * 4
+        let before = ColorReference.toLinear(Double(Self.source[o + 1]))
+        let after = ColorReference.toLinear(Double(output[o + 1]))
+        print("P2 color exposure -100: linear \(before) -> \(after), ratio \(after / before)")
+        #expect(abs(after / before - 0.5) < 0.01, "ratio \(after / before) is not minus one stop")
+    }
+
+    @Test("Highlights at −100 pushes the bright end up and still leaves the dark end alone")
+    func negativeHighlightsPushTheBrightEndUp() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let output = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(highlights: -100)))
+        let bright = Self.rampLumaChange(output, xFraction: 0.75...0.95)
+        let dark = Self.rampLumaChange(output, xFraction: 0.05...0.25)
+        print("P2 color highlights -100: bright \(bright), dark \(dark)")
+        #expect(bright > 0.02, "the bright end did not come up (\(bright))")
+        #expect(abs(dark) < 0.002, "the dark end moved by \(dark)")
+    }
+
+    /// The reason the negative half is a **reciprocal gamma** and not the
+    /// mirrored mix: `2c − c^0.65` goes negative below c ≈ 0.06, so a mirrored
+    /// Shadows slider would crush the bottom of the range to solid black. The
+    /// reciprocal gamma cannot, and this measures that it does not.
+    @Test("Shadows at −100 deepens the dark end without crushing it to black")
+    func negativeShadowsDeepenWithoutCrushing() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let output = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(shadows: -100)))
+        let bright = Self.rampLumaChange(output, xFraction: 0.75...0.95)
+        let dark = Self.rampLumaChange(output, xFraction: 0.05...0.25)
+        var crushed = 0
+        var darkest = 1.0
+        for y in 100..<140 {
+            for x in 0..<(Self.width / 4) {
+                let o = (y * Self.width + x) * 4
+                let value = Double(output[o + 1])
+                darkest = min(darkest, value)
+                if value <= 0 && Double(Self.source[o + 1]) > 0 { crushed += 1 }
+            }
+        }
+        print("P2 color shadows -100: bright \(bright), dark \(dark), darkest \(darkest), crushed \(crushed)")
+        #expect(dark < -0.02, "the dark end was not deepened (\(dark))")
+        #expect(abs(bright) < 0.002, "the bright end moved by \(bright)")
+        #expect(crushed == 0, "\(crushed) pixels were crushed to black")
+    }
+
+    /// The white balance gains are `pow(base, amount)`, so cooling by x is the
+    /// exact channel-wise inverse of warming by x. What survives a round trip is
+    /// the luminance renormalisation (`dot(g, luma) · dot(1/g, luma) ≥ 1` by
+    /// Cauchy–Schwarz) and two sRGB transfer functions — measured, not assumed.
+    @Test("White balance cools at −100, and ±x round-trips back to the original")
+    func whiteBalanceDirectionsAreInverse() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let cool = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(wbTemperature: -100)))
+        let o = (120 * Self.width + Self.width / 2) * 4
+        #expect(cool[o] < Self.source[o], "red did not go down")
+        #expect(cool[o + 2] > Self.source[o + 2], "blue did not go up")
+
+        let warm = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(wbTemperature: 60)))
+        let back = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(wbTemperature: -60)),
+            pixels: warm)
+        // Only where the intermediate did **not** clip: this chart's ramp reaches
+        // 0.99 in red, warming takes it past 1, and no amount of cooling brings
+        // back a channel that was pinned at white. That is a property of a
+        // clamped 0…1 pipeline, not of the gain formula, so it is excluded and
+        // counted rather than hidden in a looser bar.
+        var residual = 0.0
+        var clipped = 0
+        for i in 0..<Self.source.count where i % 4 != 3 {
+            let intermediate = Double(warm[i])
+            guard intermediate > 1e-6, intermediate < 1 - 1e-6 else {
+                clipped += 1
+                continue
+            }
+            residual = max(residual, abs(Double(Self.source[i]) - Double(back[i])))
+        }
+        let all = SpikeTextureIO.maxAbsoluteDifference(Self.source, back)
+        print(
+            "P2 color WB +60 then -60: max abs residual = \(residual) off the clip "
+                + "(\(clipped) clipped channels), \(all) including it")
+        #expect(residual < 0.005, "the round trip left \(residual)")
+        // …and the trip was not a no-op in the first place.
+        #expect(SpikeTextureIO.maxAbsoluteDifference(Self.source, warm) > 0.02)
+    }
+
+    @Test("Saturation at −100 is grayscale, and the eight HSL bands agree with it")
+    func negativeSaturationIsGrayscale() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let node = try ColorRenderNode(context: context)
+        let grey = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(saturation: -100)))
+        var worstChroma = 0.0
+        for i in stride(from: 0, to: grey.count, by: 4) {
+            worstChroma = max(
+                worstChroma,
+                max(
+                    abs(Double(grey[i]) - Double(grey[i + 1])),
+                    abs(Double(grey[i + 1]) - Double(grey[i + 2]))))
+        }
+        print("P2 color saturation -100: worst residual chroma = \(worstChroma)")
+        #expect(worstChroma < 1e-6, "not grayscale, worst channel spread \(worstChroma)")
+
+        // The partition of unity has to hold on the negative side too.
+        let bands = try Self.runNode(
+            node, context: context,
+            request: Self.request(ColorSliders(hsl: Array(repeating: -100, count: 8))))
+        let worst = SpikeTextureIO.maxAbsoluteDifference(bands, grey)
+        print("P2 color HSL partition of unity at -100: max abs diff vs saturation = \(worst)")
+        #expect(worst < 1e-5, "bands and saturation differ by \(worst)")
+    }
+
+    /// Positive contrast mixes toward the S-curve, negative extrapolates away
+    /// from it. Both have to stay monotone — a non-monotone tone curve inverts
+    /// local detail — and the flattening has to actually flatten.
+    @Test("Contrast at −100 flattens the ramp and stays monotone")
+    func negativeContrastFlattensMonotonically() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        // Monotonicity, in `Double`, over the whole range: the mix's slope with
+        // t = −0.5 is 1.5 − 0.5·S′(c), and S′ tops out at 1.5, so the floor is
+        // 0.75. Measured rather than argued.
+        var previous = -1.0
+        var slowest = Double.greatestFiniteMagnitude
+        let steps = 100_000
+        for i in 0...steps {
+            let c = Double(i) / Double(steps)
+            let s = c * c * (3 - 2 * c)
+            let v = c + (s - c) * (-1.0 * ColorReference.contrastMax)
+            if i > 0 { slowest = min(slowest, (v - previous) * Double(steps)) }
+            #expect(v > previous, "contrast at -100 is not monotone at \(c)")
+            previous = v
+        }
+        print("P2 color contrast -100: minimum slope = \(slowest)")
+        #expect(slowest > 0.7, "slope floor \(slowest)")
+
+        let node = try ColorRenderNode(context: context)
+        func rampSpread(_ pixels: [Float]) -> Double {
+            Self.rampLuma(pixels, xFraction: 0.75...0.95)
+                - Self.rampLuma(pixels, xFraction: 0.05...0.25)
+        }
+        let flat = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(contrast: -100)))
+        let punchy = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(contrast: 100)))
+        let base = rampSpread(Self.source)
+        print(
+            "P2 color contrast: ramp spread \(base) -> \(rampSpread(flat)) at -100, "
+                + "\(rampSpread(punchy)) at +100")
+        #expect(rampSpread(flat) < base - 0.02, "-100 did not flatten the ramp")
+        #expect(rampSpread(punchy) > base + 0.02, "+100 did not steepen the ramp")
+    }
+
+    /// The two sliders that deliberately stayed 0…100 (docs/ADR-0016). A
+    /// negative value is clamped away at the RPCore boundary, so it never
+    /// reaches the kernel and the render is the bit-exact source.
+    @Test("Curves and Auto D&B refuse a negative value")
+    func oneDirectionalSlidersIgnoreNegativeValues() throws {
+        #expect(ColorSliders(curves: -100).curves == 0)
+        #expect(ColorSliders(autoDodgeBurn: -100).autoDodgeBurn == 0)
+        #expect(ColorSliders(curves: -100, autoDodgeBurn: -100).isIdentity)
+        var state = EditState()
+        state.setSlider(ColorSliders.Key.curves, in: EditState.SectionKey.color, to: -60)
+        state.setSlider(ColorSliders.Key.autoDodgeBurn, in: EditState.SectionKey.color, to: -60)
+        #expect(state.isDefault)
+
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+        let node = try ColorRenderNode(context: context)
+        let output = try Self.runNode(
+            node, context: context,
+            request: Self.request(ColorSliders(curves: -100, autoDodgeBurn: -100)))
+        #expect(SpikeTextureIO.maxAbsoluteDifference(Self.source, output) == 0)
+    }
+
+    /// The range table lives in `RPCore.Slider` (that is where the clamp
+    /// happens) and is written with string literals, because RPCore cannot
+    /// import RPEngine. This is the test that keeps the two lists honest — and
+    /// that says the other three groups did not get widened along the way.
+    @Test("The −100…100 range is scoped to the Color group's 16 bidirectional keys")
+    func rangesAreScopedToTheColorGroup() {
+        let color = EditState.SectionKey.color
+        let oneDirectional = Set([ColorSliders.Key.curves, ColorSliders.Key.autoDodgeBurn])
+        #expect(Slider.oneDirectionalParameters[color] == oneDirectional)
+        var signed = 0
+        for key in ColorSliders.Key.all {
+            let expected: ClosedRange<Double> = oneDirectional.contains(key) ? 0...100 : -100...100
+            #expect(Slider.range(for: key, in: color) == expected, "\(key)")
+            if !oneDirectional.contains(key) { signed += 1 }
+        }
+        #expect(signed == 16)
+
+        // The other three groups are untouched, keys and all.
+        for key in SkinSliders.Key.all {
+            #expect(Slider.range(for: key, in: EditState.SectionKey.skin) == 0...100, "\(key)")
+        }
+        for key in FaceSliders.Key.all {
+            #expect(Slider.range(for: key, in: EditState.SectionKey.face) == 0...100, "\(key)")
+        }
+        for key in EyesTeethSliders.Key.all {
+            #expect(Slider.range(for: key, in: EditState.SectionKey.eyesTeeth) == 0...100, "\(key)")
+        }
+        #expect(SkinSliders(smooth: -50).smooth == 0)
+        #expect(FaceSliders(slim: -50).slim == 0)
+        #expect(EyesTeethSliders(eyeBrighten: -50).eyeBrighten == 0)
+    }
+
     @Test("The Auto D&B analysis grid and radii are autoskin.js's, unchanged")
     func analysisGeometryMatchesThePanel() {
         #expect(ColorRenderNode.analysisWidth == 320)
@@ -456,12 +803,20 @@ struct ColorRenderNodeTests {
 
     // MARK: - Values
 
-    @Test("Every Color slider round-trips through EditState and clamps to 0…100")
+    @Test("Every Color slider round-trips through EditState and clamps to its range")
     func slidersRoundTripThroughEditState() {
         let sliders = Self.allSliders
         var state = EditState()
         sliders.write(into: &state)
         #expect(ColorSliders(state) == sliders)
+        // …and so do the negative ones, which is the round trip docs/ADR-0016
+        // adds: a −40 must survive the JSON section, not be dropped as a default.
+        var signedState = EditState()
+        Self.allSlidersSigned.write(into: &signedState)
+        #expect(ColorSliders(signedState) == Self.allSlidersSigned)
+        #expect(
+            signedState[section: EditState.SectionKey.color].values.count
+                == ColorSliders.Key.all.count)
         // They live in their own section, not in another group's.
         #expect(state.sections.keys.contains(EditState.SectionKey.color))
         #expect(SkinSliders(state).isIdentity)
@@ -469,11 +824,15 @@ struct ColorRenderNodeTests {
         #expect(EyesTeethSliders(state).isIdentity)
         // Out of range is clamped, not rejected.
         #expect(ColorSliders(exposure: 400).exposure == 100)
-        #expect(ColorSliders(exposure: -10).exposure == 0)
+        #expect(ColorSliders(exposure: -400).exposure == -100)
+        #expect(ColorSliders(exposure: -10).exposure == -10)
         #expect(ColorSliders(exposure: .nan).exposure == 0)
         #expect(ColorSliders(hsl: [400, -5, .nan])[.red] == 100)
-        #expect(ColorSliders(hsl: [400, -5, .nan])[.orange] == 0)
+        #expect(ColorSliders(hsl: [400, -5, .nan])[.orange] == -5)
         #expect(ColorSliders(hsl: [400, -5, .nan])[.yellow] == 0)
+        // …and the two one-directional exceptions still floor at 0.
+        #expect(ColorSliders(curves: -400).curves == 0)
+        #expect(ColorSliders(autoDodgeBurn: -400).autoDodgeBurn == 0)
         // A short array is padded rather than trapping.
         #expect(ColorSliders(hsl: []).hsl.count == HueBand.allCases.count)
         // A zeroed slider leaves no key behind (EditSection.setSlider's contract).
@@ -490,17 +849,50 @@ struct ColorRenderNodeTests {
         #expect(ColorSliders().isIdentity)
         #expect(!ColorSliders(autoDodgeBurn: 1).isIdentity)
         #expect(!ColorSliders(hsl: [0, 0, 1]).isIdentity)
+        // …and a negative value is a value, not an absence.
+        #expect(!ColorSliders(exposure: -1).isIdentity)
+        #expect(!ColorSliders(hsl: [0, 0, -1]).isIdentity)
+        #expect(!ColorSliders(exposure: 50, contrast: -50).isIdentity)
         // Only Auto D&B pays for the analysis pyramid.
         #expect(ColorSliders(autoDodgeBurn: 1).needsDodgeBurnAnalysis)
         #expect(!ColorSliders(exposure: 100, curves: 100).needsDodgeBurnAnalysis)
-        // Only exposure and the two WB axes pay for the linear-light round trip.
+        #expect(!ColorSliders(exposure: -100).needsDodgeBurnAnalysis)
+        // Only exposure and the two WB axes pay for the linear-light round trip,
+        // and −40 is as much work as +40.
         #expect(ColorSliders(exposure: 1).needsLinearLight)
+        #expect(ColorSliders(exposure: -1).needsLinearLight)
         #expect(ColorSliders(wbTemperature: 1).needsLinearLight)
-        #expect(ColorSliders(wbTint: 1).needsLinearLight)
+        #expect(ColorSliders(wbTemperature: -1).needsLinearLight)
+        #expect(ColorSliders(wbTint: -1).needsLinearLight)
         #expect(!ColorSliders(contrast: 100, saturation: 100).needsLinearLight)
+        #expect(!ColorSliders(contrast: -100, saturation: -100).needsLinearLight)
+        // The HSL branch test is absolute: +50 red and −50 aqua is not "no HSL".
+        var cancelling = ColorSliders()
+        cancelling[.red] = 50
+        cancelling[.aqua] = -50
+        #expect(cancelling.hslAbsoluteTotal == 100)
     }
 
     // MARK: - Helpers
+
+    /// Mean luminance over a slice of the background ramp — the absolute value
+    /// ``rampLumaChange`` differences. Used to measure how far apart the ramp's
+    /// two ends are, i.e. its contrast.
+    static func rampLuma(_ pixels: [Float], xFraction: ClosedRange<Double>) -> Double {
+        let x0 = Int(xFraction.lowerBound * Double(width))
+        let x1 = Int(xFraction.upperBound * Double(width))
+        var sum = 0.0
+        var count = 0
+        for y in 100..<140 {
+            for x in x0..<x1 {
+                let o = (y * width + x) * 4
+                sum += ColorReference.luminance(
+                    (Double(pixels[o]), Double(pixels[o + 1]), Double(pixels[o + 2])))
+                count += 1
+            }
+        }
+        return count > 0 ? sum / Double(count) : 0
+    }
 
     /// Mean luminance change over a slice of the background ramp, avoiding both
     /// the discs (y < 100) and the patches (y ≥ 145).
@@ -527,10 +919,11 @@ struct ColorRenderNodeTests {
     /// float32. Deliberately *not* through `RenderGraph`, so a test can reach the
     /// kernel with slider values the graph would short-circuit.
     static func runNode(
-        _ node: ColorRenderNode, context: MetalContext, request: RenderRequest
+        _ node: ColorRenderNode, context: MetalContext, request: RenderRequest,
+        pixels: [Float]? = nil
     ) throws -> [Float] {
         let source = try SpikeTextureIO.makeTexture(
-            fromFloatPixels: Self.source, width: width, height: height,
+            fromFloatPixels: pixels ?? Self.source, width: width, height: height,
             device: context.device, usage: [.shaderRead, .shaderWrite])
         let destination = try SpikeTextureIO.makeTexture(
             width: width, height: height, device: context.device, pixelFormat: .rgba32Float,

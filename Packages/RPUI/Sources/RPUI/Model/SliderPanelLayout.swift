@@ -22,23 +22,36 @@ public struct SliderParameter: Identifiable, Hashable, Sendable {
     public let key: String
     /// What the user reads.
     public let label: String
-    /// One line saying which way the slider goes, because every slider in this
-    /// project is 0–100 and **one-directional** (docs/ADR-0010 §"one-directional",
-    /// docs/ADR-0012): "Vùng sáng" pulls highlights down, "Cằm" shortens.
+    /// One line saying which way the slider goes: "Vùng sáng" pulls highlights
+    /// down, "Cằm" shortens. Required of every slider (`LivePreviewWiringTests`)
+    /// — a control whose direction is not stated is a guess, whether it is
+    /// one-directional (Da / Mặt / Mắt & Răng, docs/ADR-0010) or signed (Màu,
+    /// docs/ADR-0016, where the line names **both** ends).
     ///
     /// The mockup's row has no room for a third line, so this is the macOS
-    /// tooltip and the VoiceOver hint instead of a caption — but it is still
-    /// required of every slider (`LivePreviewWiringTests`), because a
-    /// one-directional control with no stated direction is a guess.
+    /// tooltip and the VoiceOver hint instead of a caption.
     public let direction: String
+    /// What the track spans. `0...100` for every group except "Màu", where
+    /// sixteen of the eighteen sliders are `-100...100` centred on 0
+    /// (docs/ADR-0016). Read from `RPCore.Slider.range(for:in:)` rather than
+    /// written here, for the same reason ``key`` is read from the engine: the
+    /// panel must not be able to offer a value the document would clamp away.
+    public let range: ClosedRange<Double>
 
     public var id: String { key }
 
-    public init(key: String, label: String, direction: String) {
+    public init(
+        key: String, label: String, direction: String,
+        range: ClosedRange<Double> = Slider.range
+    ) {
         self.key = key
         self.label = label
         self.direction = direction
+        self.range = range
     }
+
+    /// `true` for a slider whose neutral position is the middle of its track.
+    public var isBidirectional: Bool { range.lowerBound < Slider.defaultValue }
 }
 
 /// One group: a tab on the phone, a rail icon and a panel on the Mac.
@@ -117,6 +130,7 @@ public enum SliderPanelLayout {
             systemImage: "sparkles",
             phase: "Phase 2",
             parameters: Self.parameters(
+                in: EditState.SectionKey.skin,
                 keys: SkinSliders.Key.all,
                 labels: [
                     SkinSliders.Key.smooth: ("Mịn da", "mịn hơn"),
@@ -138,6 +152,7 @@ public enum SliderPanelLayout {
             systemImage: "face.smiling",
             phase: "Phase 2",
             parameters: Self.parameters(
+                in: EditState.SectionKey.face,
                 keys: FaceSliders.Key.all,
                 labels: [
                     FaceSliders.Key.slim: ("Bóp mặt", "mặt thon lại"),
@@ -166,6 +181,7 @@ public enum SliderPanelLayout {
             systemImage: "eye",
             phase: "Phase 2",
             parameters: Self.parameters(
+                in: EditState.SectionKey.eyesTeeth,
                 keys: EyesTeethSliders.Key.all,
                 labels: [
                     EyesTeethSliders.Key.eyeBrighten: ("Sáng mắt", "mắt sáng hơn"),
@@ -185,23 +201,33 @@ public enum SliderPanelLayout {
             // 18 sliders for the plan's ten names: "WB" ships as two axes and
             // "HSL" as eight hue bands, the same way "Mũi" above ships as three.
             // See `RPEngine.ColorSliders` and docs/ADR-0012.
+            //
+            // The only **bidirectional** group (docs/ADR-0016): sixteen of the
+            // eighteen span −100…100 with 0 in the middle of the track, so the
+            // direction line names both ends. `Curves` and `Dodge & Burn tự
+            // động` keep one end and say nothing about the other, because they
+            // are still 0…100 — the range comes from RPCore, so the two cannot
+            // drift apart.
             parameters: Self.parameters(
+                in: EditState.SectionKey.color,
                 keys: ColorSliders.Key.all,
                 labels: [
-                    ColorSliders.Key.exposure: ("Phơi sáng", "sáng hơn, tối đa +1 EV"),
-                    ColorSliders.Key.contrast: ("Tương phản", "tương phản mạnh hơn"),
-                    ColorSliders.Key.highlights: ("Vùng sáng", "kéo vùng sáng xuống"),
-                    ColorSliders.Key.shadows: ("Vùng tối", "nâng vùng tối lên"),
-                    ColorSliders.Key.wbTemperature: ("Nhiệt độ", "ấm hơn"),
-                    ColorSliders.Key.wbTint: ("Sắc độ", "ngả magenta"),
-                    ColorSliders.Key.vibrance: ("Rực rỡ", "đậm hơn ở màu nhạt nhất"),
-                    ColorSliders.Key.saturation: ("Bão hoà", "đậm đều toàn ảnh"),
-                    ColorSliders.Key.curves: ("Curves", "đường cong film rõ hơn"),
-                    ColorSliders.Key.autoDodgeBurn: ("Dodge & Burn tự động", "đều sáng tối hơn"),
+                    ColorSliders.Key.exposure: ("Phơi sáng", "+ sáng hơn (+1 EV) · − tối hơn (−1 EV)"),
+                    ColorSliders.Key.contrast: ("Tương phản", "+ tương phản mạnh · − phẳng lại"),
+                    ColorSliders.Key.highlights: ("Vùng sáng", "+ kéo vùng sáng xuống · − đẩy lên"),
+                    ColorSliders.Key.shadows: ("Vùng tối", "+ nâng vùng tối lên · − dìm xuống"),
+                    ColorSliders.Key.wbTemperature: ("Nhiệt độ", "+ ấm hơn · − lạnh hơn"),
+                    ColorSliders.Key.wbTint: ("Sắc độ", "+ ngả magenta · − ngả lục"),
+                    ColorSliders.Key.vibrance: ("Rực rỡ", "+ đậm · − nhạt, mạnh nhất ở màu nhạt"),
+                    ColorSliders.Key.saturation: ("Bão hoà", "+ đậm đều · − nhạt đều (−100 = trắng đen)"),
+                    ColorSliders.Key.curves: ("Curves", "đường cong film rõ hơn (chỉ một chiều)"),
+                    ColorSliders.Key.autoDodgeBurn: (
+                        "Dodge & Burn tự động", "đều sáng tối hơn (chỉ một chiều)"
+                    ),
                 ].merging(
                     Dictionary(
                         uniqueKeysWithValues: HueBand.allCases.map {
-                            ($0.key, ("HSL · \($0.vietnameseName)", "đậm hơn ở dải màu này"))
+                            ($0.key, ("HSL · \($0.vietnameseName)", "+ đậm · − nhạt ở dải màu này"))
                         }
                     ), uniquingKeysWith: { a, _ in a })
             ),
@@ -232,13 +258,16 @@ public enum SliderPanelLayout {
     ]
 
     /// Builds the parameter list **in the engine's key order**, so the panel and
-    /// `EditState` cannot disagree about what exists.
+    /// `EditState` cannot disagree about what exists — and with each row's range
+    /// read from RPCore, so it cannot disagree about what they accept either.
     private static func parameters(
-        keys: [String], labels: [String: (String, String)]
+        in section: String, keys: [String], labels: [String: (String, String)]
     ) -> [SliderParameter] {
         keys.map { key in
             let entry = labels[key] ?? (key, "")
-            return SliderParameter(key: key, label: entry.0, direction: entry.1)
+            return SliderParameter(
+                key: key, label: entry.0, direction: entry.1,
+                range: Slider.range(for: key, in: section))
         }
     }
 

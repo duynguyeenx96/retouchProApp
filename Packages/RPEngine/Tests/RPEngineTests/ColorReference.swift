@@ -356,7 +356,9 @@ enum ColorReference {
             hsl = sliders.hsl.map { $0 / 100 }
         }
 
-        var hslTotal: Double { hsl.reduce(0, +) }
+        /// **Absolute**, matching the kernel: with signed bands a plain sum
+        /// cancels `+50 red, −50 aqua` into "no HSL" (docs/ADR-0016).
+        var hslAbsoluteTotal: Double { hsl.reduce(0) { $0 + abs($1) } }
     }
 
     /// `rp_color_composite` in `Double`.
@@ -370,8 +372,9 @@ enum ColorReference {
     ) -> [Float] {
         var out = source
         let active =
-            a.exposure + a.contrast + a.highlights + a.shadows + a.wbTemperature + a.wbTint
-            + a.vibrance + a.saturation + a.curves + a.autoDodgeBurn + a.hslTotal
+            abs(a.exposure) + abs(a.contrast) + abs(a.highlights) + abs(a.shadows)
+            + abs(a.wbTemperature) + abs(a.wbTint) + abs(a.vibrance) + abs(a.saturation)
+            + a.curves + a.autoDodgeBurn + a.hslAbsoluteTotal
         guard active > 0 else { return out }
 
         for y in 0..<height {
@@ -392,14 +395,16 @@ enum ColorReference {
                 }
 
                 // 2. Exposure + White Balance, in linear light.
-                if a.exposure > 0 || a.wbTemperature > 0 || a.wbTint > 0 {
+                if a.exposure != 0 || a.wbTemperature != 0 || a.wbTint != 0 {
                     var lin = (toLinear(c.0), toLinear(c.1), toLinear(c.2))
                     let e = pow(2, a.exposure * exposureStops)
                     lin = (lin.0 * e, lin.1 * e, lin.2 * e)
+                    // pow(base, amount): the ± directions are exact channel-wise
+                    // inverses and the endpoints are ADR-0012's 1.22/0.78/0.88.
                     var gain = (
-                        1 + wbTemperatureGain * a.wbTemperature,
-                        1 - wbTintGain * a.wbTint,
-                        1 - wbTemperatureGain * a.wbTemperature
+                        pow(1 + wbTemperatureGain, a.wbTemperature),
+                        pow(1 - wbTintGain, a.wbTint),
+                        pow(1 - wbTemperatureGain, a.wbTemperature)
                     )
                     let norm = max(luminance(gain), 1e-4)
                     gain = (gain.0 / norm, gain.1 / norm, gain.2 / norm)
@@ -409,18 +414,22 @@ enum ColorReference {
                 }
 
                 // 3/4. Highlights and Shadows.
+                // The sign picks the gamma (g or 1/g), the magnitude is the mix.
                 let luma = luminance(c)
-                if a.highlights > 0 {
+                if a.highlights != 0 {
                     let w = smoothstep(highlightPivot, 1, luma)
-                    c = mix(c, powEach(c, highlightGamma), a.highlights * w)
+                    let g = a.highlights > 0 ? highlightGamma : 1 / highlightGamma
+                    c = mix(c, powEach(c, g), abs(a.highlights) * w)
                 }
-                if a.shadows > 0 {
+                if a.shadows != 0 {
                     let w = 1 - smoothstep(0, shadowPivot, luma)
-                    c = mix(c, powEach(c, shadowGamma), a.shadows * w)
+                    let g = a.shadows > 0 ? shadowGamma : 1 / shadowGamma
+                    c = mix(c, powEach(c, g), abs(a.shadows) * w)
                 }
 
-                // 5. Contrast.
-                if a.contrast > 0 {
+                // 5. Contrast — a negative amount extrapolates away from the
+                //    S-curve, i.e. flattens toward mid-grey.
+                if a.contrast != 0 {
                     let s = (clamp01(c.0), clamp01(c.1), clamp01(c.2))
                     let curve = (
                         s.0 * s.0 * (3 - 2 * s.0), s.1 * s.1 * (3 - 2 * s.1),
@@ -440,7 +449,7 @@ enum ColorReference {
                 }
 
                 // 7. Vibrance.
-                if a.vibrance > 0 {
+                if a.vibrance != 0 {
                     let hi = max(c.0, max(c.1, c.2))
                     let lo = min(c.0, min(c.1, c.2))
                     let sat = (hi - lo) / max(hi, 1e-4)
@@ -453,12 +462,12 @@ enum ColorReference {
                 }
 
                 // 8. Saturation.
-                if a.saturation > 0 {
+                if a.saturation != 0 {
                     c = saturation(c, a.saturation * saturationMax)
                 }
 
-                // 9. HSL bands.
-                if a.hslTotal > 0 {
+                // 9. HSL bands. The branch test is absolute; `amountSum` is not.
+                if a.hslAbsoluteTotal > 0 {
                     let h = hue(c)
                     var weightSum = 0.0
                     var amountSum = 0.0

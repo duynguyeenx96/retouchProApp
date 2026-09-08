@@ -212,3 +212,87 @@ struct IdentifierTests {
         #expect(try Fixture.string(id) == "\"abc-123\"")
     }
 }
+
+/// docs/ADR-0016 widened the **"Color" group only** to −100…100. These are the
+/// tests that say the widening is scoped: a "Da" / "Mặt" / "Mắt & Răng" slider
+/// still refuses a negative value, and the two "Color" sliders that stayed
+/// one-directional still refuse one too.
+@Suite("Slider range scope")
+struct SliderRangeScopeTests {
+    /// The three face groups. Named here rather than derived, so widening a
+    /// range in RPCore cannot quietly widen them as well.
+    static let oneDirectionalSections = [
+        EditState.SectionKey.skin, EditState.SectionKey.face, EditState.SectionKey.eyesTeeth,
+        EditState.SectionKey.makeup, EditState.SectionKey.hair,
+    ]
+
+    @Test("The project default is still 0…100 with default 0")
+    func defaultsUnchanged() {
+        #expect(Slider.range == 0...100)
+        #expect(Slider.defaultValue == 0)
+        #expect(Slider.signedRange == -100...100)
+        #expect(Slider.clamp(-20) == 0)
+        #expect(Slider.clamp(250) == 100)
+        #expect(Slider.clamp(.nan) == 0)
+    }
+
+    @Test(
+        "Every group except Color still clamps to 0…100",
+        arguments: oneDirectionalSections)
+    func otherGroupsStayOneDirectional(section: String) {
+        for parameter in ["smooth", "chin", "eyeBrighten", "exposure", "anything"] {
+            #expect(Slider.range(for: parameter, in: section) == 0...100)
+        }
+        var state = EditState()
+        state.setSlider("smooth", in: section, to: -60)
+        // −60 clamps to 0, which is the default, which removes the key.
+        #expect(state.slider("smooth", in: section) == 0)
+        #expect(state.sections[section] == nil)
+        state.setSlider("smooth", in: section, to: 40)
+        #expect(state.slider("smooth", in: section) == 40)
+        state.setSlider("smooth", in: section, to: 400)
+        #expect(state.slider("smooth", in: section) == 100)
+    }
+
+    @Test("Color sliders take −100…100 and keep the key on the negative side")
+    func colorIsBidirectional() {
+        var state = EditState()
+        state.setSlider("exposure", in: EditState.SectionKey.color, to: -40)
+        #expect(state.slider("exposure", in: EditState.SectionKey.color) == -40)
+        #expect(!state.isDefault)
+        state.setSlider("exposure", in: EditState.SectionKey.color, to: -400)
+        #expect(state.slider("exposure", in: EditState.SectionKey.color) == -100)
+        // …and 0 is still the one value that removes the key.
+        state.setSlider("exposure", in: EditState.SectionKey.color, to: 0)
+        #expect(state.isDefault)
+    }
+
+    @Test("Curves and Auto D&B stay one-directional inside the Color group")
+    func colorExceptions() {
+        let color = EditState.SectionKey.color
+        #expect(Slider.range(for: "curves", in: color) == 0...100)
+        #expect(Slider.range(for: "autoDodgeBurn", in: color) == 0...100)
+        #expect(Slider.range(for: "exposure", in: color) == -100...100)
+        // An unknown key in the Color section gets the section's rule, not the
+        // exception list's.
+        #expect(Slider.range(for: "somethingNew", in: color) == -100...100)
+
+        var state = EditState()
+        state.setSlider("curves", in: color, to: -50)
+        state.setSlider("autoDodgeBurn", in: color, to: -50)
+        #expect(state.isDefault)
+    }
+
+    @Test("EditSection(sliders:in:) follows the same rule")
+    func bagInitFollowsTheSection() {
+        let color = EditSection(sliders: ["exposure": -40, "curves": -40], in: "color")
+        #expect(color.slider("exposure") == -40)
+        #expect(color["curves"] == nil)
+        // Without a section, the safe one-directional rule.
+        let anonymous = EditSection(sliders: ["exposure": -40])
+        #expect(anonymous.isEmpty)
+        let skin = EditSection(sliders: ["smooth": -40, "evenTone": 30], in: "skin")
+        #expect(skin["smooth"] == nil)
+        #expect(skin.slider("evenTone") == 30)
+    }
+}

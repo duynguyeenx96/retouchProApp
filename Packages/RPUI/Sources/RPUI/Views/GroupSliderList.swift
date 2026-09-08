@@ -9,11 +9,13 @@ import SwiftUI
 /// two thumb sizes, so it is one view. What it enforces, all of it decided
 /// elsewhere:
 ///
-/// * **0–100, default 0, one direction.** `RPCore.Slider` fixes the range;
-///   `EditSection.setSlider` *deletes* a key set back to 0, so "absent" and
-///   "neutral" are the same number and a slider centred at 50 would make an
-///   empty document a non-identity render (docs/ADR-0012). Each row carries the
-///   direction as its tooltip / VoiceOver hint.
+/// * **Default 0, and 0 is always neutral.** `RPCore.Slider` fixes each row's
+///   range — 0–100 for Da / Mặt / Mắt & Răng, −100…100 centred on 0 for sixteen
+///   of the eighteen "Màu" sliders (docs/ADR-0016). `EditSection.setSlider`
+///   *deletes* a key set back to 0, so "absent" and "neutral" are the same
+///   number and a slider centred at 50 would still make an empty document a
+///   non-identity render (docs/ADR-0012). Each row carries the direction as its
+///   tooltip / VoiceOver hint.
 /// * **Dragging does not write to disk.** The drag mutates memory and repaints
 ///   the GPU canvas; the release writes `edits/<id>.json` once.
 /// * **Face-dependent groups say when they cannot work.** With no face detected
@@ -68,6 +70,7 @@ struct GroupSliderList: View {
                         label: parameter.label,
                         direction: parameter.direction,
                         value: model.slider(parameter.key, in: section.key),
+                        range: parameter.range,
                         thumbSize: thumbSize,
                         isEnabled: blockedReason == nil,
                         onChange: { value in

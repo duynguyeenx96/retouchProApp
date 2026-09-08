@@ -188,6 +188,29 @@ struct EditorModelTests {
         #expect(model.activeEditState.isDefault)
     }
 
+    /// docs/ADR-0016, at the layer the panel actually writes through: a negative
+    /// "Màu" value survives all the way to `edits/<id>.json`, and a negative
+    /// "Da" value is still clamped to 0 (which removes the key).
+    @Test("A negative value survives in the Màu group and is clamped away in Da")
+    func negativeValuesAreScopedToTheColorGroup() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.exposure, in: EditState.SectionKey.color, to: -40)
+        model.setSlider(ColorSliders.Key.curves, in: EditState.SectionKey.color, to: -40)
+        model.setSlider(SkinSliders.Key.smooth, in: EditState.SectionKey.skin, to: -40)
+        #expect(model.slider(ColorSliders.Key.exposure, in: EditState.SectionKey.color) == -40)
+        #expect(model.slider(ColorSliders.Key.curves, in: EditState.SectionKey.color) == 0)
+        #expect(model.slider(SkinSliders.Key.smooth, in: EditState.SectionKey.skin) == 0)
+
+        await model.commitEditState()
+        let shot = try #require(model.activeShot)
+        let reloaded = try temp.store.loadEditState(for: shot.id)
+        #expect(reloaded.slider(ColorSliders.Key.exposure, in: EditState.SectionKey.color) == -40)
+        #expect(reloaded.sections[EditState.SectionKey.skin] == nil)
+    }
+
     @Test("Changing shot resets the viewport to fit")
     func selectionResetsViewport() async throws {
         let temp = try TempProject()

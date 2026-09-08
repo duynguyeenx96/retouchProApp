@@ -1,3 +1,4 @@
+import RPCore
 import SwiftUI
 
 /// The controls the mockup draws by hand: a flat-track slider, pill buttons,
@@ -11,22 +12,38 @@ import SwiftUI
 
 // MARK: - Slider
 
-/// One 0–100 row: label + mono value on top, custom track below.
+/// One slider row: label + mono value on top, custom track below.
+///
+/// ``range`` is `0...100` for every group except "Màu", whose sixteen
+/// bidirectional sliders are `-100...100` with the neutral 0 in the **middle**
+/// of the track (docs/ADR-0016). Nothing here decides that — the range arrives
+/// from `SliderParameter`, which reads it from `RPCore.Slider`, so the control
+/// cannot offer a value the document would clamp away.
 ///
 /// Dragging writes through ``onChange`` on every movement (memory + a GPU
 /// repaint, `EditorModel.setSlider`) and calls ``onCommit`` once when the finger
 /// lifts — the "one disk write per drag" rule from docs/ADR-0013.
 struct RPSliderRow: View {
     let label: String
-    /// Which way 100 goes. Not drawn — every slider here is 0–100 and
-    /// one-directional (ADR-0010/0012), so it is the help text on macOS and the
-    /// accessibility hint on iOS rather than a third line in a 250 pt sheet.
+    /// Which way the slider goes. Not drawn: it is the help text on macOS and
+    /// the accessibility hint on iOS rather than a third line in a 250 pt sheet.
     var direction: String = ""
     let value: Double
+    var range: ClosedRange<Double> = Slider.range
     var thumbSize: CGFloat = RPTheme.Metrics.macSliderThumb
     var isEnabled: Bool = true
     let onChange: (Double) -> Void
     var onCommit: () -> Void = {}
+
+    private var isBidirectional: Bool { range.lowerBound < 0 }
+
+    /// "40", "−40", "0". An explicit sign on the bidirectional rows only, so a
+    /// glance at the number says which half of the track the thumb is on
+    /// without reading the thumb.
+    private var valueText: String {
+        let rounded = Int(value.rounded())
+        return isBidirectional && rounded > 0 ? "+\(rounded)" : "\(rounded)"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -35,33 +52,39 @@ struct RPSliderRow: View {
                     .font(RPTheme.text(thumbSize > 12 ? 13 : 12.5))
                     .foregroundStyle(RPTheme.textLabel)
                 Spacer(minLength: 8)
-                Text("\(Int(value.rounded()))")
+                Text(valueText)
                     .font(RPTheme.mono(thumbSize > 12 ? 12 : 11.5))
-                    .foregroundStyle(value > 0 ? RPTheme.accent : RPTheme.textTertiary)
+                    .foregroundStyle(value == 0 ? RPTheme.textTertiary : RPTheme.accent)
                     .monospacedDigit()
             }
             RPSliderTrack(
-                value: value, thumbSize: thumbSize, isEnabled: isEnabled,
+                value: value, range: range, thumbSize: thumbSize, isEnabled: isEnabled,
                 onChange: onChange, onCommit: onCommit)
         }
         .padding(.vertical, thumbSize > 12 ? 9 : 8)
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
-        .accessibilityValue("\(Int(value.rounded())) trên 100")
-        .accessibilityHint(direction.isEmpty ? "" : "100 = \(direction)")
-        .accessibilityAdjustableAction { direction in
+        .accessibilityValue(
+            isBidirectional
+                ? "\(valueText), từ -100 đến 100" : "\(Int(value.rounded())) trên 100")
+        .accessibilityHint(direction.isEmpty ? "" : hintText)
+        .accessibilityAdjustableAction { adjustment in
             guard isEnabled else { return }
-            switch direction {
-            case .increment: onChange(min(100, value + 5))
-            case .decrement: onChange(max(0, value - 5))
+            switch adjustment {
+            case .increment: onChange(min(range.upperBound, value + 5))
+            case .decrement: onChange(max(range.lowerBound, value - 5))
             @unknown default: break
             }
             onCommit()
         }
         #if os(macOS)
-            .help(direction.isEmpty ? label : "\(label) — 100 = \(direction)")
+            .help(direction.isEmpty ? label : "\(label) — \(hintText)")
         #endif
+    }
+
+    private var hintText: String {
+        isBidirectional ? direction : "100 = \(direction)"
     }
 }
 
@@ -88,8 +111,16 @@ struct RPSliderRow: View {
 ///
 /// Because (1) means a plain tap no longer reaches `onEnded` on iOS, tap-to-set
 /// is a separate `SpatialTapGesture` there.
+///
+/// ## The mint fill starts at the neutral value, not at the left edge
+/// On a `0...100` row those are the same point and the drawing is unchanged. On
+/// a `-100...100` row (the "Màu" group, docs/ADR-0016) the fill runs from the
+/// **centre** to the thumb in whichever direction the value went, which is the
+/// only way a flat 2 px track can show that 0 is neutral and that the value is
+/// currently below it.
 struct RPSliderTrack: View {
     let value: Double
+    var range: ClosedRange<Double> = Slider.range
     var thumbSize: CGFloat = RPTheme.Metrics.macSliderThumb
     var isEnabled: Bool = true
     let onChange: (Double) -> Void
@@ -111,14 +142,26 @@ struct RPSliderTrack: View {
     var body: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let fraction = min(1, max(0, value / 100))
+            let fraction = Self.fraction(of: value, in: range)
+            // Where "no change" sits on the track: the left edge on a 0…100 row,
+            // the middle on a −100…100 one.
+            let neutral = Self.fraction(of: Slider.defaultValue, in: range)
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(RPTheme.sliderTrack)
                     .frame(height: 2)
+                if neutral > 0 {
+                    // The centre tick, so the neutral position is visible even
+                    // with the thumb parked somewhere else.
+                    Capsule()
+                        .fill(RPTheme.sliderTrack)
+                        .frame(width: 1, height: 8)
+                        .offset(x: width * neutral - 0.5)
+                }
                 Capsule()
                     .fill(RPTheme.accent)
-                    .frame(width: width * fraction, height: 2)
+                    .frame(width: width * abs(fraction - neutral), height: 2)
+                    .offset(x: width * min(fraction, neutral))
                 Circle()
                     .fill(Color.white)
                     .frame(width: thumbSize, height: thumbSize)
@@ -162,8 +205,22 @@ struct RPSliderTrack: View {
         .frame(height: thumbSize + 3)
     }
 
+    /// Track position (0 = left edge, 1 = right edge) of one value.
+    static func fraction(of value: Double, in range: ClosedRange<Double>) -> Double {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return min(1, max(0, (value - range.lowerBound) / span))
+    }
+
+    /// The inverse: a hit position along the track back to a slider value,
+    /// clamped and rounded to whole units.
+    static func value(atFraction fraction: Double, in range: ClosedRange<Double>) -> Double {
+        let raw = range.lowerBound + fraction * (range.upperBound - range.lowerBound)
+        return min(range.upperBound, max(range.lowerBound, raw)).rounded()
+    }
+
     private func clamped(_ fraction: CGFloat) -> Double {
-        min(100, max(0, Double(fraction) * 100)).rounded()
+        Self.value(atFraction: Double(fraction), in: range)
     }
 }
 

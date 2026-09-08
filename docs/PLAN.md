@@ -413,7 +413,85 @@ Kết quả: `Research/spikes/REPORT.md`, chọn model/độ phân giải theo s
   chỉ là lỗi tài liệu, không phải code. Số liệu:
   `Research/bench/p2-live-preview-{macos,ios-simulator}.json`, `Scripts/bench-live-preview.sh`,
   `docs/ADR-0013`.
-- `RenderGraph` slider 0–100:
+- **Đã làm (2026-09-08), slider hai chiều −100…100, khoanh vùng đúng nhóm "Màu":** mở lại đúng
+  một điểm ADR-0012 đã ghi là "cần quyết định ở tầng plan". **16/18** slider Color thành
+  −100…100; **`curves` và `autoDodgeBurn` giữ 0…100**; **Da/Mặt/Mắt-Răng không đụng tới**, vẫn
+  0…100. Lý do mở: nhóm Color là nhóm duy nhất phải **sửa cái đã có trong file** chứ không phải
+  thêm hiệu ứng — ảnh a6300 (hoặc JPEG đã qua preset người khác) về tay đã quá sáng/quá rực/quá
+  ấm, và với thang 0…100 thì "bớt đi" là không thể diễn đạt. Lập luận cũ "một chiều là **bắt
+  buộc** vì `setSlider` xoá key ở 0" **đúng một nửa**: hợp đồng chỉ cần **mặc định == trung tính
+  == identity**, không hề cấm có giá trị ở **cả hai phía** của 0. 0 vẫn là mặc định, vẫn bị xoá
+  khỏi JSON, vẫn passthrough **bit-exact** (đo lại: max abs = **0**) — cái thật sự bị cấm là
+  slider trung tính ở 50, và vẫn không có cái nào. **Không nới `Slider.range` toàn cục** (một
+  dòng, compile được, và sai): tra cứu theo **(section, parameter)** qua
+  `Slider.range(for:in:)` với `bidirectionalSections = {color}` + `oneDirectionalParameters`;
+  nới toàn cục sẽ cho slider Mặt nhận −100 — giá trị `FaceReshape` không có nghĩa gì, không
+  control-point MLS nào thiết kế cho nó, ADR-0010 chưa đo bao giờ — và Mịn da −100 = "thêm
+  nhiễu". Có regression test hai đầu ghim chuyện này: `SliderRangeScopeTests` (RPCore),
+  `SliderPanelLayoutTests` (RPUI), và `EditorModelTests` chạy model thật: −40 vào `color.exposure`
+  **sống tới đĩa**, −40 vào slider Da **kẹp về 0 và bị xoá key**. Hai slider giữ một chiều là
+  **có lập luận, không phải bỏ sót**: `curves` là *cường độ* một look film cố định — nghịch đảo
+  của một look không phải là look, và ngoại suy qua 0 làm **kẹp thật** (toe nâng 0.030 → đen
+  thành **−0.030**, bẹp 3 % đáy thang); `autoDodgeBurn` là **phép sửa lỗi** đo sai số sáng cục bộ
+  của chính khung đó rồi giảm nó đi, đảo dấu = **khuếch đại đúng cái đốm nó sinh ra để xoá**.
+  Nửa âm **không phải là bản soi gương** của nửa dương — soi gương sai đo được ở 4 chỗ, nên mỗi
+  slider đối xứng trong **không gian mà phép toán sống**: exposure `exp2(a)` đối xứng theo
+  **stop** (−100 = 0.5×, nghịch đảo đúng của 2×; gain `1+a` sẽ ra **đen thui**), WB
+  `pow(1±k, a)` đối xứng theo **log gain** (điểm cuối vẫn đúng 1.22/0.78/0.88 của ADR-0012, và
+  −x là nghịch đảo **từng kênh** của +x), Highlights/Shadows dùng **gamma nghịch đảo** `1/g` với
+  `|a|` làm trọng số trộn (bản soi gương ngoại suy sẽ đẩy pixel gần đen **xuống dưới 0**),
+  Saturation **tuyến tính** theo hệ số nhân chứ không mũ (mũ `2^a` chỉ tới 0.5× và **không bao
+  giờ chạm** trắng đen). Contrast là chỗ duy nhất ngoại suy *đúng*: trộn ngược khỏi smoothstep
+  làm ảnh phẳng về xám giữa, vẫn giữ hai đầu và vẫn **đơn điệu** (dốc đáy **0.750 > 0**, đo).
+  **Bug thật đã bắt được, không phải dọn dẹp**: mọi test `> 0` và mọi tổng "có gì bật không" đều
+  viết từ thời chỉ có số dương — `active = exposure + contrast + …` với dấu sẽ cho **exposure
+  +50, contrast −50 → tổng 0 → trả về ảnh gốc** trên tấm ảnh người dùng vừa chỉnh; y hệt ở
+  `hslTotal` (đổi tên `hslAbsoluteTotal`) và `needsLinearLight` (bỏ qua vòng ánh sáng tuyến tính
+  khi exposure **âm**). Đã đổi hết sang `!= 0` và **tổng trị tuyệt đối** `fabs()`, có test ghim:
+  cặp triệt tiêu vẫn đổi ảnh **0.1418** (exposure/contrast) và **0.3023** (HSL), không phải 0.
+  `needsDodgeBurnAnalysis` **cố tình giữ `> 0`** vì đó đúng là slider không bao giờ âm. Giữ
+  nguyên quy ước dấu `highlights`/`shadows` của ADR-0012 (dương = **kéo vùng sáng xuống**,
+  **ngược Lightroom**): lật bây giờ sẽ **âm thầm diễn giải lại mọi giá trị đã ghi** trong
+  `edits/*.json`, nên ghi vào tài liệu + dòng direction trên UI thay vì lật. Golden (M1 Pro):
+  từng slider ở **−100** đạt **142.96–174.60 dB** (thấp nhất `wbTemperature`, cao nhất `hslBlue`,
+  cộng `hslAqua`/`hslGreen` vô cực như cũ), composite trộn dấu **138.05 dB**, **toàn node trộn
+  dấu 139.33 dB** (max abs 5.4e-7), toàn dương 136.58 dB — bar 45 dB. Số PSNR không nói được:
+  Highlights −100 **đẩy đầu sáng lên +0.0360** (so −0.0483 ở +100), đầu tối **đúng 0**; Shadows
+  −100 **dìm đầu tối −0.0755**, đầu sáng **0**, pixel tối nhất còn **0.00757 > 0** và **0 kênh
+  bị kẹp**; Exposure −100 = **−1 EV** (tỉ lệ 0.49999995); Saturation −100 = trắng đen **thật**
+  (chroma dư **0.0**) và 8 dải HSL cùng −100 khớp đúng nó (lệch **3.0e-8**); Contrast dải ramp
+  0.6478 → **0.5596** ở −100 (và 0.7360 ở +100); WB ±60 quay về lệch **0.00201** ngoài vùng kẹp
+  (0.0347 nếu tính cả 2880 kênh kẹp ở mảng màu bão hoà — ghi cả hai, không chỉ số đẹp). **Tốc độ
+  có trả giá và đã đo tử tế**: 3 `pow()`/pixel thay 3 phép nhân-cộng ở khối WB. Đọc lần đầu ra
+  **+14 %** ở 24 MP nhưng **chạy lại 3 lần mới dám kết luận** — biên độ run-to-run của
+  `all_sliders` là **~6 %**, nên +14 % là nhiễu: 9.197 ms (nền ADR-0012) → **9.538 / 9.966 /
+  10.088**, tức **+8 %** theo median. Cái làm số này đọc được là **hàng control**: `all_sliders_
+  at_zero` (nhánh passthrough, chỉ đổi thêm `fabs()`) đi **2.078 → 2.097 ms = +1 %**, tức máy
+  **không trôi**, và +8 % kia là chi phí thật của `pow()`; `tone_only` +4.6 % đều cả 3 lần (khối
+  có exposure+WB, không có HSL/D&B) khớp cùng giải thích. Preview 2048 px **1.449 ms GPU (1.72 ms
+  wall) → 581 fps** (bar 30 fps; `all_sliders_fps` trong JSON tính theo wall, cùng cách ADR-0012
+  trích — bảng so sánh ở trên dùng GPU median cả hai phía nên vẫn cùng hệ quy chiếu), 24 MP
+  **9.54 ms** (bar 8 s), **trộn dấu tốn ngang toàn dương** (10.237 ms) — không
+  có đường chậm cho giá trị âm. Bộ nhớ **không đổi** (2.46 MB). Ghi rõ một tối ưu **cố ý chưa
+  làm**: 3 `pow()` đó có tham số **uniform** (`pow(1.22, wbTemperature)` giống hệt mọi pixel) nên
+  hoàn toàn tính được 1 lần trên CPU rồi truyền vào — lời ~0.8 ms/khung ở 24 MP, nhưng đổi ý
+  nghĩa và layout `ColorParams` (đang bị test ghim stride) và kéo theo `ColorReference`; với 3 bậc
+  độ lớn dư địa so bar export thì không đáng đổi trong task này, ghi lại để là **nước đi đã biết
+  chứ không phải phát hiện sau này**. iOS Simulator chạy lại cùng schema: **golden giống hệt Mac
+  từng chữ số** (0 / 142.96–174.60 / 138.05 / 139.33 dB) — đúng như kỳ vọng và đáng nói: claim độ
+  chính xác là tính chất của **shader**, không phải của GPU chạy nó; wall-clock 11.6 ms ở 24 MP,
+  4.577 ms preview, `gpu_median_ms` ở Simulator vô nghĩa (`is_real_device: false`). UI: track vẽ
+  **0 ở giữa** và fill từ tâm ra cho hàng hai chiều, số có **dấu `+` tường minh** (chỉ ở hàng hai
+  chiều), dòng direction **gọi tên cả hai đầu** (`+ ấm hơn · − lạnh hơn`), VoiceOver đọc
+  `"+40, từ -100 đến 100"`, phím tăng/giảm kẹp theo `range.lowerBound` chứ không phải 0 cứng —
+  và `SliderParameter.range` **đọc từ `RPCore.Slider`** chứ không tự khai, nên panel không thể
+  mời một giá trị mà document sẽ kẹp mất. Test: **RPCore 73 + RPEngine 166 + RPUI 103 = 342
+  pass**. Giới hạn ghi rõ: **chưa ai nhìn render ở −100** — nửa âm mang đúng bộ hằng số chưa tinh
+  chỉnh của nửa dương, golden chỉ chứng minh GPU tính đúng công thức đã viết chứ không chứng minh
+  công thức đẹp; WB ±x **không** round-trip bit-exact (0.002, tệ hơn ở chỗ kênh bão hoà); chỉ
+  nhóm Màu hai chiều. Số liệu: `Research/bench/p2-color-{macos,ios-simulator}.json`,
+  `Scripts/bench-color.sh`, `docs/ADR-0016`.
+- `RenderGraph` slider (Màu −100…100 cho 16/18 key, các nhóm còn lại 0–100 — `docs/ADR-0016`):
   - **Da**: Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn.
   - **Mặt**: Bóp mặt, Gò má, Hàm, Cằm, Trán, Thái dương, Mũi (thu nhỏ/sống/đầu), Mắt (to/khoảng cách/nghiêng), Miệng (to/cười), Môi đầy.
   - **Mắt/Răng**: Sáng mắt, Trắng lòng trắng, Nét mắt, Trắng răng.

@@ -52,6 +52,15 @@ struct ColorBenchTests {
             "shader_compile_ms": context.libraryCompileMilliseconds,
             "shader_source_files": MetalContext.shaderSources.count,
             "slider_count": ColorSliders.Key.all.count,
+            // docs/ADR-0016: 16 of the 18 are -100…100; the two named here stayed
+            // 0…100 and the ADR says why. Read from RPCore rather than written,
+            // so this line cannot drift from the clamp that enforces it.
+            "bidirectional_slider_count": ColorSliders.Key.all.filter {
+                Slider.range(for: $0, in: EditState.SectionKey.color).lowerBound < 0
+            }.count,
+            "one_directional_sliders": ColorSliders.Key.all.filter {
+                Slider.range(for: $0, in: EditState.SectionKey.color).lowerBound == 0
+            },
             "analysis_grid_width": ColorRenderNode.analysisWidth,
             "curve_lut_entries": ColorToneCurve.size,
             "pixel_space": RenderQuality.preview.pixelSpace.rawValue,
@@ -121,6 +130,25 @@ struct ColorBenchTests {
             perSlider[name] = jsonPSNR(SpikeTextureIO.psnr(reference, one))
         }
 
+        // The same isolation level on the negative side (docs/ADR-0016).
+        var perNegativeSlider: [String: Any] = [:]
+        for (name, single) in ColorRenderNodeTests.negativeSliderCases {
+            let one = try ColorRenderNodeTests.runNode(
+                node, context: context, request: ColorRenderNodeTests.request(single))
+            let reference = try ColorRenderNodeTests.compositeReference(
+                node: node, context: context, sliders: single)
+            perNegativeSlider[name] = jsonPSNR(SpikeTextureIO.psnr(reference, one))
+        }
+
+        // A mixed-sign document, which is what a signed group is actually used
+        // as, and the case a signed "is anything on" sum would have skipped.
+        let signedSliders = ColorRenderNodeTests.allSlidersSigned
+        let signedOutput = try ColorRenderNodeTests.runNode(
+            node, context: context, request: ColorRenderNodeTests.request(signedSliders))
+        let signedReference = ColorReference.renderNode(
+            source: source, width: width, height: height, sliders: signedSliders,
+            curveTable: node.curveTable)
+
         // The identity claim, measured rather than asserted only in a test name.
         let zero = try ColorRenderNodeTests.runNode(
             node, context: context, request: ColorRenderNodeTests.request(ColorSliders()))
@@ -147,6 +175,10 @@ struct ColorBenchTests {
             "end_to_end_max_abs_diff": SpikeTextureIO.maxAbsoluteDifference(
                 endToEndReference, output),
             "per_slider_psnr_db": perSlider,
+            "per_slider_negative_psnr_db": perNegativeSlider,
+            "signed_end_to_end_psnr_db": SpikeTextureIO.psnr(signedReference, signedOutput),
+            "signed_end_to_end_max_abs_diff": SpikeTextureIO.maxAbsoluteDifference(
+                signedReference, signedOutput),
             "all_sliders_zero_max_abs_diff": SpikeTextureIO.maxAbsoluteDifference(source, zero),
             "curve_lut_max_error": lutWorst,
         ]
@@ -175,9 +207,73 @@ struct ColorBenchTests {
         red[.red] = 100
         let hslRed = try run(red)
 
+        // docs/ADR-0016 — the negative half. Same shape of claim: each slider
+        // moves the part of the picture its name refers to, now in the other
+        // direction, and the two ends are not the same picture.
+        let highlightsDown = try run(ColorSliders(highlights: -100))
+        let shadowsDown = try run(ColorSliders(shadows: -100))
+        let flat = try run(ColorSliders(contrast: -100))
+        let punchy = try run(ColorSliders(contrast: 100))
+        let grey = try run(ColorSliders(saturation: -100))
+        let warm = try run(ColorSliders(wbTemperature: 60))
+        let roundTrip = try ColorRenderNodeTests.runNode(
+            node, context: context,
+            request: ColorRenderNodeTests.request(ColorSliders(wbTemperature: -60)),
+            pixels: warm)
+
+        func rampSpread(_ pixels: [Float]) -> Double {
+            ColorRenderNodeTests.rampLuma(pixels, xFraction: 0.75...0.95)
+                - ColorRenderNodeTests.rampLuma(pixels, xFraction: 0.05...0.25)
+        }
+        var worstChroma = 0.0
+        for i in stride(from: 0, to: grey.count, by: 4) {
+            worstChroma = max(
+                worstChroma,
+                max(
+                    abs(Double(grey[i]) - Double(grey[i + 1])),
+                    abs(Double(grey[i + 1]) - Double(grey[i + 2]))))
+        }
+        // The WB round trip is only exact where the intermediate did not clip:
+        // this chart's ramp reaches 0.99 in red, warming pushes it past white,
+        // and cooling cannot bring a pinned channel back. Counted, not hidden.
+        var wbResidual = 0.0
+        var wbClipped = 0
+        for i in 0..<source.count where i % 4 != 3 {
+            let intermediate = Double(warm[i])
+            guard intermediate > 1e-6, intermediate < 1 - 1e-6 else {
+                wbClipped += 1
+                continue
+            }
+            wbResidual = max(wbResidual, abs(Double(source[i]) - Double(roundTrip[i])))
+        }
+
         return [
+            "highlights_minus_100": [
+                "bright_end": ColorRenderNodeTests.rampLumaChange(
+                    highlightsDown, xFraction: 0.75...0.95),
+                "dark_end": ColorRenderNodeTests.rampLumaChange(
+                    highlightsDown, xFraction: 0.05...0.25),
+            ],
+            "shadows_minus_100": [
+                "bright_end": ColorRenderNodeTests.rampLumaChange(
+                    shadowsDown, xFraction: 0.75...0.95),
+                "dark_end": ColorRenderNodeTests.rampLumaChange(
+                    shadowsDown, xFraction: 0.05...0.25),
+            ],
+            "contrast_ramp_spread": [
+                "source": rampSpread(source),
+                "minus_100": rampSpread(flat),
+                "plus_100": rampSpread(punchy),
+            ],
+            "saturation_minus_100_worst_residual_chroma": worstChroma,
+            "wb_plus_60_then_minus_60": [
+                "max_abs_residual_off_the_clip": wbResidual,
+                "clipped_channels": wbClipped,
+                "max_abs_residual_including_the_clip": SpikeTextureIO.maxAbsoluteDifference(
+                    source, roundTrip),
+            ],
             "definition":
-                "mean signed luminance change on the ramp's two ends, and mean |Δ| per labelled region",
+                "mean signed luminance change on the ramp's two ends, and mean |Δ| per labelled region; the *_minus_100 entries are the negative half of docs/ADR-0016",
             "highlights_100": [
                 "bright_end": ColorRenderNodeTests.rampLumaChange(
                     highlights, xFraction: 0.75...0.95),
@@ -283,6 +379,10 @@ struct ColorBenchTests {
 
         let all = try time(request(ColorRenderNodeTests.allSliders))
         let allBytes = node.allocatedBytes
+        // The same eighteen sliders with eleven of them negative: the branches
+        // are `!= 0` rather than `> 0`, so this should cost the same, and
+        // "should" is not a measurement (docs/ADR-0016).
+        let signed = try time(request(ColorRenderNodeTests.allSlidersSigned))
         let zero = try time(request(ColorSliders()))
         node.releaseIntermediates()
         // The cheap path: no Auto D&B, so no analysis pyramid and no extra
@@ -297,6 +397,7 @@ struct ColorBenchTests {
                 return [size.width, size.height]
             }(),
             "all_sliders": all,
+            "all_sliders_mixed_sign": signed,
             "tone_only": toneOnly,
             "all_sliders_at_zero": zero,
             "node_bytes_all_sliders": allBytes,

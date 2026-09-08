@@ -150,54 +150,79 @@ kernel void rp_color_box_v(
 struct ColorParams {
     // float4 first so Metal's 16-byte alignment and Swift's agree with no
     // padding surprises in between (ColorRenderNodeTests pins the stride).
-    float4 hslA;   // red, orange, yellow, green      — 0…1
-    float4 hslB;   // aqua, blue, purple, magenta     — 0…1
+    //
+    // Sixteen of the eighteen amounts are SIGNED, -1…1 (docs/ADR-0016); the two
+    // marked 0…1 below are the ones that stayed one-directional. Every `> 0`
+    // test on a signed amount had to become `!= 0`, and every sum used as an
+    // "is anything on" test had to become a sum of absolute values — a signed
+    // sum cancels (+50 exposure, -50 contrast) and would take the passthrough
+    // branch on a picture the user has graded.
+    float4 hslA;   // red, orange, yellow, green      — -1…1
+    float4 hslB;   // aqua, blue, purple, magenta     — -1…1
     uint2 size;
     uint2 analysisSize;
-    float exposure;        // 0…1
-    float contrast;        // 0…1
-    float highlights;      // 0…1
-    float shadows;         // 0…1
-    float wbTemperature;   // 0…1
-    float wbTint;          // 0…1
-    float vibrance;        // 0…1
-    float saturation;      // 0…1
-    float curves;          // 0…1
-    float autoDodgeBurn;   // 0…1
+    float exposure;        // -1…1
+    float contrast;        // -1…1
+    float highlights;      // -1…1
+    float shadows;         // -1…1
+    float wbTemperature;   // -1…1
+    float wbTint;          // -1…1
+    float vibrance;        // -1…1
+    float saturation;      // -1…1
+    float curves;          //  0…1  (one-directional)
+    float autoDodgeBurn;   //  0…1  (one-directional)
     uint curveLUTSize;
 };
 
-/// Stops of exposure at slider 100. One, because a portrait that needs more than
-/// a stop of lift needs a re-shoot or a raw redevelop, and because the slider is
-/// one-directional (ColorSliders' doc comment).
+/// Stops of exposure at slider ±100. One, because a portrait that needs more
+/// than a stop needs a re-shoot or a raw redevelop. `exp2(amount * stops)` is
+/// symmetric in *stops*: -100 is 0.5x, the exact inverse of +100's 2x, which a
+/// mirrored linear gain (1 ± amount) would not be.
 constant float kRPExposureStops = 1.0;
 /// Von Kries diagonal gains at "WB temperature" = 100, before luminance
-/// renormalisation: red up, blue down by the same fraction.
+/// renormalisation: red up, blue down by the same fraction. Applied as
+/// pow(1 ± gain, amount) rather than 1 ± gain * amount, so the two ends of the
+/// slider are exact channel-wise inverses of each other and the endpoints stay
+/// exactly the 1.22 / 0.78 of docs/ADR-0012.
 constant float kRPWBTemperatureGain = 0.22;
-/// Green pulled down at "WB tint" = 100, i.e. toward magenta.
+/// Green pulled down at "WB tint" = 100, i.e. toward magenta; pushed up (toward
+/// green) at -100.
 constant float kRPWBTintGain = 0.12;
-/// Gamma applied to the brightest pixels at "Highlights" = 100. > 1 darkens.
+/// Gamma applied to the brightest pixels at "Highlights" = 100. > 1 darkens; the
+/// negative half uses its RECIPROCAL, so the two directions are symmetric in the
+/// exponent's log space the same way exposure is symmetric in stops. A mirrored
+/// mix (extrapolating past the gamma) was rejected: for shadows it sends a
+/// near-black pixel below 0 and crushes it.
 constant float kRPHighlightGamma = 1.45;
 /// Luma at which highlight recovery starts ramping in.
 constant float kRPHighlightPivot = 0.45;
-/// Gamma applied to the darkest pixels at "Shadows" = 100. < 1 lifts.
+/// Gamma applied to the darkest pixels at "Shadows" = 100. < 1 lifts; the
+/// negative half uses its reciprocal (1/0.65 = 1.538) and deepens.
 constant float kRPShadowGamma = 0.65;
 /// Luma at which shadow lifting has ramped out.
 constant float kRPShadowPivot = 0.55;
-/// How much of the smoothstep S-curve is mixed in at "Contrast" = 100.
+/// How much of the smoothstep S-curve is mixed in at "Contrast" = 100. At -100
+/// the same number is used to EXTRAPOLATE away from the S-curve, which flattens
+/// toward mid-grey. Still monotone (the mix's slope bottoms out at 1.5 - 0.5 *
+/// max S' = 0.75) and still endpoint-preserving, because S(0) = 0 and S(1) = 1
+/// hold for any mix weight.
 constant float kRPContrastMax = 0.50;
-/// Extra saturation at "Vibrance" = 100 on a fully unsaturated colour.
+/// Saturation change at "Vibrance" = ±100 on a fully unsaturated colour.
 constant float kRPVibranceMax = 1.0;
 /// How much vibrance is held back on the skin-tone hue band. 0.6 = 40 % of the
-/// boost survives there, so a face does not clip before the rest of the frame.
+/// change survives there, in both directions, so a face neither clips nor goes
+/// grey before the rest of the frame.
 constant float kRPVibranceSkinProtect = 0.6;
 /// Centre and half-width of that band, degrees. 25° is between "orange" (30°)
 /// and the redder end of real skin.
 constant float kRPVibranceSkinHue = 25.0;
 constant float kRPVibranceSkinHalfWidth = 40.0;
-/// Extra saturation at "Saturation" = 100 (1.0 = 2x).
+/// Saturation change at "Saturation" = ±100: 1.0 means 2x at +100 and 0x —
+/// grayscale — at -100. Linear in the multiplier, not exponential, precisely so
+/// that -100 lands exactly on grayscale (an exponential 2^amount would only
+/// reach 0.5x and never get there).
 constant float kRPSaturationMax = 1.0;
-/// Extra saturation at one HSL band = 100, once band weights are normalised.
+/// Saturation change at one HSL band = ±100, once band weights are normalised.
 constant float kRPHSLSatMax = 1.0;
 /// Half-width of a hue band's triangular window, degrees.
 constant float kRPHSLBandHalfWidth = 60.0;
@@ -310,9 +335,12 @@ kernel void rp_color_composite(
     if (gid.x >= prm.size.x || gid.y >= prm.size.y) { return; }
     float4 src = source.read(gid);
 
-    float hslTotal = dot(prm.hslA, float4(1.0)) + dot(prm.hslB, float4(1.0));
-    float active = prm.exposure + prm.contrast + prm.highlights + prm.shadows
-                 + prm.wbTemperature + prm.wbTint + prm.vibrance + prm.saturation
+    // ABSOLUTE totals: the amounts are signed now, and a signed sum would read
+    // "exposure +50, contrast -50" as "nothing is on" and return the source.
+    float hslTotal = dot(fabs(prm.hslA), float4(1.0)) + dot(fabs(prm.hslB), float4(1.0));
+    float active = fabs(prm.exposure) + fabs(prm.contrast) + fabs(prm.highlights)
+                 + fabs(prm.shadows) + fabs(prm.wbTemperature) + fabs(prm.wbTint)
+                 + fabs(prm.vibrance) + fabs(prm.saturation)
                  + prm.curves + prm.autoDodgeBurn + hslTotal;
     // Bit-exact passthrough with every slider at 0. Each step below is already
     // the identity at 0, but the final clamp is not, and "slider at 0 changes
@@ -340,13 +368,16 @@ kernel void rp_color_composite(
     //    light that reached the sensor, so both belong here and not in the
     //    display-referred space the rest of this file works in; doing them
     //    together pays for the transfer function once.
-    if (prm.exposure > 0.0 || prm.wbTemperature > 0.0 || prm.wbTint > 0.0) {
+    if (prm.exposure != 0.0 || prm.wbTemperature != 0.0 || prm.wbTint != 0.0) {
         float3 lin = rp_color_to_linear(c);
         lin *= exp2(prm.exposure * kRPExposureStops);
+        // pow(base, amount), not 1 + gain * amount: the endpoints are the same
+        // 1.22 / 0.78 / 0.88 as before, but cooling by x now exactly undoes
+        // warming by x per channel (measured, `whiteBalanceDirectionsAreInverse`).
         float3 gain = float3(
-            1.0 + kRPWBTemperatureGain * prm.wbTemperature,
-            1.0 - kRPWBTintGain * prm.wbTint,
-            1.0 - kRPWBTemperatureGain * prm.wbTemperature);
+            pow(1.0 + kRPWBTemperatureGain, prm.wbTemperature),
+            pow(1.0 - kRPWBTintGain, prm.wbTint),
+            pow(1.0 - kRPWBTemperatureGain, prm.wbTemperature));
         // Renormalise so the white balance changes the colour of the light and
         // not the amount of it. kRPLuma's weights are the Rec.709 luminance
         // coefficients, and here — unlike everywhere else in this package —
@@ -356,27 +387,35 @@ kernel void rp_color_composite(
         c = rp_color_to_srgb(lin * gain);
     }
 
-    // 3. Highlights (recovery) and 4. Shadows (lift). Both are endpoint-
-    //    preserving gammas weighted by luma, so neither can crush black or clip
-    //    white, and a neutral stays neutral.
+    // 3. Highlights (recovery / push) and 4. Shadows (lift / deepen). Both are
+    //    endpoint-preserving gammas weighted by luma, so neither can crush black
+    //    or clip white, and a neutral stays neutral. The sign picks the gamma —
+    //    g or 1/g — and the magnitude is the mix weight, so both directions stay
+    //    inside [0,1] by construction.
     float luma = dot(c, kRPLuma);
-    if (prm.highlights > 0.0) {
+    if (prm.highlights != 0.0) {
         float w = smoothstep(kRPHighlightPivot, 1.0, luma);
-        c = mix(c, pow(max(c, 0.0), float3(kRPHighlightGamma)), prm.highlights * w);
+        float g = (prm.highlights > 0.0) ? kRPHighlightGamma : 1.0 / kRPHighlightGamma;
+        c = mix(c, pow(max(c, 0.0), float3(g)), fabs(prm.highlights) * w);
     }
-    if (prm.shadows > 0.0) {
+    if (prm.shadows != 0.0) {
         float w = 1.0 - smoothstep(0.0, kRPShadowPivot, luma);
-        c = mix(c, pow(max(c, 0.0), float3(kRPShadowGamma)), prm.shadows * w);
+        float g = (prm.shadows > 0.0) ? kRPShadowGamma : 1.0 / kRPShadowGamma;
+        c = mix(c, pow(max(c, 0.0), float3(g)), fabs(prm.shadows) * w);
     }
 
-    // 5. Contrast: a smoothstep S about mid-grey. Endpoint-preserving and
-    //    monotone, unlike the usual `pivot + (c - pivot) * gain`, which clips.
-    if (prm.contrast > 0.0) {
+    // 5. Contrast: a smoothstep S about mid-grey, mixed toward at a positive
+    //    amount and extrapolated away from at a negative one (which flattens the
+    //    picture toward mid-grey). Endpoint-preserving and monotone in BOTH
+    //    directions, unlike the usual `pivot + (c - pivot) * gain`, which clips.
+    if (prm.contrast != 0.0) {
         float3 x = saturate(c);
         c = mix(c, x * x * (3.0 - 2.0 * x), prm.contrast * kRPContrastMax);
     }
 
-    // 6. Curves: the fixed per-channel film LUT (ColorToneCurve).
+    // 6. Curves: the fixed per-channel film LUT (ColorToneCurve). ONE-DIRECTIONAL
+    //    (0…1): extrapolating past 0 would send the curve's lifted toe (0.030)
+    //    negative and crush the bottom 3 % of the range to black. docs/ADR-0016.
     if (prm.curves > 0.0) {
         float3 f = float3(
             rp_color_curve(curveLUT, prm.curveLUTSize, c.r, 0u),
@@ -386,8 +425,11 @@ kernel void rp_color_composite(
     }
 
     // 7. Vibrance: saturation weighted by how unsaturated the pixel already is,
-    //    held back on the skin-tone hue band.
-    if (prm.vibrance > 0.0) {
+    //    held back on the skin-tone hue band. Signed: the weight is unchanged and
+    //    only `k` flips, so a negative vibrance desaturates the flattest colours
+    //    first and leaves the already-vivid ones alone — the same asymmetry, run
+    //    backwards, which is also what Adobe documents for negative Vibrance.
+    if (prm.vibrance != 0.0) {
         float hi = max(c.r, max(c.g, c.b));
         float lo = min(c.r, min(c.g, c.b));
         float sat = (hi - lo) / max(hi, 1e-4);
@@ -398,15 +440,17 @@ kernel void rp_color_composite(
         c = rp_color_saturation(c, k);
     }
 
-    // 8. Saturation: uniform.
-    if (prm.saturation > 0.0) {
+    // 8. Saturation: uniform. -1 takes the (1 + k) factor to exactly 0, i.e.
+    //    grayscale, which is what a saturation slider at -100 has to be.
+    if (prm.saturation != 0.0) {
         c = rp_color_saturation(c, prm.saturation * kRPSaturationMax);
     }
 
     // 9. HSL: per-hue-band saturation. The eight triangular windows are
     //    normalised by their sum, so they are a partition of unity: every band
-    //    at 100 is exactly step 8 at 100, and no hue is boosted twice for
-    //    sitting between two centres.
+    //    at ±100 is exactly step 8 at ±100, and no hue is moved twice for
+    //    sitting between two centres. `amountSum` stays SIGNED — only the
+    //    branch test above uses absolute values.
     if (hslTotal > 0.0) {
         float hue = rp_color_hue(c);
         float centres[8] = { 0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 280.0, 320.0 };
