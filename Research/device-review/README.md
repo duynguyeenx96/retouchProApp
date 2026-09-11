@@ -1,1 +1,1 @@
-Drop AirDropped screenshots from the real iPhone/iPad here (incoming/). Reviewer/coder will move reviewed ones to archive/ with a description.
+Drop AirDropped screenshots from the real iPhone here (incoming/). Reviewer/coder will move reviewed ones to archive/ with a description.

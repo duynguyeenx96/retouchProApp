@@ -82,7 +82,7 @@ extension FaceLandmark478ModelTests {
             report["environment"] = "iOS Simulator (no Neural Engine, executes on the host Mac)"
             report["is_real_device"] = false
         #elseif os(iOS)
-            report["environment"] = "iOS/iPadOS device"
+            report["environment"] = "iOS device"
             report["is_real_device"] = true
         #else
             report["environment"] = "macOS host"

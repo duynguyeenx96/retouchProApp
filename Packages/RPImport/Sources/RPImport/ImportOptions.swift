@@ -11,8 +11,8 @@ public struct ImportOptions: Sendable, Hashable {
     /// Compute a SHA-256 of each file and store it as `Shot.contentHash`.
     ///
     /// Costs one extra full read of the source — measured 0.65 s/GB warm on
-    /// the dev Mac, `Research/bench/rpimport-hash.json`; on an A-series iPad
-    /// reading from a card the card, not SHA-256, is the bottleneck. Turn it
+    /// the dev Mac, `Research/bench/rpimport-hash.json`; reading from a card
+    /// on a mobile device, the card, not SHA-256, is the bottleneck. Turn it
     /// off for the fastest
     /// possible ingest; `skipDuplicates` then has nothing to match on and is
     /// ignored.

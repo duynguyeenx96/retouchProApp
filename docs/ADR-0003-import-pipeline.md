@@ -167,7 +167,7 @@ movie is never pulled over USB only to be rejected.
 ### 8. FolderWatcher polls; kqueue is only a latency optimisation
 
 `FSEventStream` is macOS-only, so it cannot be the mechanism in a package that
-builds for iPadOS. `DispatchSource.makeFileSystemObjectSource` (kqueue) exists
+builds for iOS too. `DispatchSource.makeFileSystemObjectSource` (kqueue) exists
 on both, but a directory kqueue fires only for that directory's own entries —
 not a subdirectory — and is unreliable on removable and network volumes, which
 is precisely the card-reader case.

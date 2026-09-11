@@ -4,7 +4,7 @@ import RPCore
 /// Imports JPEG/ARW off a camera or card reader attached in MTP / mass-storage
 /// mode (PLAN Phase 1 item 3, and PLAN §1.1: MTP import is the stand-in for
 /// tethering until Phase 4 — it needs no vendor PTP command, so it works on
-/// both macOS and iPadOS).
+/// both macOS and iOS).
 ///
 /// Never deletes anything on the camera. ``CameraSession`` has no delete method
 /// to call, and the ImageCaptureCore implementation explicitly clears

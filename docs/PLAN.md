@@ -1,9 +1,9 @@
-# Retouch Pro App — Plan macOS + iPadOS/iOS (slider retouch, preset, batch; tethering ở phase sau)
+# Retouch Pro App — Plan macOS + iOS (slider retouch, preset, batch; tethering ở phase sau)
 
 ## Context
 
 Hôm qua (03/09/2026) đã xong **Retouch Pro panel UXP cho Photoshop** tại
-`/Users/duynguyen/Documents/Claude/Projects/panelpts`. Hôm nay làm **app độc lập** cho macOS + iPad/iPhone,
+`/Users/duynguyen/Documents/Claude/Projects/panelpts`. Hôm nay làm **app độc lập** cho macOS + iPhone,
 cùng loại Evoto / Xingtu / Meitu:
 
 - Import ảnh từ Files, Photos, thẻ nhớ / máy ảnh cắm USB; sau đó **tethered import** (bấm chụp trên máy → ảnh tự vào app).
@@ -13,9 +13,10 @@ cùng loại Evoto / Xingtu / Meitu:
 
 Đã chốt với user (không hỏi lại):
 - **UI theo chuẩn Evoto**: filmstrip trái, canvas giữa, panel slider phải, thanh preset trên.
-- **Swift/SwiftUI native**, một codebase macOS + iPadOS + iOS. Không Flutter.
+- **Swift/SwiftUI native**, một codebase macOS + iOS (iPhone) — **iPadOS đã bị loại bỏ khỏi phạm vi triển khai**
+  (2026-09-11, xem §0.2). Không Flutter.
 - **AI on-device only**, không server.
-- Máy ảnh **Sony a6300** (micro‑USB). iPad đang dùng là **chip A‑series**.
+- Máy ảnh **Sony a6300** (micro‑USB).
 - App **chạy local, không lên App Store** → không cần entitlement phân phối, không cần App Review.
 - **Tethering là thách thức kỹ thuật → đẩy xuống Phase 4**, làm xong editor + preset + batch trước. Lý do ở §1.1.
 
@@ -34,6 +35,30 @@ không phải nội dung phase đang thực thi.
 App vẫn multiplatform (không xoá target iPadOS khỏi Xcode project) — chỉ là không còn build/test/đo hiệu năng trên
 iPad trong giai đoạn này. Khi user báo tiếp tục iPad, thêm lại các tiêu chí/spike này và đổi destination test về
 iPad (A16) hoặc thiết bị thật.
+
+## 0.2 Cập nhật phạm vi (2026-09-11) — loại bỏ hẳn iPadOS
+
+**Ghi đè §0.1**: không còn là "tạm pending" nữa — user quyết định **loại bỏ hẳn việc triển khai trên iPadOS**
+khỏi dự án. Khác §0.1 (chỉ dừng build/test, giữ nguyên target trong Xcode để bật lại dễ), lần này đã sửa trực
+tiếp cấu hình Xcode:
+- `RetouchPro.xcodeproj/project.pbxproj`: `TARGETED_DEVICE_FAMILY` đổi từ `"1,2"` (iPhone+iPad) thành `1`
+  (chỉ iPhone) ở cả 2 target (`RetouchPro`, `RetouchProAppTests`) × 2 config (Debug/Release); xoá
+  `INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad` (không còn ý nghĩa khi device family không có iPad).
+  Đã xác nhận `xcodebuild -list` vẫn parse project bình thường sau khi sửa.
+- `Package.swift` của các package con **không cần sửa** — SPM không phân biệt iPadOS/iPhone, chỉ khai
+  `.iOS(.v18)` chung; giới hạn iPad nằm hoàn toàn ở build setting của app target.
+- Toàn bộ comment trong code nhắc riêng "iPadOS"/"A-series iPad" (RPEngine, RPImport, App target, bench test
+  labels) đã đổi thành "iOS"/"iPhone" cho khớp — không có nhánh code nào thật sự rẽ theo iPad riêng (mọi API
+  dùng đều annotate chung `ios(...)`, không có `#if targetEnvironment(...)` nào phân biệt iPhone/iPad), nên đây
+  thuần là sửa chữ, không phải sửa logic.
+- **Target hiệu năng thấp nhất đổi từ "iPad A-series" sang "iPhone"** — không có tier iPad nữa. Số đo hiệu năng
+  đã ghi trong các ADR trước đây (30 fps preview, export 5-8s...) giữ nguyên làm bar, chỉ đổi phần cứng tham
+  chiếu; không cam kết một model iPhone cụ thể, giữ nguyên cách dự án đang làm ("máy nào có sẵn" — hiện là
+  "IphoneDuy").
+- `.claude/agents/coder.md`/`reviewer.md` đã cập nhật theo (không còn nhắc iPadOS/A-series iPad).
+- Các phần lịch sử thuần tuý (§1 feasibility research gốc, §4 user prep, §6 Nguồn) **giữ nguyên không sửa**,
+  đúng quy ước đã có ở §0.1 — chúng ghi lại nghiên cứu/chuẩn bị của thời điểm còn tính iPad vào scope, không
+  phải nội dung đang thực thi. Đọc chúng với hiểu biết rằng iPad không còn trong phạm vi.
 
 ---
 
@@ -86,14 +111,14 @@ iPad (A16) hoặc thiết bị thật.
 
 ```
 retouchProApp/
-  RetouchPro.xcodeproj        1 app target multiplatform (macOS 15+, iPadOS/iOS 18+), ký Development, chạy local
+  RetouchPro.xcodeproj        1 app target multiplatform (macOS 15+, iOS 18+ — iPhone only), ký Development, chạy local
   App/                        entry, DI, scenes
   Packages/
     RPCore/     Project, Shot, EditState (Codable JSON), Preset, ProjectStore (.rpproj bundle)
     RPVision/   FaceAnalyzer: Vision → CoreML 478 landmarks → CoreML face parsing → SkinCore → FaceAnalysis cache
     RPEngine/   RenderGraph Metal+Core Image: Decode → Color → Skin → Warp(MLS) → Eyes/Teeth → Makeup → Output;
                 PreviewRenderer, ExportRenderer, BatchQueue
-    RPImport/   FilesImporter, PhotosImporter, MTPCameraImporter (ImageCaptureCore: liệt kê + tải file, cả Mac & iPad),
+    RPImport/   FilesImporter, PhotosImporter, MTPCameraImporter (ImageCaptureCore: liệt kê + tải file, cả Mac & iPhone),
                 FolderWatcher (theo dõi thư mục → auto import; dùng cho card reader và cho Mac‑làm‑cầu)
     RPUI/       SwiftUI: ProjectsView, EditorView (Filmstrip / Canvas / SliderPanel / PresetBar), BatchExportView, PresetManager
     RPTestKit/  golden images, eval harness mask/landmark, bench
@@ -498,11 +523,152 @@ Kết quả: `Research/spikes/REPORT.md`, chọn model/độ phân giải theo s
   - **Color**: Exposure, Contrast, Highlights, Shadows, WB (temperature + tint), Vibrance, Saturation, Curves, HSL (8 dải màu), Auto D&B — **18 key**.
 - Golden tests PSNR ≥ 45 dB; bench trên iPhone ghi file.
 
-### Phase 3 — Preset, Batch, Export (2 tuần)
+**Cập nhật design (2026-09-10), Turn 3 canvas — "Bộ công cụ đầy đủ theo ảnh tham chiếu":** design canvas
+(`claude.ai/design/p/60d411fe-...`) thêm 6 màn hình mới (3a-3f) đưa ra một **rail 19 mục** (thay rail 6 nhóm
+hiện tại) theo một app retouch tham chiếu (kiểu Meitu/Facetune), cùng vài chrome mới: khoá nền (background
+lock), chế độ Tự động/Thủ công + cọ mask thủ công, thư viện Mẫu (template), bảng Looks/AI Retouch. Quyết định
+của user: **làm UI/rail trước, các tính năng lớn/tốn effort thì deactivate (hiện dạng khoá/dimmed, không xây
+thuật toán mới đợt này), rồi cập nhật plan** — chi tiết mapping ở `docs/design/SPEC.md` §"Turn 3". Việc cần
+làm ngay (Phase 2, UI-only, không thêm RenderGraph node): rail 19 icon (iPhone ngang dưới, macOS dọc phải),
+nối 5 mục có sẵn engine thật (Mặt, Mắt, Bọng mắt, Răng → panel Mắt&Răng hiện tại, Mịn da + Kiềm dầu → panel
+Da hiện tại) vào các panel **hiện có** (không xây lại UI grid+subtab+single-slider của mockup — pattern đó
+tự nó cũng bị khoá, xem SPEC), 12 mục còn lại (Mẫu, Tự động, Thu gọn, Cơ thể, Sửa da, Săn chắc, Căng mọng,
+Mụn, Đầu, Tạo khối, Xoá vật thể — Trang điểm/Tóc đã khoá sẵn) hiện dimmed/inert giống Trang điểm/Tóc. Khoá
+nền, Tự động/Thủ công, cọ mask, Mẫu, Looks: render nhưng không có tác dụng lên `RenderGraph`/`EditState`.
+Việc lớn bị dời (không phải bỏ, ghi nhận lại theo đúng chỗ đã có trong plan):
+- **Mụn (acne removal)** → đã có trong Phase 5 ("xoá mụn auto + brush heal/clone"), không phải việc mới.
+- **Tóc, Trang điểm** → Phase 5 (đã có).
+- **Cơ thể (body reshape)** → Phase 6 ("body reshape", đã có).
+- **Xoá vật thể (object removal, LaMa inpaint)** → gần với Phase 6 "tóc con bay (LaMa)", mở rộng phạm vi LaMa
+  sang xoá vật thể tự do — ghi thêm vào Phase 6 khi tới lượt, chưa ước lượng riêng.
+- **Mới, chưa có trong plan trước đây — thêm vào Phase 6 "Nâng cao"**: Đầu (head reshape, khác face warp vì
+  đổi cả khung đầu/tóc), Tạo khối (contour — tô sáng/tối theo landmark, gần với "Auto D&B" của nhóm Màu nhưng
+  khoanh vùng theo mesh chứ không toàn khung), Thu gọn/Săn chắc/Căng mọng (slim/firm/plump — nhánh của body
+  reshape, cần body pose/segmentation trước, xem §1.2 "Body pose: để sau"), Sửa da (skin-fix, tên mơ hồ trong
+  mockup — cần hỏi lại ý nghĩa cụ thể khi tới lượt làm, không suy đoán), Tự động (one-tap auto retouch — áp
+  một preset/công thức cố định của toàn bộ nhóm, cần chốt công thức trước khi làm chứ không phải render mới).
+- **Mẫu (template gallery) / Looks (AI Retouch preset picker)**: về bản chất là mở rộng của hệ **Preset** đã
+  có trong Phase 3 (lưu/áp EditState) — khi làm Phase 3 preset UI, cân nhắc dùng lại chính UI Mẫu/Looks này
+  thay vì xây preset UI riêng, nhưng đó là quyết định của lúc làm Phase 3, không phải bây giờ.
+- **Khoá nền (background lock)**: cần segmentation chủ thể để gate node theo mask nền/foreground — chưa có
+  hạng mục riêng trong plan, thêm vào Phase 6 cùng "background clean" (đã ghi ở đó, background lock là tiền
+  đề nhẹ hơn của background clean — làm lock trước blur/clean sẽ tự nhiên hơn).
+- **Chế độ Thủ công + cọ mask (manual paint mask)**: hạ tầng dùng chung cho nhiều tool ở trên (brush add/
+  subtract một mask cục bộ rồi mới áp slider) — thêm vào Phase 6, làm trước khi làm bất kỳ tool "Thủ công" cụ
+  thể nào ở trên vì chúng đều cần nó.
+
+**Cập nhật kế hoạch (2026-09-11), Phase 6 chi tiết + Share Extension:** Input: `docs/HANDOFF-remaining-features-2026-09-10.md` (13 mục rail khoá + yêu cầu Share Extension), 3 research pass
+song song (mask/segmentation, body/head/contour, object-removal+preset+Share Extension — không phải spike đo số,
+chỉ khảo sát API/kỹ thuật khả thi để lên kế hoạch, giống cách §1 ban đầu được viết trước Phase 0). Kết quả: Phase 3
+có thêm một phase con (3B, Share Extension) chạy song song vì không đụng RenderGraph/Vision; Phase 3 tự nó có thêm
+việc nhỏ (mở rộng Preset thành thư viện Mẫu/Looks); Phase 6 được viết lại có **thứ tự phụ thuộc rõ** thay vì một
+danh sách phẳng, cộng một spike mới (S5, giống mẫu spike go/no-go của Phase 4) cho nhóm body reshape. Chi tiết đầy
+đủ từng mục ở §"Phase 6" bên dưới; đây là tóm tắt các quyết định/thay đổi so với `docs/PLAN.md` bản trước:
+
+- **Xác nhận giữ nguyên**: Mụn (Phase 5, DoG+PatchMatch/LaMa nhỏ), Trang điểm/Tóc (Phase 5) — không có gì mới cần
+  nghiên cứu thêm, đúng như HANDOFF §2.2 mục 3/6 đã ghi. Mụn có thêm một ghi chú lịch: nếu Cọ mask (Phase 6.1) đã
+  xong trước khi Phase 5 bắt đầu thì "brush heal/clone" của Mụn nên tái dùng thẳng, không dựng brush riêng.
+- **Mẫu (templates)/Looks chuyển hẳn vào Phase 3** (không phải Phase 6) — về bản chất là UI cho `RPCore.Preset` đã
+  có sẵn CRUD theo-project trong `ProjectStore` (`presets/` bundle). Việc thêm: kho preset **dựng sẵn** (bundle
+  resource, "Cho bạn"), kho preset **toàn cục ngoài project** cho "Của tôi" (project chưa có, chỉ có theo-từng-
+  project — thêm một store nhỏ tái dùng nguyên `Preset`/`AtomicFileWriter`, rỗi Application Support/app container),
+  và favorites (`Set<PresetID>` hoặc field bool). Hai việc này rẻ, không phải thuật toán mới.
+- **Share Extension là Phase 3B mới**, chạy song song Phase 3 (không đụng file chung), chi tiết dưới.
+- **Phase 6 viết lại theo tầng phụ thuộc** (6.0 spike → 6.1 hạ tầng dùng chung → 6.2 việc rẻ độc lập → 6.3 phụ
+  thuộc 6.1 → 6.4 phụ thuộc spike 6.0 → 6.5 Tự động, phụ thuộc Phase 3 xong).
+- **2 câu hỏi cần user chốt trước khi giao việc cho coder** (không tự đoán, xem "Cần quyết định" cuối §Phase 6):
+  Tự động (công thức one-tap), Looks "Cho bạn" (personalization thật hay danh sách tĩnh).
+- **1 câu hỏi cũ đã tự giải quyết được, không cần hỏi lại**: tên project tự tạo khi vào từ Share Extension
+  (HANDOFF §4.1 mục 3) — dự án đã có sẵn `ProjectLibrary.suggestedProjectName()` (`Packages/RPUI/Sources/RPUI/
+  Model/ProjectLibrary.swift:149`, format `"Shoot yyyy-MM-dd"`, dùng khi tạo project rỗng từ UI hiện tại) — dùng
+  lại đúng hàm đó cho nhất quán, không phát minh format mới.
+
+**Cập nhật lần 2 (2026-09-11, cùng ngày):** user quyết định **loại bỏ hẳn "Xoá vật thể" khỏi phạm vi** (không
+phải khoá — cắt hẳn) và **chốt luôn nghĩa của "Sửa da"**, giải quyết 1 trong 3 câu hỏi treo ở trên. Chi tiết ở
+đúng vị trí của từng mục trong §Phase 6 bên dưới (đã sửa trực tiếp, không viết đè bằng block riêng); code cũng
+đã sửa theo (`RailLayout.swift`/`RailLayoutTests.swift`/`docs/design/SPEC.md` — rail còn **18 mục**, 12 khoá,
+không còn "Xoá vật thể"; `Packages/RPUI` 114 test xanh). Tóm tắt lý do:
+- **Xoá vật thể — cắt:** lý do user đưa ra — pipeline nhận diện của dự án (Vision → BlazeFace → mesh 478 điểm →
+  BiSeNet parsing) là **nhận diện khuôn mặt**, không giúp được gì cho việc chọn/xoá một vật thể bất kỳ trong
+  khung hình. Đúng: research đã xác nhận việc này cần dựng cả 1 hạ tầng riêng (cọ chọn vùng tự do + LaMa
+  crop/resize/blend) không tái dùng được gì từ face pipeline hiện có — khác hẳn Mụn (Phase 5), vốn vẫn dùng LaMa
+  nhưng cho **vùng mụn được detect tự động trong mask da đã biết**, không phải chọn tự do. Mụn không bị ảnh
+  hưởng bởi quyết định này.
+- **Sửa da — chốt nghĩa:** không phải tool sửa đốm cục bộ, mà là **đồng bộ hiệu ứng da từ mặt ra toàn thân**. Lý
+  do user đưa ra: các slider Da hiện có (Mịn da, Đều màu da…) chỉ tác động trong mask khuôn mặt (từ BiSeNet, chỉ
+  chạy trên crop quanh mặt) — với ảnh chân dung kiểu beauty, da mặt được làm mịn/đều màu trong khi da cổ/vai/tay
+  lộ ra trong khung vẫn giữ nguyên, tạo ra sự lệch chi tiết nhìn giả. Kỹ thuật cụ thể ở bảng 6.2 bên dưới.
+
+**Cập nhật lần 3 (2026-09-11, cùng ngày):** cả 2 câu hỏi còn treo (Tự động, Looks "Cho bạn") đã được chốt qua
+trao đổi trực tiếp, cộng 1 ý mới của user mở rộng "Tự động" thành 2 giai đoạn. Không còn câu hỏi mở nào chặn
+việc giao task cho coder — mục "Cần quyết định" ở cuối §Phase 6 giữ lại làm log quyết định, không còn mục nào
+đang chờ. Tóm tắt:
+- **Tự động v1 — chốt công thức**: không đụng nhóm Mặt (đúng đề xuất — rủi ro warp sai tỉ lệ), chỉ Da + Color
+  (+ Mắt nhẹ), dùng nguyên công thức khởi đầu đã đề xuất (Mịn da 30, Đều màu da 20, Sáng mắt 15, Auto D&B 40)
+  làm mặc định v1. Có thêm **1 slider cường độ tổng** sau khi áp — kéo giảm/tăng toàn bộ combo thay vì phải vào
+  từng slider riêng. Chi tiết ở 6.5.
+- **Looks/Mẫu "Cho bạn" — chốt: danh sách tĩnh cho v1, đổi tên tab** thành "Nổi bật" (tên trung tính khác cũng
+  được, miễn không hứa hẹn cá nhân hoá mà v1 không làm) — áp dụng cho cả 2 màn Mẫu và Looks.
+- **Ý mới của user — "Tự động v2": cá nhân hoá theo khuôn mặt đã nhận diện.** Thay vì cá nhân hoá kiểu gu-chung
+  (nearest-neighbor theo lịch sử preset, phương án (b) cũ đã bỏ), user đề xuất cụ thể hơn và hay hơn: nếu khuôn
+  mặt trong ảnh đang sửa **trùng với một khuôn mặt đã từng được chỉnh trước đó** (nhận diện qua nhiều ảnh khác
+  nhau, không chỉ trong 1 project), thì khi bấm "Tự động" có thể áp **trung bình các thông số đã dùng cho đúng
+  khuôn mặt đó**, lưu local. Đây là tính năng mới, nặng hơn nhiều so với những gì đã research — cần model
+  **face embedding/re-identification** hoàn toàn mới (pipeline hiện có chỉ detect + landmark + parsing, không
+  nhận diện danh tính), viết thành spike riêng (**S6**) trước khi cam kết effort, tách thành mục **6.6** chạy
+  sau "Tự động v1" chứ không chặn v1. Chính sách đã chốt: khi nhận diện khớp, **gợi ý cho user xác nhận, không
+  tự áp im lặng** — an toàn hơn vì model nhận nhầm người là rủi ro thật (áp sai thông số cho người lạ), đặc biệt
+  khi chưa có đủ số liệu tin cậy từ sử dụng thật. Chi tiết kỹ thuật ở 6.6.
+
+### Phase 3 — Preset, Batch, Export (2 tuần + ~3-4 ngày cho Mẫu/Looks)
 - Preset theo nhóm (Da/Mặt/Color…), thư viện, áp cho ảnh chọn / cả project, **auto-apply mọi ảnh mới vào project** (kể cả từ FolderWatcher/MTP).
 - `BatchQueue` export nền, giới hạn theo GPU memory, thermal-aware trên iPhone.
 - Export JPEG/HEIF/TIFF 8/16‑bit, profile, resize, sharpen sau resize, naming template, về Files/Photos/Share.
 - **Bàn giao workflow đầy đủ (chưa tether)**: chụp → cắm máy/thẻ → ảnh vào project → tấm đầu chỉnh → lock preset → các tấm sau tự áp → export hàng loạt.
+- **Mới (2026-09-11): dùng lại UI rail "Mẫu" đã khoá (`RailLayout`, id `templates`) làm màn preset thay vì xây UI
+  preset riêng** — đúng gợi ý cũ ở HANDOFF §2.2 mục 1. Ba việc thêm, đều là CRUD/plumbing không phải thuật toán:
+  (a) kho preset dựng sẵn (tab **"Nổi bật"** — đổi tên từ "Cho bạn" của mockup, chốt 2026-09-11, xem "Cập nhật
+  lần 3" ở trên: danh sách tĩnh cho v1, không hứa hẹn cá nhân hoá bằng tên tab): `Preset` JSON đóng gói sẵn
+  trong app bundle, decode read-only lúc khởi động; (b) kho preset toàn cục ngoài project ("Của tôi"): store
+  mới nhỏ, tái dùng nguyên `Preset`/`AtomicFileWriter` của `ProjectStore` nhưng gốc ở Application Support
+  (macOS) / app container (iOS) thay vì trong một `.rpproj`, vì preset "của tôi" phải dùng được xuyên project
+  trong khi `ProjectStore.savePreset` hiện chỉ ghi vào đúng 1 project; (c) "Yêu thích": `Set<PresetID>` cờ
+  riêng hoặc field bool trên `Preset`.
+  "Looks/AI Retouch picker" (5 preset màu Gốc/Tự nhiên/Normcore/Sữa/Điện ảnh) dùng chung đúng cơ chế (a), chỉ khác
+  tab hiển thị (cùng đổi tên "Cho bạn" → "Nổi bật") và giới hạn `sections` còn mỗi `color` khi tạo bằng
+  `Preset.init(from:limitedTo:)` (hàm đã có). Cá nhân hoá thật cho tab này — không làm ở v1, xem "Tự động v2"
+  (§Phase 6.6) cho hướng cá nhân hoá thật sự user muốn (theo khuôn mặt nhận diện, không phải theo gu-chung).
+
+### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
+
+Hướng kỹ thuật và UX đích **đã chốt với user** (`docs/HANDOFF-remaining-features-2026-09-10.md` §4.1) — phần dưới
+là chi tiết kỹ thuật xác nhận lại qua research, không phải quyết định mới cần hỏi. Không phụ thuộc RenderGraph/
+Vision nên làm song song Phase 3 được, không đụng file nào Phase 3/6 đụng tới.
+
+1. **Xcode**: thêm 1 target Share Extension mới (**chỉ iOS/iPhone** — iPadOS đã loại khỏi phạm vi §0.2, và Share
+   Extension từ Photos.app trên macOS cũng không phải nhu cầu ở đây, `App/RetouchPro-macOS.entitlements` không
+   đổi). `NSExtensionActivationRule` lọc ảnh qua `NSExtensionActivationSupportsImageWithMaxCount = 1`.
+2. **App Group** `group.com.duynguyen.RetouchPro...` — thêm `com.apple.security.application-groups` vào đúng 2
+   nơi: `App/RetouchPro.entitlements` (target iOS chính, hiện **chưa có** key này — đã đọc trực tiếp file xác
+   nhận) và entitlements riêng của target extension mới. Container chung của App Group là chỗ extension ghi tạm
+   ảnh trước khi app chính đọc.
+3. **Handoff extension → app**: dùng đúng API hỗ trợ chính thức — `NSExtensionContext.open(_:completionHandler:)`
+   gọi URL scheme (`retouchpro://open?...`). **Không dùng `NSUserActivity`/Handoff** — đó là cơ chế continuity
+   liên-thiết-bị khác hẳn, không phải đường extension→containing-app.
+4. **App chính nhận URL**: đi qua đúng `ShotIngestor`/pipeline `.rpproj` sẵn có (tái dùng `PhotosImporter`/ingest
+   code hiện tại, không viết đường ingest riêng) → tạo project mới, tên = `ProjectLibrary.suggestedProjectName()`
+   (đã có sẵn, xem mục "1 câu hỏi cũ đã tự giải quyết được" ở trên) → điều hướng thẳng `EditorView` với shot đó đã
+   chọn — cần route mới ở `RetouchProRootView`/`EditorModel` cho cả 2 case: cold-start và app đang chạy nền.
+5. **Test — không dùng được `devicectl process launch` như các task khác** (Share Extension không có bundle ID
+   launch độc lập, chỉ được người dùng gọi từ Share Sheet của app khác). Hai đường: (a) thủ công — cài qua
+   `devicectl install app` như thường, người test tự mở Photos → Share → chọn RetouchPro; (b) tự động — thêm
+   **1 target XCUITest mới** (project hiện **chưa có** UI test target nào) lái `XCUIApplication` mở host app
+   (Photos hoặc host test riêng) → trigger share sheet → tap icon RetouchPro, chạy được cả Simulator lẫn máy thật
+   qua `xcodebuild test`. Việc "vào thẳng editor, cold-start lẫn app đang chạy nền" nên có test XCUITest riêng
+   cho từng case, đúng yêu cầu ở HANDOFF §4.1 mục 5.
+6. Không có số đo "measure before ship" (không phải thuật toán mask/landmark) nhưng **cần một pass `reviewer`
+   độc lập** theo policy mới (`.claude/agents/reviewer.md`): đây là bề mặt entitlement/data-sharing, nằm đúng
+   trong danh sách "luôn review" dù không phải render code.
 
 ### Phase 4 — Tethered import (3 tuần, có spike go/no‑go riêng ở đầu phase)
 - **Spike T1 (Mac)**: Swift CLI `IOUSBHost` + Sony handshake, bấm chụp body → nhận `0xC201` → `GetObject`. Pass: 20 tấm liên tiếp không mất, < 4 s/tấm, ghi log USB làm fixture. Xác minh: ảnh còn trên thẻ không, RAW+JPEG về đủ không, timeout idle.
@@ -512,10 +678,113 @@ Kết quả: `Research/spikes/REPORT.md`, chọn model/độ phân giải theo s
 ### Phase 5 — Makeup, Heal, Hair v1 (3 tuần)
 - Makeup sliders; xoá mụn auto + brush heal/clone; hair: bóng, tối/sáng, đổi màu.
 
-### Phase 6 — Nâng cao (đánh giá lại)
-- Tóc con bay (LaMa), body reshape, background clean, Canon/Nikon trong PTPStack, iCloud sync.
+### Phase 6 — Nâng cao (viết lại 2026-09-11, theo thứ tự phụ thuộc)
 
-Ước lượng Phase 0–3: **~8 tuần**; Phase 4: +3 tuần.
+Base cũ (Tóc con bay/flyaway hair qua LaMa, background clean, Canon/Nikon trong PTPStack, iCloud sync) giữ
+nguyên, không nghiên cứu lại lần này. Phần mới là 13 mục rail khoá từ turn 3 (`docs/HANDOFF-remaining-
+features-2026-09-10.md` §2.2) — viết theo **tầng phụ thuộc** thay vì danh sách phẳng, vì một nửa số mục chỉ làm
+được sau khi hạ tầng dùng chung xong.
+
+**6.0 — Spike go/no-go cho nhóm body reshape (S5, ~1.5 tuần, làm trước 6.4)**
+
+Giống mẫu spike T1 của Phase 4: đo trước khi cam kết effort. Câu hỏi: cơ thể chỉ có ~19-21 khớp thưa từ
+`VNDetectHumanBodyPoseRequest` (2D, iOS 14+) / `VNDetectHumanBodyPose3DRequest` (3D mét, iOS 17+) — so với 478
+điểm dày của `FaceReshape` — có đủ làm control point cho MLS warp cơ thể không, hay bắt buộc cần mesh cơ thể
+dày kiểu SMPL (không có đường convert on-device sẵn có, sẽ là một dự án model-conversion mới ngang hoặc nặng
+hơn S1/S2). Hướng đo: `VNGeneratePersonSegmentationRequest` lấy silhouette → dò biên (`VNContoursRequest` hoặc
+trace Metal/CPU) → gắn control point MLS dọc biên đó thay vì chỉ tại khớp → so lệch với ground-truth thủ công
+trên vài ảnh thật. Pass: warp không tạo méo/blob ở vùng giữa hai khớp liền kề. Fail: ghi rõ lý do, xuống thang
+độ tham vọng của 6.4 (xem dưới) thay vì cố làm tiếp không đo.
+
+**6.1 — Hạ tầng dùng chung (làm trước mọi tool cần vùng chọn cục bộ)**
+
+| Hạng mục | Mục tiêu | Kỹ thuật | Effort |
+|---|---|---|---|
+| Cọ mask thủ công | Vẽ/xoá 1 mask cục bộ (brush add/subtract) rồi áp slider chỉ trong vùng đó — tiền đề bắt buộc của "brush heal/clone" trong Mụn (Phase 5) và mọi "chế độ Thủ công" sau này | Stroke = vector `(điểm, áp lực)`, KHÔNG dùng PencilKit (`PKCanvasView` không hợp mục đích mask, mutate `PKStroke` phá `UndoManager` theo tài liệu Apple) — tự bắt `UITouch`/`NSEvent`, rasterize bằng compute shader (splat tròn mềm, falloff) vào texture `r8Unorm` ngoài màn hình, add/subtract là cờ blend-mode của kernel. Undo = replay lại danh sách stroke từ đầu (rẻ ở độ phân giải mask, không cần snapshot texture). Gate node hiện có bằng đúng pattern `MaskRasteriser`/`RenderMaskKind` đã có từ ADR-0009 (nhân mask vào coverage trước khi composite) — không phải kỹ thuật mới, chỉ thêm 1 nguồn mask nữa. Lưu trữ: **không** nhét bitmap vào `EditState` JSON — theo đúng quy ước Lightroom/Photoshop, ghi PNG nén vào `masks/<shot id>/<mask id>.png` (thêm subfolder mới cạnh `originals/previews/edits/presets` trong `.rpproj`), `EditState.perImage` chỉ giữ id tham chiếu (đúng namespace hiện có cho dữ liệu theo-ảnh, không transfer qua preset). | ~1.5-2 tuần |
+| Khoá nền (background lock) | Chặn hiệu ứng lan ra nền, cần subject mask | `VNGeneratePersonSegmentationRequest` (iOS 15+/macOS 12+) — khác hẳn pipeline BiSeNet/BlazeFace hiện có của RPVision (bài toán foreground/background, không phải face parsing), dùng thẳng request có sẵn của Vision, không cần convert model mới. `qualityLevel` `.fast`/`.balanced`/`.accurate` — Apple khuyến nghị `.fast` cho tương tác, `.accurate` có độ trễ đáng kể; **chưa có số đo trên A-series/iPhone**, phải bench như mọi node khác trước khi bật mặc định. Output alpha mask gate y hệt pattern `MaskRasteriser`. Có thể làm **trước** cọ mask vì đơn giản hơn (không cần input vẽ tay) và tự nó validate luôn con đường "mask ngoài-mặt gate node" mà cọ mask cũng cần. | ~0.5-1 tuần |
+
+**6.2 — Việc rẻ, không phụ thuộc 6.1 (làm sớm được, song song 6.0/6.1)**
+
+| Hạng mục | Mục tiêu | Kỹ thuật | Effort |
+|---|---|---|---|
+| Tạo khối (Contour) | Tô sáng/tối theo khối mặt (gò má, sống mũi, hàm) theo mesh, không toàn khung | Xác nhận đúng hướng đã đoán ở HANDOFF: `ColorRenderNode` hiện tại của Auto D&B **đã global, chưa mask** (đọc code xác nhận). Chỉ cần thêm: vài mask ellipse/radial mềm neo tại index landmark 478 điểm sẵn có (tam giác gò má dưới mắt, đường sống mũi qua `tNasion`/`tNoseTip` `FaceReshape` đã tính, dải hàm theo oval mặt), rồi nhân mask đó vào đúng công thức dodge/burn LUT đã có. Không landmark mới, không model mới, không kernel Metal họ mới. | ~0.5 tuần |
+| Đầu (Head reshape) | Warp cả khung đầu/viền tóc, không chỉ landmark mặt | Vision không có API viền đầu/tóc riêng, nhưng RPVision **đã có** — `FaceParsingClass.hair`/`FaceParsingGroup.hair` từ BiSeNet (ADR-0006/S2). Dò biên ngoài của mask tóc (`VNContoursRequest` hoặc trace CPU/Metal) làm control point MLS thêm, kết hợp mở rộng vòng oval mặt (478 điểm) ra ngoài theo tỉ lệ neo vào biên tóc đó — cùng họ với `FaceReshape` (identity handle + vùng trọng số) hơn là một bài toán model mới. Cần vòng đo mới kiểu ADR-0010 (chưa có ground-truth viền tóc trên ảnh a6300 thật). | ~1.5 tuần |
+| **Sửa da — đồng bộ da toàn thân** (nghĩa chốt 2026-09-11) | **Không phải bộ slider mới.** Mở rộng đúng 8 slider Da hiện có (Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn) từ mask-chỉ-trong-mặt ra một mask da-toàn-thân, dùng **cùng giá trị** người dùng đã chỉnh cho mặt — để da cổ/vai/tay lộ trong khung không bị lệch tông/độ mịn so với mặt vừa beauty. | Mask da hiện có (BiSeNet, ADR-0006) chỉ chạy trên **crop quanh mặt**, không phủ toàn khung — cần một mask "da" full-frame mới, khác nguồn. Rẻ nhất, không cần model mới: **skin-color classification cổ điển** (ngưỡng theo không gian màu YCbCr/HSV, kỹ thuật CV kinh điển, không phải deep learning) chạy toàn ảnh; đo IoU trên bộ ảnh test nhiều tông da khác nhau trước khi ship, đúng "measure before ship" (giống phương pháp đo của S2). Có thể **cộng thêm** (không bắt buộc) `VNGeneratePersonSegmentationRequest` (Khoá nền, 6.1) để loại false-positive nền màu da (gỗ, cát, tường be) — v1 ship được chỉ với ngưỡng màu, v2 cộng segmentation khi 6.1 xong. Mask da-toàn-thân và mask da-mặt (BiSeNet) phải **hợp nhất mượt** (feather ở cổ) để không lộ đường biên hai mask ráp lại. Wrinkle kiến trúc đáng ghi chú: `SkinRenderNode` hôm nay chỉ nhận mask **theo từng mặt** (`FaceRenderInput`/seam `faces`), còn mask da-toàn-thân là **whole-frame, không theo mặt** — cần mở seam để node nhận thêm 1 mask phụ whole-frame, hợp nhất trước khi dispatch (không phải viết kernel mới, `SkinRenderNode`'s kernel đã đo 79 dB, chỉ đổi input mask). UI: một toggle (không phải panel slider riêng) — chi tiết UI chốt lúc build. | ~1-1.5 tuần, không phụ thuộc 6.1 (Khoá nền là nâng cấp tuỳ chọn, không chặn) |
+
+**6.3 — Phụ thuộc 6.1**
+
+| Hạng mục | Mục tiêu | Kỹ thuật | Effort |
+|---|---|---|---|
+| Săn chắc (Firm) | Hiệu ứng săn chắc da tay/chân, khả năng cao là **không hình học** | Local-contrast/dodge-burn trên da chi, giống Contour/Auto D&B hơn là warp — cần mask vùng chi, tái dùng silhouette từ Khoá nền (6.1) thay vì tự phân vùng lại. Không cần đợi spike 6.0 vì không đụng hình học. | ~0.5-1 tuần, phụ thuộc Khoá nền |
+
+**Đã cắt khỏi phạm vi (2026-09-11): Xoá vật thể (Object removal).** Quyết định của user — pipeline nhận diện
+hiện có của dự án là nhận diện **khuôn mặt** (Vision → BlazeFace → mesh 478 điểm → BiSeNet), không giúp được gì
+cho việc chọn/xoá vật thể bất kỳ trong khung; mở rộng LaMa sang "vùng tự do người dùng chọn" sẽ cần dựng nguyên
+1 hạ tầng crop/resize/blend + validate-bằng-QA-không-PSNR mới toanh, không tái dùng được gì từ face pipeline —
+khác hẳn Mụn (Phase 5) vẫn giữ LaMa nhưng cho vùng mụn **tự động detect trong mask da đã biết**, không phải
+chọn tự do; Mụn không bị ảnh hưởng. Không còn là rail item (`RailLayout.swift`), không còn trong SPEC.md.
+
+**6.4 — Phụ thuộc spike 6.0**
+
+| Hạng mục | Mục tiêu | Nếu spike 6.0 go | Nếu spike 6.0 no-go |
+|---|---|---|---|
+| Thu gọn (slim), Cơ thể (body) | Warp hình học vùng eo/thân | MLS neo theo biên silhouette (kỹ thuật đo ở 6.0), ~2-3 tuần/mục | Giảm phạm vi xuống warp đơn giản quanh 1 bounding-box (kém chính xác hơn nhiều, cần user chấp nhận đánh đổi) hoặc hoãn vô thời hạn — **ghi lại quyết định, không tự chọn nhánh** |
+| Căng mọng (plump) | Phóng to cục bộ (ngực/hông) quanh khớp cơ thể | Cùng cơ chế MLS silhouette-anchored, ~2-3 tuần | Cùng đánh đổi như trên |
+
+**6.5 — Tự động v1 (one-tap auto retouch, công thức cố định)**
+
+Phụ thuộc Phase 3 (Preset UI) xong. **Công thức chốt 2026-09-11** (xem "Cập nhật lần 3" đầu §Phase 6): không
+đụng nhóm Mặt (an toàn — warp hình học sai tỉ lệ dễ bị chê hơn nhiều so với chỉnh da/màu quá tay, và có thể
+chỉnh lại bằng slider thường), chỉ Da + Color (+ Mắt nhẹ) — **Mịn da 30, Đều màu da 20, Sáng mắt 15, Auto D&B
+40** là mặc định v1. Kỹ thuật: áp 1 `Preset` cố định qua `EditState.applying(_:mode:)` đã có sẵn
+(`RPCore/Preset.swift`) — không phải render mới. Cộng thêm **1 slider "cường độ tổng"** (chốt cùng lúc): sau
+khi áp công thức mặc định, 1 thanh trượt riêng scale toàn bộ combo lên/xuống thay vì user phải vào từng slider
+— kỹ thuật là nhân hệ số scale [0,1] vào từng giá trị trong `Preset` trước khi `applying`, không phải slider
+mới trong `EditState` (không lưu riêng, tính lại mỗi lần user kéo). Effort kỹ thuật ~2-3 ngày.
+
+**6.6 — Tự động v2: cá nhân hoá theo khuôn mặt đã nhận diện (mới, đề xuất 2026-09-11)**
+
+Ý của user: nếu khuôn mặt trong ảnh đang sửa **trùng với một khuôn mặt đã từng được chỉnh trước đó** (nhận
+diện qua nhiều ảnh khác nhau, không giới hạn trong 1 project), "Tự động" nên **gợi ý áp trung bình các thông số
+đã dùng cho đúng khuôn mặt đó**, lưu local — khác hẳn cá nhân hoá kiểu "gu chung" (nearest-neighbor theo lịch
+sử preset nói chung) đã cân nhắc trước đó cho tab Looks/Mẫu, và **hay hơn** vì đúng ngữ cảnh "chỉnh ảnh cho
+khách quen" của 1 app photographer. Phụ thuộc 6.5 (dùng chung cơ chế áp Preset) và cần 1 spike mới trước khi cam
+kết effort, vì đây là bài toán khác hẳn mọi thứ pipeline hiện có:
+
+- **Cần model mới: face embedding / re-identification.** Pipeline hiện có (Vision → BlazeFace → mesh 478 điểm
+  → BiSeNet parsing) chỉ **detect** (tìm mặt, landmark, phân vùng) chứ không **nhận diện danh tính** (đây là
+  mặt của ai). Apple Vision không có API công khai cho việc này (Photos app có "People" nội bộ, không public).
+  Cần convert 1 model embedding nhỏ gọn (kiểu ArcFace/MobileFaceNet — biến 1 crop khuôn mặt thành 1 vector,
+  cùng người thì vector gần nhau theo cosine similarity) sang Core ML, đúng quy trình `coremltools` đã dùng cho
+  BlazeFace/landmark/parsing.
+- **Spike S6 (~1.5-2 tuần, go/no-go trước 6.6, giống mẫu S1/spike 6.0):** đo **false-accept rate** (nhận nhầm 2
+  người khác nhau là 1 — rủi ro chính, vì áp sai thông số cho người lạ là lỗi rất dễ bị phát hiện, mất uy tín
+  1 app ảnh chuyên nghiệp) và false-reject rate trên ảnh thật. **Rủi ro logistics cần lường trước**: bộ ảnh test
+  hiện có (`Research/data/`) nhiều khả năng chưa có đủ "cùng 1 người, nhiều ảnh/buổi chụp khác nhau" để đo —
+  khác spike 6.0 (chỉ cần ảnh người bất kỳ) hoặc S1/S2 (so với ground-truth công khai) — có thể cần user chụp/
+  cung cấp thêm ảnh test trước khi chạy spike này.
+- **Lưu trữ**: kho danh tính (embedding centroid + trung bình trượt các thông số Da/Color đã dùng cho danh tính
+  đó) phải ở **ngoài project** (giống store "Của tôi" ở Phase 3, vì 1 người có thể xuất hiện ở nhiều project/
+  buổi chụp khác nhau) — Application Support (macOS) / app container (iOS), không phải trong `.rpproj`.
+- **Chính sách đã chốt (2026-09-11): gợi ý, không tự áp im lặng.** Khi khớp danh tính đạt ngưỡng tin cậy, hiện
+  gợi ý (preview + nút xác nhận) thay vì tự động áp — giảm hậu quả của 1 lần nhận nhầm xuống "user bấm bỏ qua"
+  thay vì "âm thầm áp sai thông số". Có thể nới sang tự áp khi đã có đủ số liệu tin cậy thật từ sử dụng, nhưng
+  đó là quyết định của một lần sau, không phải v2.
+- Effort: ~1.5-2 tuần spike (S6) + ~1-1.5 tuần nối vào "Tự động" (kho danh tính, matching, UI gợi ý/xác nhận)
+  nếu spike go ≈ **~3-3.5 tuần**, tách hẳn khỏi 6.5 nên không chặn "Tự động v1" ra mắt trước.
+
+### Cần quyết định — log quyết định (không còn câu hỏi mở, xem "Cập nhật lần 3" đầu §Phase 6)
+
+Toàn bộ câu hỏi mở của bản plan trước (Sửa da, Tự động, Looks "Cho bạn") đã được chốt qua trao đổi 2026-09-11 —
+xem "Cập nhật lần 2"/"Cập nhật lần 3" ở đầu §Phase 6 và các mục 6.2/6.5/6.6 tương ứng. Mục này giữ lại làm log,
+không còn gì đang chờ; câu hỏi mở duy nhất còn lại trong toàn bộ Phase 6 là kết quả **spike S6** (6.6) và
+**spike 6.0** (body reshape) — cả hai là việc *đo*, không phải việc *hỏi*.
+
+Ước lượng Phase 0–3: **~8 tuần** (+ ~3-4 ngày Mẫu/Looks trong Phase 3); Phase 3B (Share Extension): **+1.5-2
+tuần**, song song Phase 3; Phase 4: +3 tuần; Phase 6 (turn-3 phần mới, không tính base cũ, Xoá vật thể đã cắt):
+**6.0 spike ~1.5 tuần + 6.1 ~2-3 tuần + 6.2 ~3-3.5 tuần (Tạo khối + Đầu + Sửa da) + 6.3 ~0.5-1 tuần (Săn chắc) +
+6.4 ~4-6 tuần nếu spike 6.0 go + 6.5 ~2-3 ngày + 6.6 ~3-3.5 tuần nếu spike S6 go ≈ 15-19.5 tuần tuỳ kết quả 2
+spike** — số này để chèn timeline tổng, không phải cam kết cứng.
 
 ---
 
@@ -550,3 +819,15 @@ Kết quả: `Research/spikes/REPORT.md`, chọn model/độ phân giải theo s
 - Face parsing → Core ML: https://github.com/zllrunning/face-parsing.PyTorch/issues/27
 - LaMa Core ML: https://github.com/john-rocky/lama-cleaner-iOS
 - Evoto features: https://shotkit.com/evoto-ai-review/
+
+**Thêm (2026-09-11), nghiên cứu Phase 6 chi tiết + Share Extension:**
+- Vision person segmentation: https://developer.apple.com/documentation/vision/vngeneratepersonsegmentationrequest ,
+  quality levels: https://developer.apple.com/documentation/vision/vngeneratepersonsegmentationrequest/qualitylevel
+- Vision person instance mask (multi-person, iOS 17+): https://developer.apple.com/documentation/vision/vngeneratepersoninstancemaskrequest?language=objc
+- Vision body pose 3D (iOS 17+), WWDC23 "Explore 3D body pose and person segmentation in Vision"
+- LaMa project/paper (FFC, image-wide receptive field claim): https://advimman.github.io/lama-project/
+- App Extension Programming Guide — Share: Apple Developer Documentation
+- App Groups entitlement (`com.apple.security.application-groups`): Apple Developer Documentation
+- `NSExtensionActivationSupportsImageWithMaxCount`: Apple Developer Documentation
+- Share Extension UI testing pattern (XCUITest driving the system share sheet): SwiftLee, "Share Extension UI Tests
+  written in Swift"

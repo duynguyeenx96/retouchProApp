@@ -130,6 +130,15 @@ public final class EditorChrome {
         activeGroupKey = key
     }
 
+    /// Tapping a rail item (docs/design/SPEC.md §Turn 3). An item with no
+    /// section behind it does **nothing at all** — it does not clear the
+    /// selection and does not switch the panel — and an item pointing at a
+    /// locked section is stopped by ``selectGroup(_:)`` for the same reason, so
+    /// the view layer needs no conditional of its own.
+    public func selectRailItem(_ item: RailItemDescriptor) {
+        if let key = item.sectionKey { selectGroup(key) }
+    }
+
     public func cycleSubject() { subject = subject.next }
 }
 

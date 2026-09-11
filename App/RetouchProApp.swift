@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Entry point for the multiplatform app (macOS 15+, iPadOS/iOS 18+).
+/// Entry point for the multiplatform app (macOS 15+, iOS 18+ — iPhone only,
+/// iPadOS deployment removed 2026-09-11, see docs/PLAN.md §0.2).
 ///
 /// The scene shows `RPUI.RetouchProRootView`: the projects list, then the
 /// project the user opens — library (docs/design 2a / 2c) and editor (1a / 1b).

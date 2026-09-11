@@ -56,7 +56,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$ROOT/RetouchPro.xcworkspace"
 SCHEME="RetouchPro"
-# Plan §0.1: iPad is paused, iOS means iPhone. Same default as Scripts/test.sh.
+# Plan §0.2: iPadOS deployment was removed entirely, iOS means iPhone. Same default as Scripts/test.sh.
 IOS_DESTINATION="${RP_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
 OUT_DIR="$ROOT/Research/bench"
 WHICH="${1:-all}"

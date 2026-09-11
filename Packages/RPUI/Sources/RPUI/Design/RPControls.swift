@@ -46,7 +46,14 @@ struct RPSliderRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Phone rows (`thumbSize > 12`) get extra vertical padding beyond the
+        // Mac's — a mouse never competes with the sheet's own scroll gesture,
+        // but a short row on the phone leaves almost no label-only band to
+        // start a scroll from, so a scroll flick keeps landing on the track
+        // (`RPSliderTrack`'s minimumDistance/direction test only disambiguates
+        // *after* the finger lands there). Taller rows give the finger more
+        // room to land above the track instead.
+        VStack(alignment: .leading, spacing: thumbSize > 12 ? 11 : 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label)
                     .font(RPTheme.text(thumbSize > 12 ? 13 : 12.5))
@@ -61,7 +68,7 @@ struct RPSliderRow: View {
                 value: value, range: range, thumbSize: thumbSize, isEnabled: isEnabled,
                 onChange: onChange, onCommit: onCommit)
         }
-        .padding(.vertical, thumbSize > 12 ? 9 : 8)
+        .padding(.vertical, thumbSize > 12 ? 14 : 8)
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)

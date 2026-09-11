@@ -146,7 +146,10 @@ public enum RPTheme {
         public static let macFilmstripHeight: CGFloat = 104
         public static let macFilmstripThumbnail = CGSize(width: 68, height: 76)
         public static let macPanelWidth: CGFloat = 326
-        public static let macRailWidth: CGFloat = 56
+        // 64pt: the Turn 3 canvas's screen 3f specs a 64pt rail for the
+        // 19-item far-right icon rail (docs/design/SPEC.md "Turn 3"), up from
+        // screen 1b's 56pt 6-item rail.
+        public static let macRailWidth: CGFloat = 64
         public static let macSliderThumb: CGFloat = 12
         /// The 2 px gap between the "Trước" and "Sau" panes.
         public static let macCanvasGap: CGFloat = 2

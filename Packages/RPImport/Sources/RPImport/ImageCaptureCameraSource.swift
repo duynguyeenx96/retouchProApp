@@ -7,7 +7,7 @@ import RPCore
     /// The real ``CameraDeviceSource``, on top of ImageCaptureCore.
     ///
     /// ImageCaptureCore is the one camera API that exists on **both** macOS and
-    /// iPadOS (PLAN §1.1), which is why MTP import — not tethering — is what
+    /// iOS (PLAN §1.1), which is why MTP import — not tethering — is what
     /// Phase 1 ships. Every API used here is annotated `macos(10.4+), ios(13+)`
     /// (checked against the SDK headers), so there is one code path, not two.
     ///
@@ -18,7 +18,7 @@ import RPCore
     /// PLAN Phase 0 spike S5 and a manual smoke test.
     ///
     /// **Host app requirements** (owned by `App/`): on macOS the sandbox needs
-    /// `com.apple.security.device.usb`; on iPadOS a connected camera is visible
+    /// `com.apple.security.device.usb`; on iOS a connected camera is visible
     /// without an entitlement but only while the app is in the foreground.
     public final class ImageCaptureCameraSource: NSObject, CameraDeviceSource, @unchecked Sendable {
         private let browser = ICDeviceBrowser()

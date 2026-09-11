@@ -38,7 +38,7 @@ for bundle in RPCoreTests RPVisionTests RPEngineTests RPImportTests RPUITests \
         exit 1
     fi
 done
-# Plan §0.1: iPad is paused, iOS means iPhone for now.
+# Plan §0.2: iPadOS deployment was removed entirely, iOS means iPhone.
 # The name must exist on the *latest* installed runtime, because xcodebuild resolves
 # a name-only destination with OS:latest. On this machine `iPhone 16` only exists on
 # the iOS 18.0 runtime (iOS 26.3 ships 17/17 Pro/Air/16e), so `name=iPhone 16` alone

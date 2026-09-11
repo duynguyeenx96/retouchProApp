@@ -80,3 +80,97 @@ keep engine key order authoritative. Do not reorder or rename engine keys to mat
 4. **Locked groups** (Trang điểm, Tóc) must render (dimmed, inert) — do not hide them, so the shell shows the full future taxonomy per plan.
 5. **Star rating & filters** on library screens are simple metadata on `Shot`/`Project` (rating int, format tag) — not gated behind Phase 2 vision work.
 6. All copy is Vietnamese, matching the mockup's exact strings where given (e.g. "Xuất ảnh", "Đặt lại", "Đồng bộ") — keep these as literal user-facing strings, not placeholders.
+
+## Turn 3 — expanded toolset rail (screens 3a-3f, added 2026-09-10)
+
+**Scope decision (user, 2026-09-10):** this turn adds a much bigger tool taxonomy (19-item rail vs. the
+6-group taxonomy above) plus several genuinely new capabilities — manual mask brush, background lock via
+segmentation, one-tap "Tự động" retouch, body/head reshape, contouring, object removal, acne removal, a
+template gallery, and a curated "Looks" picker. **Directive: ship the navigation/visual shell for all of it,
+wire only what already has a real engine slider behind it, and lock everything else** using the same dimmed/
+inert treatment already established for Trang điểm/Tóc in Screen 1a/1b — do not build new render-graph
+capability as part of this pass. See `docs/PLAN.md` new phase entry for the deferred-work list.
+
+### The 19-item rail (icon + label, from the canvas script's `RAIL` const, in order)
+Mẫu(layers) · Răng(tooth) · Tự động(spark) · Trang điểm(brush) · Mặt(face) · Thu gọn(slim) · Cơ thể(body) ·
+Mịn da(drop) · Sửa da(spark) · Săn chắc(slim) · Căng mọng(drop) · Mụn(oval) · Đầu(oval) · Tạo khối(spark) ·
+Kiềm dầu(drop) · Mắt(eye) · Bọng mắt(eye) · Tóc(hair) · Xoá vật thể(erase).
+
+Render all 19 as a horizontal scroll rail on iPhone (screen 3a, bottom of tool sheet) and a vertical 64pt icon
+rail on macOS (screen 3f, far right) — same icon/label pairs both places. Active item = mint icon + mint
+12%-opacity pill background; inactive = `#c9ccd1`/transparent.
+
+**Icon fidelity (decided during implementation, 2026-09-10):** for the 6 active items, the rail icon is the
+underlying `SliderSectionDescriptor.systemImage` it opens, not the mockup's own hand-drawn glyph — e.g. "Răng"
+uses the `eye` SF Symbol (the shared Mắt & Răng panel's icon) rather than a tooth glyph, so the rail icon can
+never visually disagree with the panel it opens. This is intentional and permanent, not a placeholder — SF
+Symbol fidelity to the mockup's custom icon set was never a goal (the mockup's icons are hand-drawn SVG paths
+with no SF Symbol equivalent for most of them anyway).
+
+**Wiring policy — active vs. locked:**
+| Rail item | Status | Behavior |
+|---|---|---|
+| Mặt | **Active** | Opens the existing Face/Warp slider panel (all 15 keys, current flat `SliderPanelView` list — not the new per-tool grid described below, that grid UI is itself locked, see below) |
+| Mắt, Bọng mắt | **Active** (both) | Opens the existing Mắt & Răng panel filtered/scrolled to the 3 eye keys (Sáng mắt, Trắng lòng trắng, Nét mắt). Two rail entries intentionally point at the same real panel — do not build separate eye-bag logic. |
+| Răng | **Active** | Opens the existing Mắt & Răng panel scrolled to Trắng răng |
+| Mịn da, Kiềm dầu | **Active** | Opens the existing Da/Skin panel (Mịn da, Khử bóng dầu already exist as real keys there) |
+| Trang điểm, Tóc | Locked (Phase 5, unchanged) | Same treatment as Screen 1a/1b already spec'd |
+| Mẫu, Tự động, Thu gọn, Cơ thể, Sửa da, Săn chắc, Căng mọng, Mụn, Đầu, Tạo khối | **Locked, new phase** | Dimmed 38% opacity, tap is inert (no crash, no panel switch, optional "chưa khả dụng" toast) — no engine work backs these yet |
+| ~~Xoá vật thể~~ | **Cut from scope (2026-09-11)** | Removed from the shipped rail entirely — not locked, not present. See callout below. |
+
+**Cut from scope (decided 2026-09-11):** "Xoá vật thể" (free-form object removal) is removed from the rail
+entirely, not merely locked — user's call, reasoning: the project's face pipeline (Vision → BlazeFace →
+478-point mesh → BiSeNet parsing) has no bearing on arbitrary objects anywhere in a frame, so there's no
+existing model/detector this feature could lean on the way other locked items lean on landmarks/parsing; it
+would need a from-scratch selection+inpainting subsystem (manual brush selection + LaMa crop/resize/blend, per
+`docs/PLAN.md`'s research) with no reuse of what the project has built. `Mụn`'s planned LaMa use (Phase 5, DoG
+blob-detect → heal, large areas via LaMa) is **not** affected — that is blob-detected blemishes inside a known
+skin mask, a different and much narrower problem than free-form user-selected regions. Do not resurrect this
+rail item without a new explicit decision; the canvas's own `RAIL` const in `RetouchPro.dc.html` still lists it
+(design source, left as-is) — the shipped `RailLayout.swift` deliberately diverges here, same pattern as the
+existing reorder-vs-canvas deviation already documented there.
+
+### Per-tool grid + single-intensity-slider pattern (screens 3b/3e/3f `faceTools`/`eyesTools`/`teethTools`)
+The mockup's finer interaction — pick a sub-region tab (`faceSub`: Biểu cảm/3D Reshape/Tỷ lệ/Khuôn mặt/Chân
+mày/Mắt/Mũi/Môi), then a grid of named tool icons (`FACE_TOOLS`: HD Portrait, Tự động, Độ rộng, Nâng, Làm
+mượt, Thái dương, Gò má, Dài cằm, Ngấn cổ, Ngấn Pro, Cằm V, Mặt V, Góc hàm, Đường hàm, Đường chân tóc), then
+one generic "Cường độ" slider for whichever tool is selected — is a **different micro-UX from the current
+flat-list panel** and most of those named tools (HD Portrait, Ngấn cổ/double-chin, Ngấn Pro, Cằm V, Mặt V,
+Đường chân tóc, etc.) have no corresponding `WarpSliders.Key`. **This whole pattern is locked/deferred** —
+do not build the subtab+grid+single-slider chrome this pass. Same for `EYES_TOOLS` (10 named tools, only
+"Sáng mắt" exists) and `TEETH_TOOLS` (5 named tools, only "Làm trắng" ≈ existing Trắng răng).
+
+### New chrome, all locked/inert this pass
+- **Khoá nền (background lock)** — pill toggle with switch knob, appears on canvas (3b/3c, floating bottom-
+  center) and in the macOS toolbar (3f). Render the toggle and let it flip its own visual state, but it must
+  not gate any render node — no segmentation work this pass.
+- **Tự động / Thủ công (Auto/Manual mode segmented control)** — appears in 3c/3e/3f. "Tự động" stays selected
+  and active (it's just today's automatic slider behavior); "Thủ công" (manual) renders but is locked — tapping
+  it must not switch modes.
+- **Cỡ cọ (brush size) + Vẽ/Xoá (brush add/erase) + mask-mode icons (Cổ điển/Nhanh/Phục hồi)** — only ever
+  shown once "Thủ công" is reachable, which it isn't. Render statically dimmed for visual completeness if
+  the manual-mode screen is built at all; do not wire pointer/drag handling for a paint mask.
+- **Mẫu (templates)** — category tabs (Cho bạn/Của tôi/Yêu thích) + thumbnail strip + "Thêm" add card. Fully
+  locked: render the gallery, selection state may exist locally in the view but must not call
+  `EditState`/`Preset` apply.
+- **Looks / AI Retouch** (screen 3d) — tabs "AI Retouch / Cho bạn / Thêm" + 5 preset swatches (Gốc, Tự nhiên,
+  Normcore, Sữa, Điện ảnh) + a `lookTabs` row (Tỷ lệ/Looks/Kết cấu) + one intensity slider. Fully locked, same
+  render-but-inert rule as Mẫu.
+
+**Tab rename (decided 2026-09-11, applies when these screens are built in Phase 3):** the mockup's "Cho bạn"
+tab in both Mẫu and Looks ships as a **static curated list**, not real personalization, for v1 — real
+per-person personalization is a separate later feature (`docs/PLAN.md` §Phase 6.6, "Tự động v2"). Shipping the
+label "Cho bạn" over a static list over-promises, so the tab is **renamed to "Nổi bật"** (or another neutral
+label — not a hard requirement on the exact word, just: not "Cho bạn") in the real implementation. The two
+strings above are still the mockup's literal wording, left as-is for canvas fidelity.
+
+### macOS panel (3f) structural note
+Right panel restructures to: `faceSub` tabs → mode segmented control + "Toàn mặt" dropdown → faceTools 4-col
+grid → one slider → brush size + brush mode row → far-right 64pt icon rail (the 19-item RAIL, vertical). This
+whole right-panel restructuring is itself part of the locked per-tool-grid pattern above — **do not replace
+the current working macOS slider panel** with this structure. Only the vertical 19-item rail is new/real
+navigation to build; it should sit where the existing 6-icon group rail sits today, superseding it (19 items
+instead of 6, since Mặt/Mắt/Răng/Mịn da/Kiềm dầu now live in this rail per the table above) — confirm this
+replacement doesn't orphan Màu/Trang điểm/Tóc access (Màu isn't in the 19-item rail at all in the mockup;
+keep a way to reach the Color panel — e.g. keep it as an always-visible top-level tab alongside the rail
+rather than dropping it).

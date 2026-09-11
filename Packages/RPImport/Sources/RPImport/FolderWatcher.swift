@@ -22,7 +22,7 @@ public enum FolderWatcherEvent: Sendable {
 ///
 /// ## Why polling and not FSEvents
 ///
-/// `FSEventStream` is macOS-only, and RPImport has to build for iPadOS too, so
+/// `FSEventStream` is macOS-only, and RPImport has to build for iOS too, so
 /// it cannot be the mechanism. `DispatchSource.makeFileSystemObjectSource`
 /// (kqueue) exists on both, but a kqueue on a directory only fires for changes
 /// to that directory's own entries — not to a subdirectory — and on some

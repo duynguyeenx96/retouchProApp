@@ -76,7 +76,7 @@ struct WarpBenchTests {
             report["environment"] = "iOS Simulator (executes on the host Mac's GPU)"
             report["is_real_device"] = false
         #elseif os(iOS)
-            report["environment"] = "iOS/iPadOS device"
+            report["environment"] = "iOS device"
             report["is_real_device"] = true
         #else
             report["environment"] = "macOS host"

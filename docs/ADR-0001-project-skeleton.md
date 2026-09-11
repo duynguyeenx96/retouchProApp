@@ -77,7 +77,7 @@ Consequence: **the test command must name the workspace.**
 
 ```
 xcodebuild test -workspace RetouchPro.xcworkspace -scheme RetouchPro -destination 'platform=macOS'
-xcodebuild test -workspace RetouchPro.xcworkspace -scheme RetouchPro -destination 'platform=iOS Simulator,name=iPad (A16)'
+xcodebuild test -workspace RetouchPro.xcworkspace -scheme RetouchPro -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 The bare form from PLAN §5 (`xcodebuild test -scheme RetouchPro …`) does **not**
@@ -104,7 +104,7 @@ Rejected alternatives:
   provisioning profile, no network round trip in CI, App Sandbox still active.
 - iOS device: `DEVELOPMENT_TEAM[sdk=iphoneos*] = NTWP6SJ3WF` (read from the
   Apple Development certificate already in the login keychain) with automatic
-  signing, for running on the user's real iPad.
+  signing, for running on the user's real iPhone.
 - Simulator and macOS builds need no team.
 - `App/RetouchPro.entitlements` enables App Sandbox +
   `files.user-selected.read-write`. The sandbox is deliberate: it puts logs at

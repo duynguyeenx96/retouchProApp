@@ -74,7 +74,7 @@ public protocol PreviewRendering: Sendable {
     var appliesEditState: Bool { get }
 
     /// Longest edge the renderer prefers for interactive preview
-    /// (docs/PLAN.md §1.4: 1536–2048 px on an A-series iPad).
+    /// (docs/PLAN.md §1.4: 1536–2048 px on iPhone).
     var preferredPreviewPixelSize: Int { get }
 
     func renderPreview(_ request: PreviewRequest) async throws -> PreviewImage
