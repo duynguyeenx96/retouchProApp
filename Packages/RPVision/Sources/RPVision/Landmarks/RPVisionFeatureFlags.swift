@@ -61,6 +61,26 @@ public enum RPVisionFeatureFlags {
         set { setValue("faceAnalyzer", newValue) }
     }
 
+    /// Phase 6 §6.1 "Khoá nền": ``PersonSegmenter``, the whole-frame subject mask
+    /// from `VNGeneratePersonSegmentationRequest`.
+    ///
+    /// Independent of every flag above it, and deliberately so — this request is
+    /// not part of the face pipeline. It loads no converted Core ML model (Vision
+    /// ships its own inside the OS), so unlike `faceLandmarks478` /
+    /// `faceParsing19` / `blazeFaceShortRange` this flag is not saying "an
+    /// unverified conversion"; it is saying the plan's rule, that a cost nobody
+    /// has measured on the target hardware does not run by default.
+    /// `Research/bench/p6-background-lock-macos.json` holds the macOS numbers; the
+    /// iPhone number is still missing, as it is for every render node in this
+    /// project (docs/ADR-0007 … ADR-0016), and the Simulator cannot supply a
+    /// stand-in because it cannot perform this request at all (see
+    /// ``PersonSegmenter/unsupportedReason()`` and
+    /// `Research/bench/p6-background-lock-ios-simulator.json`).
+    public static var personSegmentation: Bool {
+        get { value("personSegmentation") }
+        set { setValue("personSegmentation", newValue) }
+    }
+
     /// Restores **every** flag to its shipping default.
     ///
     /// Not a per-test teardown hook: this storage is process-global, so a suite

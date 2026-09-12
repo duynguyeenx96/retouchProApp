@@ -34,8 +34,17 @@ import Metal
 /// shipped `SkinRenderNode`, its golden tests and `docs/ADR-0009`'s prose for no
 /// behaviour change.
 final class MaskRasteriser: @unchecked Sendable {
-    /// Which kind of mask this instance reads out of `FaceRenderInput.masks`.
-    let kind: RenderMaskKind
+    /// Which kind of mask this instance reads out of `FaceRenderInput.masks`, or
+    /// `nil` for a **whole-frame** instance that is handed its masks directly
+    /// (``BackgroundLockMaskSource``, docs/PLAN.md §6.1 "Khoá nền").
+    ///
+    /// The whole-frame case is not a face and has no `RenderMaskKind`: one
+    /// `VNGeneratePersonSegmentationRequest` covers the entire picture including
+    /// hair, clothing and hands, and it exists on frames where no face was found
+    /// at all. Only the *lookup* differs; the upload, the affine table and the
+    /// `max`-combining dispatch below are shared, which is the whole reason this
+    /// type is not copied for it.
+    let kind: RenderMaskKind?
 
     private let context: MetalContext
     private let pipeline: any MTLComputePipelineState
@@ -69,6 +78,14 @@ final class MaskRasteriser: @unchecked Sendable {
 
     init(kind: RenderMaskKind, context: MetalContext) throws {
         self.kind = kind
+        self.context = context
+        self.pipeline = try context.computePipeline("rp_skin_mask")
+    }
+
+    /// A rasteriser for masks that do not belong to a face and are passed to
+    /// ``encode(into:masks:width:height:)`` directly.
+    init(wholeFrame context: MetalContext) throws {
+        self.kind = nil
         self.context = context
         self.pipeline = try context.computePipeline("rp_skin_mask")
     }
@@ -111,7 +128,26 @@ final class MaskRasteriser: @unchecked Sendable {
         into commandBuffer: any MTLCommandBuffer, faces: [FaceRenderInput],
         width: Int, height: Int
     ) throws -> (any MTLTexture)? {
-        let masks = faces.compactMap { $0.masks[kind] }
+        guard let kind else {
+            preconditionFailure("whole-frame rasteriser has no RenderMaskKind to look up")
+        }
+        return try encode(
+            into: commandBuffer, masks: faces.compactMap { $0.masks[kind] },
+            width: width, height: height)
+    }
+
+    /// The same rasterisation for masks the caller already has in hand — the
+    /// whole-frame subject mask, which comes from outside any face
+    /// (``BackgroundLockMaskSource``).
+    ///
+    /// `masks` is a list rather than one mask because the dispatch combines with
+    /// `max` and costs one pass either way; a single whole-frame mask is just the
+    /// one-element case.
+    @discardableResult
+    func encode(
+        into commandBuffer: any MTLCommandBuffer, masks: [RenderMask],
+        width: Int, height: Int
+    ) throws -> (any MTLTexture)? {
         guard let first = masks.first else { return nil }
         let expectedWidth: Int = first.width
         let expectedHeight: Int = first.height

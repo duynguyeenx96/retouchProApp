@@ -86,6 +86,25 @@ public enum RPEngineFeatureFlags {
         set { setValue("colorSliders", newValue) }
     }
 
+    /// Phase 6 §6.1 "Khoá nền": ``BackgroundLockMaskSource``, the whole-frame
+    /// subject mask that keeps an effect off the background.
+    ///
+    /// Owned entirely by that mask source; no node reads it yet, because nothing
+    /// consumes the mask yet (there is no `EditState` field and no UI). It is a
+    /// flag rather than nothing at all so the cost — a
+    /// `VNGeneratePersonSegmentationRequest` per shot, tens of milliseconds
+    /// (`Research/bench/p6-background-lock-*.json`) — cannot start running on a
+    /// path nobody has measured on an iPhone.
+    ///
+    /// Pairs with `RPVisionFeatureFlags.personSegmentation` on the other side of
+    /// the seam, and does **not** set it: this bit gates the GPU rasterisation,
+    /// that one gates the Vision request, and neither package writes the other's
+    /// process-global store.
+    public static var backgroundLock: Bool {
+        get { value("backgroundLock") }
+        set { setValue("backgroundLock", newValue) }
+    }
+
     /// Turns on the two flags the skin path needs: ``skinSliders`` and
     /// ``guidedFilter`` (``SkinRenderNode`` owns a ``GuidedFilter``, whose own
     /// gate is not bypassed).
