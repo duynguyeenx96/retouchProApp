@@ -60,7 +60,12 @@ public struct Identifier<Tag: Sendable>: Sendable, Hashable, Codable,
 public enum ProjectIDTag: Sendable {}
 public enum ShotIDTag: Sendable {}
 public enum PresetIDTag: Sendable {}
+/// Phase 6.1: one hand-painted mask, stored as `masks/<shot id>/<mask id>.png`.
+/// It is an `Identifier` for the same reason the others are — the raw value is a
+/// file name, so it has to be a safe single path component.
+public enum MaskIDTag: Sendable {}
 
 public typealias ProjectID = Identifier<ProjectIDTag>
 public typealias ShotID = Identifier<ShotIDTag>
 public typealias PresetID = Identifier<PresetIDTag>
+public typealias MaskID = Identifier<MaskIDTag>

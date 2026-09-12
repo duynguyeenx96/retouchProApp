@@ -137,11 +137,13 @@ extension RenderRequest {
     public init(
         editState: EditState,
         allFaces: [FaceRenderInput],
-        quality: RenderQuality = .preview
+        quality: RenderQuality = .preview,
+        gateMasks: [any RenderGateMask] = []
     ) {
         self.init(
             editState: editState,
             faces: FaceSelection(editState).select(from: allFaces),
-            quality: quality)
+            quality: quality,
+            gateMasks: gateMasks)
     }
 }

@@ -88,6 +88,12 @@ public final class MetalContext: @unchecked Sendable {
         // resample copy into an MTKView drawable, with no retouch maths — but is
         // listed last so the line numbers of the earlier files do not move.
         ("RenderShaderSources", "PreviewShaders"),
+        // Phase 6.1: the hand-painted mask (brush splat + the pass that gates an
+        // existing coverage texture with it). Depends on nothing above it — it
+        // declares its own parameter structs and shares no constant — and is
+        // listed last for the same reason PreviewShaders is: the line numbers of
+        // the earlier files must not move.
+        ("RenderShaderSources", "ManualMaskShaders"),
     ]
 
     public init(device: (any MTLDevice)? = nil) throws {

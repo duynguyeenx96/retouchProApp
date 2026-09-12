@@ -105,6 +105,22 @@ public enum RPEngineFeatureFlags {
         set { setValue("backgroundLock", newValue) }
     }
 
+    /// Phase 6.1: the hand-painted mask ("Cọ mask thủ công", docs/PLAN.md §6.1).
+    ///
+    /// Gated at the **producer**, not at the consumer: ``ManualMaskSession`` and
+    /// ``ManualMaskCoverage`` refuse to construct while this is off, so with the
+    /// flag off no `RenderRequest` can carry a manual mask and every node renders
+    /// exactly the pixels it rendered before Phase 6.1 — the golden numbers in
+    /// ADR-0009 … ADR-0012 are untouched by construction, not by promise.
+    ///
+    /// Owned entirely by this feature: nothing else reads it, and it borrows no
+    /// other flag. Painting a mask is useful with *any* mask-driven group on, so
+    /// it is deliberately not folded into ``skinSliders``.
+    public static var manualMask: Bool {
+        get { value("manualMask") }
+        set { setValue("manualMask", newValue) }
+    }
+
     /// Turns on the two flags the skin path needs: ``skinSliders`` and
     /// ``guidedFilter`` (``SkinRenderNode`` owns a ``GuidedFilter``, whose own
     /// gate is not bypassed).

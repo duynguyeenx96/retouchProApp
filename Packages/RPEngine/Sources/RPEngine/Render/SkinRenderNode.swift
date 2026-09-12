@@ -86,6 +86,30 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
     private let skinMask: MaskRasteriser
     private let compositePipeline: any MTLComputePipelineState
 
+    /// Phase 6.1: multiplies a ``RenderGateMask`` into the skin coverage.
+    ///
+    /// Built **lazily and only when a request actually carries a live gate**: a
+    /// document with no painted mask and no background lock must not pay for a
+    /// pipeline state it never dispatches, and the flags a gate answers to can be
+    /// flipped after this node was constructed (the app sets them at launch, a
+    /// test sets them per case), so deciding in `init` would bake in whichever
+    /// order happened.
+    private var gateCompositor: GateMaskCompositor?
+    /// Scratch for `skin coverage x gate`, allocated at image size on first use.
+    /// Separate from `MaskRasteriser`'s own output because that texture is the
+    /// *ungated* coverage and the modulate pass may not read and write one
+    /// texture in a single dispatch.
+    ///
+    /// **Two** of them, ping-ponged, once more than one gate is in play: with a
+    /// brush *and* "Khoá nền" set, the second modulate reads what the first one
+    /// wrote. The second is only allocated when a request actually carries two
+    /// gates, so the common single-gate case still costs one r8 frame.
+    private var gatedMasks: [any MTLTexture] = []
+    /// The coverage texture the most recent ``encode(into:source:destination:request:)``
+    /// bound to the composite — the gated one when a ``RenderGateMask`` was in play.
+    /// Read by ``debugLayers()``; internal, for the golden harness.
+    private var lastBoundMask: (any MTLTexture)?
+
     /// Where the fast-guided-filter `s` for a render comes from.
     ///
     /// In production this is exactly `RenderQuality.guidedSubsample`, which is 4
@@ -200,6 +224,17 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
                          "rp_gf_coefficients", "rp_gf_reconstruct"] {
             _ = try context.computePipeline(function)
         }
+        // Only when a gate source is on: with both flags off these kernels are
+        // never dispatched, and compiling them would charge every launch for a
+        // feature the build does not have. The brush's own painting kernels are
+        // separate from the gating one, because "Khoá nền" needs the second
+        // without the first (see ``GateMaskCompositor``).
+        if RPEngineFeatureFlags.manualMask {
+            try ManualMaskRasteriser.prewarm(context: context)
+        }
+        if RPEngineFeatureFlags.manualMask || RPEngineFeatureFlags.backgroundLock {
+            try GateMaskCompositor.prewarm(context: context)
+        }
     }
 
     public func isActive(for request: RenderRequest) -> Bool {
@@ -215,13 +250,16 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
     public var allocatedBytes: Int {
         lock.lock()
         let layers = cache?.byteCount ?? 0
+        let gated = gatedMasks.reduce(0) { $0 + $1.width * $1.height }
         lock.unlock()
-        return layers + skinMask.allocatedBytes
+        return layers + gated + skinMask.allocatedBytes
     }
 
     public func releaseIntermediates() {
         lock.lock()
         cache = nil
+        gatedMasks = []
+        lastBoundMask = nil
         lock.unlock()
         skinMask.releaseIntermediates()
     }
@@ -242,7 +280,12 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         lock.lock()
         let cached = cache
         lock.unlock()
-        guard let cached, let mask = skinMask.output else { return nil }
+        // The mask the **last encode actually bound**, which is the gated one
+        // when a hand-painted mask narrowed it (Phase 6.1). Reporting the
+        // ungated `skinMask.output` instead would hand the golden harness a
+        // different mask from the one the composite read, and a gated render
+        // would fail the comparison for a reason that is not a bug.
+        guard let cached, let mask = lastBoundMask ?? skinMask.output else { return nil }
         return (cached.storedBase, cached.storedLow, mask)
     }
 
@@ -278,7 +321,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         let cache = try self.cache(
             width: source.width, height: source.height, subsample: subsample)
         guard
-            let maskTexture = try skinMask.encode(
+            let rawMask = try skinMask.encode(
                 into: commandBuffer, faces: faces, width: source.width, height: source.height)
         else {
             // Unreachable: `faces` is filtered to those carrying `.skin`, so the
@@ -287,6 +330,21 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
                 into: commandBuffer, context: context, source: source, destination: destination)
             return
         }
+
+        // Phase 6.1 — the whole-frame gates (hand-painted brush, and later
+        // "Khoá nền"), if the request carries any. This is the *whole* of "gate
+        // this group with a mask": the node keeps its kernels, its constants and
+        // its measured behaviour, and only the coverage texture bound at index 3
+        // below changes (docs/PLAN.md §6.1 — "không phải kỹ thuật mới, chỉ thêm
+        // 1 nguồn mask nữa"). With no gate the value is `rawMask` and this node
+        // is byte-for-byte its pre-6.1 self, which is what keeps ADR-0009's
+        // golden PSNR valid.
+        let maskTexture = try gate(
+            rawMask, with: request.gateMasks, into: commandBuffer,
+            width: source.width, height: source.height)
+        lock.lock()
+        lastBoundMask = maskTexture
+        lock.unlock()
 
         let faceWidth = faces.map(\.faceWidth).max() ?? 0
         var baseTexture: (any MTLTexture)?
@@ -341,6 +399,71 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         encoder.dispatchThreadgroups(
             dispatch.threadgroups, threadsPerThreadgroup: dispatch.threadsPerThreadgroup)
         encoder.endEncoding()
+    }
+
+    // MARK: - Whole-frame gate masks (docs/PLAN.md §6.1)
+
+    /// Returns `coverage x gate₀ x gate₁ …`, or `coverage` unchanged when the
+    /// request carries no gate that is live.
+    ///
+    /// One dispatch per gate, ping-ponging between two scratch textures, because
+    /// the modulate pass may not read and write the same texture. Gates intersect
+    /// — see ``RenderGateMask`` for why a product is the only defensible
+    /// composition of a feathered brush and a soft segmentation.
+    ///
+    /// Each gate's own flag is re-read here, through
+    /// ``RenderGateMask/isGateEnabled``, rather than trusted from construction
+    /// time: a `RenderRequest` can only carry a `ManualMaskCoverage` that was
+    /// built while `manualMask` was on, but a caller may switch it off between
+    /// painting and rendering, and "off" has to mean "this group renders what it
+    /// rendered before 6.1" at every moment, not only at launch.
+    private func gate(
+        _ coverage: any MTLTexture, with gates: [any RenderGateMask],
+        into commandBuffer: any MTLCommandBuffer, width: Int, height: Int
+    ) throws -> any MTLTexture {
+        let live = gates.filter(\.isGateEnabled)
+        guard !live.isEmpty else { return coverage }
+        let compositor = try gateMaskCompositor()
+        let scratch = try gatedMaskTextures(
+            count: min(2, live.count), width: width, height: height)
+        var current = coverage
+        for (index, mask) in live.enumerated() {
+            let destination = scratch[index % scratch.count]
+            compositor.encode(
+                into: commandBuffer, coverage: current, gate: mask, destination: destination)
+            current = destination
+        }
+        return current
+    }
+
+    private func gateMaskCompositor() throws -> GateMaskCompositor {
+        lock.lock()
+        defer { lock.unlock() }
+        if let gateCompositor { return gateCompositor }
+        let made = try GateMaskCompositor(context: context)
+        gateCompositor = made
+        return made
+    }
+
+    /// `count` scratch coverage textures at the image size, reusing the ones
+    /// already held when they still fit. Growing only — a request with two gates
+    /// followed by one with a single gate keeps the second texture rather than
+    /// churning an allocation per frame; `releaseIntermediates()` drops both.
+    private func gatedMaskTextures(count: Int, width: Int, height: Int) throws
+        -> [any MTLTexture]
+    {
+        lock.lock()
+        defer { lock.unlock() }
+        if let first = gatedMasks.first, first.width != width || first.height != height {
+            gatedMasks = []
+        }
+        while gatedMasks.count < count {
+            gatedMasks.append(
+                try SpikeTextureIO.makeTexture(
+                    width: width, height: height, device: context.device, pixelFormat: .r8Unorm,
+                    usage: [.shaderRead, .shaderWrite]))
+        }
+        return Array(gatedMasks.prefix(count))
     }
 
     // MARK: - Radii

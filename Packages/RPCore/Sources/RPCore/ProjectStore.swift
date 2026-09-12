@@ -43,6 +43,10 @@ public struct ProjectStore: Sendable {
         bundleURL.appendingPathComponent(ProjectBundle.presetsDirectory)
     }
 
+    public var masksURL: URL {
+        bundleURL.appendingPathComponent(ProjectBundle.masksDirectory)
+    }
+
     /// Absolute URL for a bundle-relative path such as `"originals/DSC01234.ARW"`.
     public func url(forRelativePath relativePath: String) -> URL {
         bundleURL.appendingPathComponent(relativePath)
@@ -284,6 +288,78 @@ public struct ProjectStore: Sendable {
         }
     }
 
+    // MARK: - Hand-painted masks (docs/PLAN.md §6.1)
+
+    /// `masks/<shot id>/` — every hand-painted mask of one shot.
+    public func masksURL(for shotID: ShotID) -> URL {
+        masksURL.appendingPathComponent(shotID.rawValue)
+    }
+
+    /// `masks/<shot id>/<mask id>.png`.
+    ///
+    /// Both components are ``Identifier``s, i.e. validated safe path components,
+    /// so a corrupt `edits/<id>.json` carrying `"../../../etc/passwd"` as its
+    /// mask id cannot steer this write out of the bundle — the id fails to decode
+    /// long before it reaches here.
+    public func maskURL(for shotID: ShotID, maskID: MaskID) -> URL {
+        masksURL(for: shotID).appendingPathComponent("\(maskID.rawValue).png")
+    }
+
+    /// Writes one mask's PNG atomically, creating `masks/<shot id>/` on demand.
+    ///
+    /// Atomic for the same reason `saveEditState` is: this file is rewritten
+    /// every time the user lifts the brush, and a half-written PNG would reload
+    /// as a corrupt mask that silently gates a slider to nothing.
+    public func saveMask(
+        _ data: Data, for shotID: ShotID, maskID: MaskID, fileManager: FileManager = .default
+    ) throws {
+        try fileManager.createDirectory(at: masksURL(for: shotID), withIntermediateDirectories: true)
+        try writer.write(data, to: maskURL(for: shotID, maskID: maskID))
+    }
+
+    /// The mask's PNG bytes, or `nil` when the file is not there.
+    ///
+    /// `nil` rather than a throw: a missing mask means "nothing was painted on
+    /// this shot", which is the normal case for every shot in a project, and a
+    /// document whose mask file a user deleted must still open.
+    public func loadMaskData(
+        for shotID: ShotID, maskID: MaskID, fileManager: FileManager = .default
+    ) throws -> Data? {
+        let url = maskURL(for: shotID, maskID: maskID)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        return try Data(contentsOf: url)
+    }
+
+    public func deleteMask(
+        for shotID: ShotID, maskID: MaskID, fileManager: FileManager = .default
+    ) throws {
+        let url = maskURL(for: shotID, maskID: maskID)
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
+    }
+
+    /// Drops a shot's whole `masks/<shot id>/` directory. Called by
+    /// ``removeShot(id:from:fileManager:)`` — a mask is derived data bound to one
+    /// shot, so it goes the same way `edits/<shot id>.json` does. (The imported
+    /// file under `originals/` still does not.)
+    public func deleteMasks(for shotID: ShotID, fileManager: FileManager = .default) throws {
+        let url = masksURL(for: shotID)
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
+    }
+
+    /// Mask ids present on disk for one shot, sorted. For a future "clean up
+    /// masks nothing references" pass; nothing calls it on the hot path.
+    public func maskIDs(for shotID: ShotID, fileManager: FileManager = .default) throws -> [MaskID] {
+        let directory = masksURL(for: shotID)
+        guard fileManager.fileExists(atPath: directory.path) else { return [] }
+        return try fileManager
+            .contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension.lowercased() == "png" }
+            .compactMap { MaskID($0.deletingPathExtension().lastPathComponent) }
+            .sorted()
+    }
+
     // MARK: - Shots
 
     /// Copies `sourceURL` into `originals/`, registers it in `project`, and
@@ -374,6 +450,10 @@ public struct ProjectStore: Sendable {
         let shot = project.shots.remove(at: index)
 
         try deleteEditState(for: shotID, fileManager: fileManager)
+        // Hand-painted masks are derived data keyed by this shot id and are
+        // useless once the shot is gone; `try?` because failing to delete a mask
+        // must not abort the removal the user asked for.
+        try? deleteMasks(for: shotID, fileManager: fileManager)
         if let preview = shot.previewRelativePath {
             let previewURL = url(forRelativePath: preview)
             if fileManager.fileExists(atPath: previewURL.path) {

@@ -9,6 +9,7 @@ import Foundation
 ///   previews/              derived JPEG/HEIF previews, safe to delete
 ///   edits/<shot id>.json   one EditState per shot
 ///   presets/<preset id>.json
+///   masks/<shot id>/<mask id>.png   hand-painted masks (Phase 6.1)
 /// ```
 ///
 /// It is a plain directory. Whether Finder shows it as a single opaque document
@@ -22,11 +23,20 @@ public enum ProjectBundle {
     public static let previewsDirectory = "previews"
     public static let editsDirectory = "edits"
     public static let presetsDirectory = "presets"
+    /// Hand-painted masks, one **subdirectory per shot** (docs/PLAN.md §6.1).
+    ///
+    /// Bitmaps deliberately do not live in `edits/<shot id>.json`: a 2048 px mask
+    /// is megabytes of pixels, JSON would have to base64 it, and every slider
+    /// release rewrites that file. So the document keeps only a mask *id*
+    /// (`EditState.perImage["manualMask"]`, see ``ManualMaskReference``) and the
+    /// pixels live here as a compressed 8-bit grayscale PNG — the same split
+    /// Lightroom and Photoshop make.
+    public static let masksDirectory = "masks"
 
     /// Directories created by ``ProjectStore/create(name:in:)`` and re-created
     /// on load if a user deleted one.
     public static let directories = [
-        originalsDirectory, previewsDirectory, editsDirectory, presetsDirectory,
+        originalsDirectory, previewsDirectory, editsDirectory, presetsDirectory, masksDirectory,
     ]
 
     /// File extensions adopted when a file appears in `originals/` without a

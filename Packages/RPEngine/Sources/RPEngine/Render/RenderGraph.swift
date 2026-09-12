@@ -31,14 +31,39 @@ public struct RenderRequest: Sendable {
     /// out of place.
     public var faces: [FaceRenderInput]
     public var quality: RenderQuality
+    /// Whole-frame masks that narrow where the nodes may act, intersected in
+    /// order (docs/PLAN.md §6.1).
+    ///
+    /// **One slot, shared by every mask that belongs to no face** — the
+    /// hand-painted brush (``ManualMaskCoverage``), "Khoá nền"'s subject mask
+    /// (``BackgroundLockMaskSource``, via ``TextureGateMask``) and §6.2's
+    /// full-frame skin mask. ``RenderGateMask`` explains why they are one slot
+    /// and not three, and why the composition is a product.
+    ///
+    /// These are **references to live GPU coverage**, not values: a painted mask
+    /// changes while the user drags a finger and the canvas re-issues this
+    /// request tens of times a second, so copying would be megabytes per frame.
+    /// Nodes only read them.
+    ///
+    /// Empty — the default, and the only possibility for the painted mask while
+    /// `RPEngineFeatureFlags.manualMask` is off, because
+    /// ``ManualMaskCoverage/init(context:width:height:)`` refuses to build —
+    /// means "nothing narrows this render", which every node must treat as
+    /// *ungated*, i.e. exactly its pre-Phase-6.1 behaviour. It does **not** mean
+    /// "select nothing": an absent mask and an all-zero mask are different
+    /// states, and conflating them would silently switch off every mask-driven
+    /// slider in every document that never used a brush.
+    public var gateMasks: [any RenderGateMask]
 
     public init(
         editState: EditState = EditState(), faces: [FaceRenderInput] = [],
-        quality: RenderQuality = .preview
+        quality: RenderQuality = .preview,
+        gateMasks: [any RenderGateMask] = []
     ) {
         self.editState = editState
         self.faces = faces
         self.quality = quality
+        self.gateMasks = gateMasks
     }
 }
 

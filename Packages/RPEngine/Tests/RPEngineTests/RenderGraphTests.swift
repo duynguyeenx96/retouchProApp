@@ -379,17 +379,18 @@ struct RenderGraphTests {
     @Test("Every shader source is in the bundle and they compile into one library")
     func shaderSourcesAreAllPresent() throws {
         guard let context = SpikeS3Support.context else { return }
-        // Five files (spike S3 + Da + Mắt/Răng + Color + the live preview's
-        // present pass), still **one** `makeLibrary(source:)` call and therefore
-        // one compile per process — the property `RenderGraph.prewarm()` relies
-        // on.
-        #expect(MetalContext.shaderSources.count == 5)
+        // Six files (spike S3 + Da + Mắt/Răng + Color + the live preview's
+        // present pass + the Phase 6.1 manual mask), still **one**
+        // `makeLibrary(source:)` call and therefore one compile per process —
+        // the property `RenderGraph.prewarm()` relies on.
+        #expect(MetalContext.shaderSources.count == 6)
         // A missing resource would surface as `shaderSourceMissing` at init, but
         // a source that compiled and produced no symbols would not.
         for name in [
             "rp_gf_reconstruct", "rp_mls_grid", "rp_skin_mask", "rp_skin_composite",
             "rp_eyes_teeth_composite", "rp_color_composite", "rp_color_luma_downsample",
             "rp_color_box_h", "rp_color_box_v", "rp_preview_present",
+            "rp_manual_mask_clear", "rp_manual_mask_splat", "rp_manual_mask_modulate",
         ] {
             #expect(throws: Never.self) { _ = try context.computePipeline(name) }
         }

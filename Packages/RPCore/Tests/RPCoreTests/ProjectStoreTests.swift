@@ -28,7 +28,7 @@ struct ProjectStoreTests {
         #expect(store.bundleURL.pathExtension == ProjectBundle.pathExtension)
         #expect(
             try temp.entries(at: "Wedding 2026.rpproj")
-                == ["edits", "manifest.json", "originals", "presets", "previews"])
+                == ["edits", "manifest.json", "masks", "originals", "presets", "previews"])
         #expect(project.name == "Wedding 2026")
         #expect(project.shots.isEmpty)
     }
