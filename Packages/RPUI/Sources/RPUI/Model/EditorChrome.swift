@@ -182,15 +182,19 @@ public struct ExportOptions: Hashable, Sendable {
     public var size: Size = .original
     public var colorSpace: ColorSpace = .sRGB
     /// The macOS dialog's destination folder row. `nil` until the user picks
-    /// one; the row then shows `~/Pictures/RetouchPro` as the placeholder the
-    /// mockup uses.
+    /// one, in which case the export lands in
+    /// ``ExportDestination/defaultDirectory(fileManager:)``.
     public var destinationFolder: URL?
 
     public init() {}
 
+    /// What the folder row shows — **the folder that will actually be written
+    /// to**, not a placeholder.
+    ///
+    /// It used to read `~/Pictures/RetouchPro`, which was the mockup's caption
+    /// and never a path this app can write: both builds are sandboxed without
+    /// the pictures entitlement. See ``ExportDestination``.
     public var destinationDisplayPath: String {
-        guard let destinationFolder else { return "~/Pictures/RetouchPro" }
-        return destinationFolder.path.replacingOccurrences(
-            of: NSHomeDirectory(), with: "~")
+        ExportDestination.displayPath(destinationFolder)
     }
 }

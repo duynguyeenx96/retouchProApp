@@ -105,7 +105,13 @@ struct DesignShellTests {
         #expect(options.quality == .low)  // "80"
         #expect(options.size == .original)
         #expect(options.colorSpace == .sRGB)
-        #expect(options.destinationDisplayPath == "~/Pictures/RetouchPro")
+        // The folder row used to show "~/Pictures/RetouchPro", which was the
+        // mockup's caption and a path a sandboxed build cannot write. It now
+        // shows the folder the export actually lands in (`ExportDestination`).
+        #expect(
+            options.destinationDisplayPath
+                == ExportDestination.displayPath(ExportDestination.defaultDirectory()))
+        #expect(options.destinationDisplayPath.hasSuffix(ExportDestination.folderName))
     }
 
     @Test("Export progress is a fraction that cannot divide by zero")
@@ -288,11 +294,16 @@ struct DesignShellTests {
             importFromPhotos: {}, openInEditor: { _ in }
         ).body
         // 2b, 2d
-        _ = PhoneExportSheet(chrome: chrome, shot: model.activeShot, dismiss: {}).body
-        _ = MacExportDialog(
-            chrome: chrome, shotCount: 3,
-            progress: ExportProgress(currentFileName: "A012.ARW", completed: 2, total: 3),
+        // The export screens now take an `ExportController`. One with no runner
+        // is the SwiftUI-preview / no-GPU shape: the button draws disabled and
+        // nothing renders, which is all a "does it build" test needs.
+        let exporter = ExportController(runner: nil)
+        _ = PhoneExportSheet(
+            chrome: chrome, shot: model.activeShot, exporter: exporter, export: {},
             dismiss: {}
+        ).body
+        _ = MacExportDialog(
+            chrome: chrome, shotCount: 3, exporter: exporter, export: {}, dismiss: {}
         ).body
 
         // …and the pieces they share, in every group including the locked ones.

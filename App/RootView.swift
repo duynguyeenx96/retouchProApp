@@ -27,6 +27,14 @@ struct RootView: View {
                     renderer: container.previewRenderer,
                     faceProvider: container.faceProvider)
             }
+            // Same idea for the export path, off unless RP_EXPORT_SELFTEST is
+            // set: it runs `ExportController.exportActiveShot` — the Export
+            // button's own action — against a shot already in the library, so
+            // the sandbox-shaped risks (decode, GPU memory, where the file is
+            // written) are checked on the device and not only on the Mac.
+            if let target = ExportSelfTest.target() {
+                await ExportSelfTest.run(target: target, log: AppLog.write)
+            }
         }
     }
 }
