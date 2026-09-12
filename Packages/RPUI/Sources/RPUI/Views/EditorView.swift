@@ -34,10 +34,24 @@ public struct EditorView: View {
     @State private var isPickingPhotos = false
     @State private var pickedPhotos: [PhotosPickerItem] = []
 
-    public init(model: EditorModel, cache: PreviewImageCache, close: @escaping () -> Void) {
+    /// - Parameter opensInEditor: start on the editor (1a / 1b) instead of the
+    ///   project's library (2a / 2c). The Share Extension hand-off passes
+    ///   `true`: "Mở với RetouchPro" promises the canvas, not a grid with one
+    ///   thumbnail in it (docs/ADR-0017). Everything else leaves it `false`,
+    ///   which is the behaviour opening a project has always had.
+    @MainActor
+    public init(
+        model: EditorModel,
+        cache: PreviewImageCache,
+        opensInEditor: Bool = false,
+        close: @escaping () -> Void
+    ) {
         self.model = model
         self.cache = cache
         self.close = close
+        let chrome = EditorChrome()
+        if opensInEditor { chrome.tab = .edit }
+        _chrome = State(initialValue: chrome)
     }
 
     public var body: some View {

@@ -15,10 +15,16 @@ struct RootView: View {
             projects: container.projects,
             renderer: container.previewRenderer,
             live: container.live,
-            importer: container.importer
+            importer: container.importer,
+            opener: container.externalOpen
         )
         .task {
             container.startupLog.forEach(AppLog.write)
+            // A share the extension staged but could not hand over (it is not
+            // guaranteed to be able to open the app — docs/ADR-0017). Safe to
+            // run every launch: it waits out `onOpenURL` and then does nothing
+            // if a URL hand-off already claimed this launch.
+            async let pendingShares: Void = container.openPendingShares()
             // Off unless RP_FACE_SELFTEST is set; see FaceSelfTest for why a
             // real device cannot be checked any other way.
             if let target = FaceSelfTest.target() {
@@ -35,6 +41,17 @@ struct RootView: View {
             if let target = ExportSelfTest.target() {
                 await ExportSelfTest.run(target: target, log: AppLog.write)
             }
+            // And for the Share Extension hand-off, off unless
+            // RP_SHARE_SELFTEST is set: it delivers a real `retouchpro://open`
+            // URL into `AppContainer.open(url:)` — the same entry point
+            // `onOpenURL` uses — because a device build is the only place the
+            // App Group container exists (docs/ADR-0017 §5).
+            if let target = ShareHandoffSelfTest.target() {
+                await ShareHandoffSelfTest.run(target: target, log: AppLog.write) { url in
+                    container.open(url: url)
+                }
+            }
+            await pendingShares
         }
     }
 }

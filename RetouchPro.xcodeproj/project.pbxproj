@@ -31,6 +31,24 @@
 		0A00000000000000000000B1 /* BlazeFaceShortRange.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 0A00000000000000000000A1 /* BlazeFaceShortRange.mlpackage */; };
 		0A00000000000000000000B2 /* FaceLandmark478.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 0A00000000000000000000A2 /* FaceLandmark478.mlpackage */; };
 		0A00000000000000000000B3 /* FaceParsing19.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 0A00000000000000000000A3 /* FaceParsing19.mlpackage */; };
+		/* The Share Extension (docs/ADR-0017). It links RPCore only: the whole
+		   contract it shares with the app — App Group id, URL scheme, file-name
+		   rules — is `RPCore.ShareHandoff`, and an extension has a hard launch
+		   budget, so it links nothing it does not use. */
+		0A00000000000000000000CB /* RPCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0A00000000000000000000CA /* RPCore */; };
+		/* `platformFilters = (ios, )` is what keeps the macOS build of the app
+		   working: the extension is iOS-only (SDKROOT = iphoneos), so on a macOS
+		   build both this copy and the target dependency below are skipped
+		   instead of failing to build for the wrong platform. */
+		0A00000000000000000000CD /* RetouchProShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0A00000000000000000000C1 /* RetouchProShareExtension.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		/* One more app-target file the App test bundle compiles into itself: the
+		   `retouchpro://` router (docs/ADR-0017). Pure over (URL, inbox), so it
+		   needs no app launch and the bundle still has no TEST_HOST. */
+		0A00000000000000000000E3 /* ShareHandoffRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000000000000000000001B /* ShareHandoffRouter.swift */; };
+		/* And the env-var-gated hand-off self test (docs/ADR-0017 §5), for the
+		   same reason FaceSelfTest.swift is here: its target parsing is pure and
+		   is asserted on without launching the app. */
+		0A00000000000000000000E5 /* ShareHandoffSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000000000000000000001C /* ShareHandoffSelfTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +82,23 @@
 		0A00000000000000000000A1 /* BlazeFaceShortRange.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; name = BlazeFaceShortRange.mlpackage; path = Research/spikes/S1-landmark/models/BlazeFaceShortRange.mlpackage; sourceTree = "<group>"; };
 		0A00000000000000000000A2 /* FaceLandmark478.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; name = FaceLandmark478.mlpackage; path = Research/spikes/S1-landmark/models/FaceLandmark478.mlpackage; sourceTree = "<group>"; };
 		0A00000000000000000000A3 /* FaceParsing19.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; name = FaceParsing19.mlpackage; path = Research/spikes/S2-face-parsing/models/FaceParsing19.mlpackage; sourceTree = "<group>"; };
+		/* And the `retouchpro://` router (docs/ADR-0017), a pure function over
+		   (URL, App Group inbox) that the App test bundle compiles into itself
+		   the same way as the five files above. */
+		0A000000000000000000001B /* ShareHandoffRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareHandoffRouter.swift; path = App/ShareHandoffRouter.swift; sourceTree = "<group>"; };
+		0A000000000000000000001C /* ShareHandoffSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareHandoffSelfTest.swift; path = App/ShareHandoffSelfTest.swift; sourceTree = "<group>"; };
+		/* The two built products added for "Mở với RetouchPro" (docs/ADR-0017):
+		   the Share Extension itself and the UI test bundle that drives it
+		   through the real Share Sheet. */
+		0A00000000000000000000C1 /* RetouchProShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RetouchProShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A00000000000000000000D1 /* RetouchProUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RetouchProUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		/* Hand-written Info.plists for the two bundles that need keys
+		   GENERATE_INFOPLIST_FILE cannot express — CFBundleURLTypes for the app
+		   and the whole NSExtension dictionary for the extension. Both targets
+		   keep GENERATE_INFOPLIST_FILE = YES; Xcode merges the generated keys
+		   into these files. */
+		0A00000000000000000000E1 /* RetouchPro-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RetouchPro-Info.plist"; sourceTree = "<group>"; };
+		0A00000000000000000000E2 /* RetouchProShareExtension-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RetouchProShareExtension-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +110,20 @@
 		0A0000000000000000000041 /* AppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = AppTests;
+			sourceTree = "<group>";
+		};
+		/* Same "the folder is the target" arrangement as App/ and AppTests/:
+		   every file in ShareExtension/ belongs to the extension and every file
+		   in UITests/ to the UI test bundle, so neither needs a membership list
+		   that can drift from what is on disk. */
+		0A00000000000000000000C0 /* ShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		0A00000000000000000000D0 /* UITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -104,7 +153,39 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0A00000000000000000000C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A00000000000000000000CB /* RPCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0A00000000000000000000D4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		/* dstSubfolderSpec = 13 is PlugIns/Extensions — where iOS looks for an
+		   app's bundled extensions. Without this phase the extension builds but
+		   never appears in the Share Sheet. */
+		0A00000000000000000000CE /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0A00000000000000000000CD /* RetouchProShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		0A0000000000000000000002 = {
@@ -112,10 +193,22 @@
 			children = (
 				0A0000000000000000000040 /* App */,
 				0A0000000000000000000041 /* AppTests */,
+				0A00000000000000000000C0 /* ShareExtension */,
+				0A00000000000000000000D0 /* UITests */,
+				0A00000000000000000000E0 /* Config */,
 				0A00000000000000000000A0 /* Models */,
 				0A0000000000000000000004 /* docs */,
 				0A0000000000000000000003 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		0A00000000000000000000E0 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0A00000000000000000000E1 /* RetouchPro-Info.plist */,
+				0A00000000000000000000E2 /* RetouchProShareExtension-Info.plist */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		0A00000000000000000000A0 /* Models */ = {
@@ -133,6 +226,8 @@
 			children = (
 				0A0000000000000000000011 /* RetouchPro.app */,
 				0A0000000000000000000014 /* RetouchProAppTests.xctest */,
+				0A00000000000000000000C1 /* RetouchProShareExtension.appex */,
+				0A00000000000000000000D1 /* RetouchProUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -155,10 +250,12 @@
 				0A0000000000000000000030 /* Sources */,
 				0A0000000000000000000031 /* Frameworks */,
 				0A0000000000000000000032 /* Resources */,
+				0A00000000000000000000CE /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0A00000000000000000000C9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000040 /* App */,
@@ -201,7 +298,97 @@
 			productReference = 0A0000000000000000000014 /* RetouchProAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		/* "Mở với RetouchPro" — the iOS Share Extension (docs/PLAN.md §Phase 3B,
+		   docs/ADR-0017). iOS only: SUPPORTED_PLATFORMS below has no macosx, and
+		   the app embeds it behind an `ios` platform filter, so a macOS build of
+		   the app neither builds nor copies it. */
+		0A00000000000000000000C2 /* RetouchProShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A00000000000000000000C8 /* Build configuration list for PBXNativeTarget "RetouchProShareExtension" */;
+			buildPhases = (
+				0A00000000000000000000C3 /* Sources */,
+				0A00000000000000000000C4 /* Frameworks */,
+				0A00000000000000000000C5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0A00000000000000000000C0 /* ShareExtension */,
+			);
+			name = RetouchProShareExtension;
+			packageProductDependencies = (
+				0A00000000000000000000CA /* RPCore */,
+			);
+			productName = RetouchProShareExtension;
+			productReference = 0A00000000000000000000C1 /* RetouchProShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		/* The UI test bundle for the hand-off (docs/PLAN.md §Phase 3B item 5).
+		   It is deliberately *not* in the RetouchPro scheme's test action: it
+		   drives Photos and the system Share Sheet, which exist only on iOS, so
+		   `xcodebuild test -scheme RetouchPro -destination platform=macOS` must
+		   not try to run it. Use the RetouchProUITests scheme instead. */
+		0A00000000000000000000D2 /* RetouchProUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A00000000000000000000D7 /* Build configuration list for PBXNativeTarget "RetouchProUITests" */;
+			buildPhases = (
+				0A00000000000000000000D3 /* Sources */,
+				0A00000000000000000000D4 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0A00000000000000000000D8 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0A00000000000000000000D0 /* UITests */,
+			);
+			name = RetouchProUITests;
+			packageProductDependencies = (
+			);
+			productName = RetouchProUITests;
+			productReference = 0A00000000000000000000D1 /* RetouchProUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		/* `platformFilters = (ios, )`: the app is multiplatform, the extension is
+		   not. On a macOS build this dependency is skipped instead of failing to
+		   build an iOS-only target for the wrong SDK. */
+		0A00000000000000000000C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				ios,
+			);
+			target = 0A00000000000000000000C2 /* RetouchProShareExtension */;
+			targetProxy = 0A00000000000000000000CC /* PBXContainerItemProxy */;
+		};
+		0A00000000000000000000D8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0A0000000000000000000010 /* RetouchPro */;
+			targetProxy = 0A00000000000000000000D9 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		0A00000000000000000000CC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0A00000000000000000000C2;
+			remoteInfo = RetouchProShareExtension;
+		};
+		0A00000000000000000000D9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0A0000000000000000000010;
+			remoteInfo = RetouchPro;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 		0A0000000000000000000001 /* Project object */ = {
@@ -216,6 +403,13 @@
 					};
 					0A0000000000000000000015 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					0A00000000000000000000C2 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					0A00000000000000000000D2 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 0A0000000000000000000010;
 					};
 				};
 			};
@@ -243,12 +437,21 @@
 			targets = (
 				0A0000000000000000000010 /* RetouchPro */,
 				0A0000000000000000000015 /* RetouchProAppTests */,
+				0A00000000000000000000C2 /* RetouchProShareExtension */,
+				0A00000000000000000000D2 /* RetouchProUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		0A0000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0A00000000000000000000C5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -278,6 +481,22 @@
 				0A000000000000000000007B /* RPImportShotImporter.swift in Sources */,
 				0A000000000000000000007C /* AppLog.swift in Sources */,
 				0A00000000000000000000B4 /* FaceSelfTest.swift in Sources */,
+				0A00000000000000000000E3 /* ShareHandoffRouter.swift in Sources */,
+				0A00000000000000000000E5 /* ShareHandoffSelfTest.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0A00000000000000000000C3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0A00000000000000000000D3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -382,6 +601,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				/* Carries CFBundleURLTypes (`retouchpro://`, docs/ADR-0017), which
+				   has no INFOPLIST_KEY_ equivalent. The generated keys are merged
+				   into it, so GENERATE_INFOPLIST_FILE stays YES. */
+				INFOPLIST_FILE = "Config/RetouchPro-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Retouch Pro";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -432,6 +655,9 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				/* See the Debug configuration: CFBundleURLTypes for
+				   `retouchpro://` (docs/ADR-0017). */
+				INFOPLIST_FILE = "Config/RetouchPro-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Retouch Pro";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -499,6 +725,115 @@
 			};
 			name = Release;
 		};
+		/* The Share Extension (docs/ADR-0017). Two settings carry the whole
+		   feature: CODE_SIGN_ENTITLEMENTS, which puts this bundle in the same App
+		   Group as the app, and INFOPLIST_FILE, which carries the NSExtension
+		   dictionary (activation rule + principal class).
+		   SUPPORTED_PLATFORMS has no macosx on purpose — §Phase 3B item 1. */
+		0A00000000000000000000C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/RetouchProShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = NTWP6SJ3WF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/RetouchProShareExtension-Info.plist";
+				/* What the row in the Share Sheet says. Same words as the app's
+				   display name so the user sees one product, not two. */
+				INFOPLIST_KEY_CFBundleDisplayName = "Retouch Pro";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.duynguyen.RetouchPro.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		0A00000000000000000000C7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/RetouchProShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = NTWP6SJ3WF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/RetouchProShareExtension-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Retouch Pro";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.duynguyen.RetouchPro.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		/* The UI test bundle. iOS-only for the same reason as the extension: it
+		   drives Photos and the system Share Sheet. */
+		0A00000000000000000000D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = NTWP6SJ3WF;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.duynguyen.RetouchProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = RetouchPro;
+			};
+			name = Debug;
+		};
+		0A00000000000000000000D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = NTWP6SJ3WF;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.duynguyen.RetouchProUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = RetouchPro;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -525,6 +860,24 @@
 			buildConfigurations = (
 				0A0000000000000000000027 /* Debug */,
 				0A0000000000000000000028 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0A00000000000000000000C8 /* Build configuration list for PBXNativeTarget "RetouchProShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A00000000000000000000C6 /* Debug */,
+				0A00000000000000000000C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0A00000000000000000000D7 /* Build configuration list for PBXNativeTarget "RetouchProUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A00000000000000000000D5 /* Debug */,
+				0A00000000000000000000D6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -601,6 +954,13 @@
 		0A0000000000000000000069 /* RPUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RPUI;
+		};
+		/* The extension links RPCore and nothing else: `ShareHandoff` is the
+		   entire contract it shares with the app, and an extension has a hard
+		   launch budget (docs/ADR-0017). */
+		0A00000000000000000000CA /* RPCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RPCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

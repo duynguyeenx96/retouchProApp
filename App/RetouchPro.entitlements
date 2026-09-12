@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The app's half of the App Group it shares with the Share Extension
+	     (docs/PLAN.md §Phase 3B item 2, docs/ADR-0017). Must stay identical to
+	     ShareExtension/RetouchProShareExtension.entitlements and to
+	     RPCore.ShareHandoff.appGroupIdentifier; the container is where the
+	     extension leaves the shared photo for this process to ingest.
+	     This file is the iOS/iOS-Simulator one — the macOS build uses
+	     App/RetouchPro-macOS.entitlements, which is deliberately unchanged
+	     because there is no macOS Share Extension. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.duynguyen.RetouchPro</string>
+	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
