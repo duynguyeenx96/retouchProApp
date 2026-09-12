@@ -41,6 +41,15 @@ struct RootView: View {
             if let target = ExportSelfTest.target() {
                 await ExportSelfTest.run(target: target, log: AppLog.write)
             }
+            // And for the preset library, off unless RP_PRESET_SELFTEST is set:
+            // "Nổi bật" reads JSON out of RPCore's resource bundle and "Của
+            // tôi" writes into Application Support, and both are the kind of
+            // path that resolves on the Mac and can come back empty inside a
+            // device container (docs/PLAN.md §Phase 3). It restores whatever it
+            // changed — see PresetSelfTest.
+            if let target = PresetSelfTest.target() {
+                await PresetSelfTest.run(target: target, log: AppLog.write)
+            }
             // And for the Share Extension hand-off, off unless
             // RP_SHARE_SELFTEST is set: it delivers a real `retouchpro://open`
             // URL into `AppContainer.open(url:)` — the same entry point

@@ -46,17 +46,29 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// at an `EditState.SectionKey` — which may itself still be locked
     /// (Trang điểm / Tóc are Phase 5), so ``isLocked`` checks both.
     public let sectionKey: String?
+    /// The screen this item opens instead of a slider group.
+    ///
+    /// Only "Mẫu" has one (Phase 3, docs/PLAN.md §Phase 3 *"dùng lại UI rail
+    /// 'Mẫu' đã khoá … làm màn preset"*): it is a **library**, not a set of
+    /// sliders, so it has no `EditState` namespace and cannot be expressed as a
+    /// ``sectionKey``. An item with a presentation is not locked.
+    public let presentation: RailPresentation?
 
-    public init(id: String, label: String, systemImage: String, sectionKey: String? = nil) {
+    public init(
+        id: String, label: String, systemImage: String, sectionKey: String? = nil,
+        presentation: RailPresentation? = nil
+    ) {
         self.id = id
         self.label = label
         self.systemImage = systemImage
         self.sectionKey = sectionKey
+        self.presentation = presentation
     }
 
-    /// `true` when tapping this item can do nothing: either there is no section
+    /// `true` when tapping this item can do nothing: no section *and* no screen
     /// behind it, or the section behind it is one of the Phase 5 groups.
     public var isLocked: Bool {
+        if presentation != nil { return false }
         guard let sectionKey else { return true }
         return SliderPanelLayout.section(forKey: sectionKey)?.isLocked ?? true
     }
@@ -67,11 +79,25 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// phase to name, because which phase picks it up is still open
     /// (`docs/PLAN.md` §Phase 6 "Turn 3 canvas").
     public var lockedHint: String {
+        if presentation != nil { return "" }
         guard let sectionKey,
             let section = SliderPanelLayout.section(forKey: sectionKey)
         else { return "chưa khả dụng" }
         return section.isLocked ? "\(section.phase) · chưa khả dụng" : ""
     }
+}
+
+/// A rail item that opens a **screen** rather than selecting a slider group.
+///
+/// One case today, and it is deliberately an enum anyway: the two other rail
+/// items that will eventually open something rather than select something ("Tự
+/// động" is a one-tap formula, Phase 6.5) should land here instead of growing a
+/// second boolean on ``RailItemDescriptor``.
+public enum RailPresentation: Hashable, Sendable {
+    /// The preset library (docs/PLAN.md §Phase 3). The associated value is which
+    /// half of it opens — the full template gallery, or the colour-only Looks
+    /// picker.
+    case presetLibrary(PresetLibraryKind)
 }
 
 /// The eighteen-item tool rail, in **the user's workflow order**.
@@ -109,9 +135,16 @@ public enum RailLayout {
             sectionKey: EditState.SectionKey.skin),
 
         // …then the other sixteen, in the canvas's relative order.
-        // Template gallery. Phase 3 will likely reuse this UI for presets
-        // (docs/PLAN.md), so nothing is stubbed here.
-        RailItemDescriptor(id: "templates", label: "Mẫu", systemImage: "square.stack"),
+        // Template gallery — **unlocked in Phase 3** (docs/PLAN.md §Phase 3,
+        // "dùng lại UI rail 'Mẫu' đã khoá … làm màn preset thay vì xây UI preset
+        // riêng"). It is the one rail item that opens a screen instead of
+        // selecting a slider group, so it carries a ``RailPresentation`` and no
+        // `sectionKey`; the Looks picker is the same screen with a different
+        // ``PresetLibraryKind`` and is reached from inside it, because the
+        // canvas's rail has no Looks entry to unlock.
+        RailItemDescriptor(
+            id: "templates", label: "Mẫu", systemImage: "square.stack",
+            presentation: .presetLibrary(.templates)),
         RailItemDescriptor(
             id: "teeth", label: "Răng", systemImage: "eye",
             sectionKey: EditState.SectionKey.eyesTeeth),

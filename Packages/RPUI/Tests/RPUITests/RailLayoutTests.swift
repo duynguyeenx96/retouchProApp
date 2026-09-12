@@ -47,6 +47,12 @@ struct RailLayoutTests {
         "Mặt", "Mắt", "Bọng mắt", "Răng", "Mịn da", "Kiềm dầu",
     ]
 
+    /// The one item that opens a **screen** instead of a slider group: "Mẫu" was
+    /// unlocked in Phase 3 as the preset library (docs/PLAN.md §Phase 3, *"dùng
+    /// lại UI rail 'Mẫu' đã khoá … làm màn preset"*). It is unlocked but has no
+    /// `sectionKey`, which is why the two rules below are stated separately.
+    private static let screenLabels: Set<String> = ["Mẫu"]
+
     @Test("Eighteen items, workflow order: Mặt → Mắt → Mịn da lead")
     func labelsAndOrder() {
         #expect(RailLayout.items.count == 18)
@@ -116,28 +122,32 @@ struct RailLayoutTests {
         }
         // The pinned Màu chip is an active item too, and comes last — it is
         // drawn after the scrolling eighteen in both shells, because colour is
-        // the user's last step.
+        // the user's last step. "Mẫu" is active as well from Phase 3, but as a
+        // screen rather than a section, so it carries no key.
         #expect(RailLayout.activeItems.map(\.label) == Self.expectedLabels.filter {
-            Self.activeLabels.contains($0)
+            Self.activeLabels.contains($0) || Self.screenLabels.contains($0)
         } + ["Màu"])
+        #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Mẫu"])
     }
 
-    /// Twelve locked: ten with no section at all, plus Trang điểm and Tóc
+    /// Eleven locked: nine with no section at all, plus Trang điểm and Tóc
     /// whose sections exist but are themselves Phase 5. ("Xoá vật thể" is not
-    /// among these — it was cut from scope entirely, not locked.)
-    @Test("The other twelve items are locked, for the two different reasons")
+    /// among these — it was cut from scope entirely, not locked; "Mẫu" was
+    /// unlocked in Phase 3, which is why this is eleven and not the twelve of
+    /// Turn 3.)
+    @Test("The other eleven items are locked, for the two different reasons")
     func lockedItems() {
         let locked = RailLayout.items.filter(\.isLocked)
-        #expect(locked.count == 12)
+        #expect(locked.count == 11)
         #expect(
             locked.map(\.label) == [
-                "Mẫu", "Tự động", "Trang điểm", "Thu gọn", "Cơ thể", "Sửa da", "Săn chắc",
+                "Tự động", "Trang điểm", "Thu gọn", "Cơ thể", "Sửa da", "Săn chắc",
                 "Căng mọng", "Mụn", "Đầu", "Tạo khối", "Tóc",
             ])
 
-        // No section behind it at all: ten of the twelve.
+        // No section behind it at all: nine of the eleven.
         let unbacked = locked.filter { $0.sectionKey == nil }
-        #expect(unbacked.count == 10)
+        #expect(unbacked.count == 9)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
         // The two Phase 5 groups keep the panel's own wording.
@@ -170,9 +180,10 @@ struct RailLayoutTests {
         let byLabel = Dictionary(uniqueKeysWithValues: RailLayout.items.map { ($0.label, $0) })
         chrome.activeGroupKey = EditState.SectionKey.skin
 
-        for label in ["Mẫu", "Tự động", "Thu gọn", "Trang điểm", "Tóc"] {
+        for label in ["Tự động", "Thu gọn", "Trang điểm", "Tóc"] {
             chrome.selectRailItem(try #require(byLabel[label]))
             #expect(chrome.activeGroupKey == EditState.SectionKey.skin, "\(label) switched the panel")
+            #expect(chrome.presetLibrary == nil, "\(label) opened a screen")
         }
 
         chrome.selectRailItem(try #require(byLabel["Bọng mắt"]))
@@ -184,6 +195,48 @@ struct RailLayoutTests {
 
         chrome.selectRailItem(try #require(byLabel["Mặt"]))
         #expect(chrome.activeGroupKey == EditState.SectionKey.face)
+    }
+
+    // MARK: - "Mẫu" — the one item that opens a screen
+
+    /// Phase 3 unlocked "Mẫu" as the preset library. It is the only item with a
+    /// ``RailPresentation``, and tapping it must open the library **without**
+    /// moving the slider panel: closing the library has to put the user back on
+    /// the group they were editing.
+    @MainActor
+    @Test("Tapping Mẫu opens the preset library and leaves the slider panel alone")
+    func tappingTemplatesOpensThePresetLibrary() throws {
+        let byLabel = Dictionary(uniqueKeysWithValues: RailLayout.items.map { ($0.label, $0) })
+        let templates = try #require(byLabel["Mẫu"])
+
+        #expect(templates.presentation == .presetLibrary(.templates))
+        #expect(templates.sectionKey == nil)
+        #expect(!templates.isLocked)
+        #expect(
+            RailLayout.allItems.filter { $0.presentation != nil }.map(\.id) == ["templates"])
+
+        let chrome = EditorChrome()
+        chrome.activeGroupKey = EditState.SectionKey.face
+        chrome.selectRailItem(templates)
+
+        #expect(chrome.presetLibrary == .templates)
+        #expect(chrome.activeGroupKey == EditState.SectionKey.face)
+    }
+
+    /// The Looks picker is the same screen with a different kind, and it is only
+    /// reachable from inside the library — the canvas's rail has no Looks entry.
+    @Test("The two picker kinds differ only in which sections they carry")
+    func libraryKinds() {
+        #expect(PresetLibraryKind.templates.sectionNames == Set(EditState.SectionKey.all))
+        #expect(PresetLibraryKind.looks.sectionNames == [EditState.SectionKey.color])
+        #expect(PresetLibraryKind.allCases.map(\.title) == ["Mẫu", "Looks"])
+    }
+
+    /// The 2026-09-11 decision: the mockup's "Cho bạn" ships as "Nổi bật".
+    @Test("The featured tab is not labelled 'Cho bạn'")
+    func tabsAreRenamed() {
+        #expect(PresetLibraryTab.allCases.map(\.title) == ["Nổi bật", "Của tôi", "Yêu thích"])
+        #expect(!PresetLibraryTab.allCases.map(\.title).contains("Cho bạn"))
     }
 
     // MARK: - The pinned "Màu" affordance

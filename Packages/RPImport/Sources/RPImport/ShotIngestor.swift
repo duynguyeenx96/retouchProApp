@@ -92,12 +92,26 @@ public struct ShotIngestor: Sendable {
             ? metadataExtractor.metadata(forFileAt: url)
             : CaptureMetadata()
 
+        // docs/PLAN.md §Phase 3: "auto-apply mọi ảnh mới vào project (kể cả từ
+        // FolderWatcher/MTP)". The hook is here, in the one funnel every
+        // importer goes through, rather than in the UI's import path — the
+        // folder watcher and the MTP importer never touch `EditorModel`, and a
+        // preset that only applies to photos the user picked by hand would miss
+        // exactly the tethered-workflow case the feature exists for.
+        //
+        // `addShot(editState:)` writes it in the same call that registers the
+        // shot, so there is no window where a new shot is visible without its
+        // look. `nil` (no preset armed, or its file is gone) leaves the shot
+        // untouched, which is the Phase 1 behaviour.
+        let autoApplied = store.autoApplyEditState(for: project, fileManager: fileManager)
+
         do {
             let shot = try store.addShot(
                 copyingOriginalAt: url,
                 into: &project,
                 capture: capture,
                 contentHash: contentHash,
+                editState: autoApplied,
                 fileManager: fileManager
             )
             // `addShot` keeps the *source's* last path component as

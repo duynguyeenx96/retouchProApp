@@ -1,0 +1,20 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Looks",
+  "id" : "builtin-look-dien-anh",
+  "name" : "Điện ảnh",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : 18,
+      "curves" : 35,
+      "highlights" : -8,
+      "hslAqua" : 12,
+      "hslOrange" : 10,
+      "saturation" : -12,
+      "shadows" : -12,
+      "wbTemperature" : -8,
+      "wbTint" : 4
+    }
+  }
+}

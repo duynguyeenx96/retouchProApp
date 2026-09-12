@@ -14,7 +14,12 @@ let package = Package(
         .library(name: "RPCore", targets: ["RPCore"])
     ],
     targets: [
-        .target(name: "RPCore"),
+        // `.copy` (not `.process`): the built-in preset JSON keeps its
+        // `BuiltInPresets/<kind>/` folder structure inside the bundle, which is
+        // what `BuiltInPresets` enumerates and what gives the curated list its
+        // display order (file name). `.process` would flatten the two kinds
+        // into one directory.
+        .target(name: "RPCore", resources: [.copy("Resources/BuiltInPresets")]),
         .testTarget(name: "RPCoreTests", dependencies: ["RPCore"]),
     ]
 )

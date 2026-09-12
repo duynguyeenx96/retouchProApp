@@ -1,0 +1,24 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Mẫu",
+  "id" : "builtin-template-ngoai-troi-kiem-dau",
+  "name" : "Ngoài trời · kiềm dầu",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : 8,
+      "highlights" : -15,
+      "vibrance" : 12
+    },
+    "eyesTeeth" : {
+      "eyeBrighten" : 12
+    },
+    "skin" : {
+      "evenTone" : 20,
+      "keepTexture" : 50,
+      "redness" : 25,
+      "shine" : 45,
+      "smooth" : 25
+    }
+  }
+}

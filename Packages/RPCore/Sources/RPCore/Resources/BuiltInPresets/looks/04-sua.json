@@ -1,0 +1,18 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Looks",
+  "id" : "builtin-look-sua",
+  "name" : "Sữa",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : -10,
+      "curves" : 12,
+      "exposure" : 10,
+      "highlights" : -12,
+      "saturation" : -8,
+      "shadows" : 18,
+      "wbTemperature" : 6
+    }
+  }
+}

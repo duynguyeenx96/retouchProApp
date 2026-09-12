@@ -256,6 +256,19 @@ public final class EditorModel {
     /// a write that would change nothing.
     private var lastSavedEditState: EditState?
 
+    /// Replaces the active shot's document and repaints, without writing.
+    ///
+    /// The one seam `EditorModel+Presets` needs: ``activeEditState`` is
+    /// `private(set)` so that only this file can decide what "the document"
+    /// is, and applying a preset is the single case that replaces it wholesale
+    /// rather than one slider at a time. It follows ``setSlider(_:in:to:)``'s
+    /// contract — memory and GPU now, disk on the caller's
+    /// ``commitEditState()``.
+    func replaceActiveEditState(_ state: EditState) {
+        activeEditState = state
+        live?.update(editState: activeEditState)
+    }
+
     // MARK: - "Đã chỉnh" index (library filter)
 
     /// Shots whose `edits/<id>.json` carries at least one slider.
@@ -489,6 +502,11 @@ public final class EditorModel {
     }
 
     public func dismissError() { lastErrorMessage = nil }
+
+    /// Puts a failure raised by an extension of this type into the same banner
+    /// everything else uses. ``lastErrorMessage`` is `private(set)` so that the
+    /// banner has exactly one writer per file; this is that writer.
+    func report(_ message: String) { lastErrorMessage = message }
 
     // MARK: - Mutation plumbing
 

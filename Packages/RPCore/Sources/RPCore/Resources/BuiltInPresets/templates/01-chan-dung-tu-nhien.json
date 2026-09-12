@@ -1,0 +1,24 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Mẫu",
+  "id" : "builtin-template-chan-dung-tu-nhien",
+  "name" : "Chân dung tự nhiên",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "curves" : 12,
+      "exposure" : 4,
+      "vibrance" : 8
+    },
+    "eyesTeeth" : {
+      "eyeBrighten" : 15,
+      "teethWhiten" : 10
+    },
+    "skin" : {
+      "evenTone" : 20,
+      "keepTexture" : 40,
+      "redness" : 15,
+      "smooth" : 30
+    }
+  }
+}

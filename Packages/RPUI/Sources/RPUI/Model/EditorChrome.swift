@@ -113,6 +113,11 @@ public final class EditorChrome {
     public var showsThreeStarsAndUp = false
     public var isShowingExport = false
     public var export = ExportOptions()
+    /// Which half of the preset library is on screen, or `nil` when it is not
+    /// (docs/PLAN.md §Phase 3). Like every other property here it is pure
+    /// chrome: the library writes through ``EditorModel``, and closing it
+    /// changes nothing on disk.
+    public var presetLibrary: PresetLibraryKind?
 
     public init() {}
 
@@ -131,12 +136,21 @@ public final class EditorChrome {
     }
 
     /// Tapping a rail item (docs/design/SPEC.md §Turn 3). An item with no
-    /// section behind it does **nothing at all** — it does not clear the
-    /// selection and does not switch the panel — and an item pointing at a
-    /// locked section is stopped by ``selectGroup(_:)`` for the same reason, so
-    /// the view layer needs no conditional of its own.
+    /// section and no screen behind it does **nothing at all** — it does not
+    /// clear the selection and does not switch the panel — and an item pointing
+    /// at a locked section is stopped by ``selectGroup(_:)`` for the same
+    /// reason, so the view layer needs no conditional of its own.
+    ///
+    /// An item that opens a screen ("Mẫu" → the preset library) **only** opens
+    /// it: `activeGroupKey` stays where it was, so closing the library puts the
+    /// user back on the panel they were using.
     public func selectRailItem(_ item: RailItemDescriptor) {
-        if let key = item.sectionKey { selectGroup(key) }
+        switch item.presentation {
+        case .presetLibrary(let kind):
+            presetLibrary = kind
+        case nil:
+            if let key = item.sectionKey { selectGroup(key) }
+        }
     }
 
     public func cycleSubject() { subject = subject.next }

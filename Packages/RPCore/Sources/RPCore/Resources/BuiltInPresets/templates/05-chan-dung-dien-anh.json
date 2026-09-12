@@ -1,0 +1,26 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Mẫu",
+  "id" : "builtin-template-chan-dung-dien-anh",
+  "name" : "Chân dung điện ảnh",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : 16,
+      "curves" : 30,
+      "saturation" : -10,
+      "shadows" : -10,
+      "wbTemperature" : -6
+    },
+    "eyesTeeth" : {
+      "eyeBrighten" : 12,
+      "eyeDefinition" : 20
+    },
+    "skin" : {
+      "darkCircle" : 15,
+      "keepTexture" : 40,
+      "smooth" : 30,
+      "wrinkle" : 20
+    }
+  }
+}

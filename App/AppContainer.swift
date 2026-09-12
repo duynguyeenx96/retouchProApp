@@ -124,10 +124,34 @@ final class AppContainer {
     }
 
     /// The startup lines, in the order they should be written. `renderSummary`
-    /// says *whether* face analysis works; ``faceModelReport`` says *why*; the
-    /// last line says whether the Share Extension can reach this app at all.
+    /// says *whether* face analysis works; ``faceModelReport`` says *why*;
+    /// ``presetLibraryReport`` says whether Phase 3's preset stores resolved;
+    /// the last line says whether the Share Extension can reach this app at all.
     var startupLog: [String] {
-        [renderSummary] + faceModelReport + [shareHandoff.containerReport]
+        [renderSummary] + faceModelReport + [presetLibraryReport, shareHandoff.containerReport]
+    }
+
+    /// One line for the preset library (docs/PLAN.md §Phase 3): how many
+    /// built-in presets the app bundle actually yielded, and where the user's
+    /// cross-project "Của tôi" store landed.
+    ///
+    /// It is logged unconditionally for the reason `.claude/agents/coder.md`
+    /// step 6 exists: `BuiltInPresets` reads JSON out of `Bundle.module`, and a
+    /// resource that resolves on macOS and in the Simulator can come back empty
+    /// inside a real device's sandbox. An empty "Nổi bật" tab looks identical to
+    /// a curated list that happens to be short, so the count goes in the log
+    /// where it can be read without a screenshot.
+    var presetLibraryReport: String {
+        let templates = BuiltInPresets.templates.count
+        let looks = BuiltInPresets.looks.count
+        let bundled =
+            BuiltInPresets.isEmpty
+            ? "MISSING (bundle \(BuiltInPresets.resourceRootURL?.path ?? "unavailable"))"
+            : "\(templates) mẫu + \(looks) looks"
+        let mine =
+            (try? PresetLibraryStore.default())
+            .map { "\($0.rootURL.path)" } ?? "UNAVAILABLE"
+        return "presets: built-in \(bundled) | của tôi: \(mine)"
     }
 
     /// Entry point for `retouchpro://` (docs/ADR-0017). Called from the scene's

@@ -1,0 +1,27 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Mẫu",
+  "id" : "builtin-template-studio-trong-treo",
+  "name" : "Studio trong trẻo",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "curves" : 10,
+      "exposure" : 8,
+      "highlights" : -10,
+      "saturation" : -5,
+      "shadows" : 12
+    },
+    "eyesTeeth" : {
+      "eyeBrighten" : 18,
+      "eyeDefinition" : 15
+    },
+    "skin" : {
+      "brighten" : 10,
+      "evenTone" : 25,
+      "keepTexture" : 45,
+      "shine" : 30,
+      "smooth" : 35
+    }
+  }
+}

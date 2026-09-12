@@ -1,0 +1,27 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Mẫu",
+  "id" : "builtin-template-beauty-nhe",
+  "name" : "Beauty nhẹ",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : 5,
+      "exposure" : 6,
+      "vibrance" : 10
+    },
+    "eyesTeeth" : {
+      "eyeBrighten" : 20,
+      "scleraWhiten" : 15,
+      "teethWhiten" : 15
+    },
+    "skin" : {
+      "brighten" : 15,
+      "darkCircle" : 20,
+      "evenTone" : 30,
+      "keepTexture" : 30,
+      "redness" : 20,
+      "smooth" : 45
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Looks",
+  "id" : "builtin-look-tu-nhien",
+  "name" : "Tự nhiên",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : 6,
+      "curves" : 12,
+      "exposure" : 4,
+      "saturation" : -4,
+      "vibrance" : 10
+    }
+  }
+}

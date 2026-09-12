@@ -71,13 +71,22 @@ struct SliderPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Text("Lưu preset · Phase 3")
-                .font(RPTheme.text(12.5))
-                .foregroundStyle(RPTheme.textTertiary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(RPTheme.fillFaint, in: RoundedRectangle(cornerRadius: 8))
-                .help("Lưu và áp preset là docs/PLAN.md Phase 3")
+            // Phase 3 landed, so the chip is a real button now: it opens the
+            // same preset library the rail's "Mẫu" item opens
+            // (``PresetLibraryView``), where saving the current look lives.
+            Button {
+                chrome.presetLibrary = .templates
+            } label: {
+                Text("Lưu preset")
+                    .font(RPTheme.text(12.5))
+                    .foregroundStyle(RPTheme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(RPTheme.fillFaint, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("Mở thư viện preset để lưu hoặc áp một preset")
 
             Button {
                 model.setSyncingAllFaces(!model.isSyncingAllFaces)

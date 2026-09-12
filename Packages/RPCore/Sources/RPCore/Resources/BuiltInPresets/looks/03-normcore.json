@@ -1,0 +1,18 @@
+{
+  "createdAt" : "2026-09-11T00:00:00.000Z",
+  "group" : "Looks",
+  "id" : "builtin-look-normcore",
+  "name" : "Normcore",
+  "schemaVersion" : 1,
+  "sections" : {
+    "color" : {
+      "contrast" : -8,
+      "curves" : 10,
+      "highlights" : -6,
+      "hslOrange" : -8,
+      "saturation" : -18,
+      "shadows" : 10,
+      "vibrance" : 6
+    }
+  }
+}

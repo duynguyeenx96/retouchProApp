@@ -29,6 +29,10 @@ public struct EditorView: View {
     /// One per open editor, holding one `ExportRenderer` (built on the first
     /// export, not at launch — see ``MetalExportRunner``).
     @State private var exporter = ExportController.standard()
+    /// The preset library's own state (the two stores + favourites), owned here
+    /// for the same reason the pickers are: both layouts present it, and it must
+    /// not be rebuilt — and re-read from disk — every time the sheet opens.
+    @State private var presetLibrary = PresetLibraryModel()
     @State private var layout: EditorLayout = .threePane
     @State private var isPickingFiles = false
     @State private var isPickingPhotos = false
@@ -123,7 +127,20 @@ public struct EditorView: View {
             .padding(.top, 8)
         }
         .overlay { exportOverlay }
+        .overlay { presetLibraryOverlay }
         #if os(iOS)
+            .sheet(item: presetLibrarySheetBinding) { kind in
+                PhonePresetLibrarySheet(
+                    model: model, library: presetLibrary, kind: kind,
+                    setKind: { chrome.presetLibrary = $0 },
+                    dismiss: { chrome.presetLibrary = nil }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(RPTheme.dialog)
+                .preferredColorScheme(.dark)
+                .tint(RPTheme.accent)
+            }
             .sheet(isPresented: exportSheetBinding) {
                 PhoneExportSheet(
                     chrome: chrome, shot: model.activeShot, exporter: exporter,
@@ -216,6 +233,37 @@ public struct EditorView: View {
     /// second call while the first is running, so a double-click is one file.
     private func runExport() {
         Task { await exporter.exportActiveShot(of: model, options: chrome.export) }
+    }
+
+    // MARK: - Preset library
+
+    /// `Binding` to the `item:` overload rather than the `@Bindable` property:
+    /// `chrome.presetLibrary` *is* the identity of what is open (which of the
+    /// two pickers), so switching kinds while the sheet is up re-renders it
+    /// instead of dismissing and re-presenting.
+    private var presetLibrarySheetBinding: Binding<PresetLibraryKind?> {
+        Binding(
+            get: { chrome.presetLibrary },
+            set: { chrome.presetLibrary = $0 })
+    }
+
+    /// macOS gets the in-window dialog of 2d, not a sheet — same decision as
+    /// export.
+    @ViewBuilder private var presetLibraryOverlay: some View {
+        #if os(macOS)
+            if let kind = chrome.presetLibrary {
+                ZStack {
+                    RPTheme.scrimMac
+                        .ignoresSafeArea()
+                        .onTapGesture { chrome.presetLibrary = nil }
+                    MacPresetLibraryDialog(
+                        model: model, library: presetLibrary, kind: kind,
+                        setKind: { chrome.presetLibrary = $0 },
+                        dismiss: { chrome.presetLibrary = nil })
+                }
+                .transition(.opacity)
+            }
+        #endif
     }
 
     // MARK: - Banners
