@@ -17,6 +17,12 @@ struct RetouchProApp: App {
         WindowGroup {
             RootView()
                 .environment(container)
+                // "Mở với RetouchPro": the Share Extension opens
+                // `retouchpro://open?file=…` (docs/ADR-0017). SwiftUI delivers
+                // it here in both cases the feature has to handle — a cold
+                // start, where the URL arrives just after this scene connects,
+                // and a warm start, where the app was already in the background.
+                .onOpenURL { url in container.open(url: url) }
                 #if os(macOS)
                     // Below `RPUI.EditorLayout.threePaneMinimumWidth` (900) the
                     // editor drops to its compact arrangement, which is correct

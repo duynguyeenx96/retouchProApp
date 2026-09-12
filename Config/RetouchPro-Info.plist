@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The app target still builds its Info.plist with GENERATE_INFOPLIST_FILE;
+	     Xcode merges the generated keys into this file. Only what generation
+	     cannot express lives here: CFBundleURLTypes is an array of dictionaries
+	     and there is no INFOPLIST_KEY_ for it.
+
+	     This registers `retouchpro://`, the scheme the Share Extension opens with
+	     NSExtensionContext.open (docs/PLAN.md §Phase 3B item 3, docs/ADR-0017).
+	     The scheme name is mirrored by RPCore.ShareHandoff.urlScheme, which is
+	     what both sides actually build and parse URLs with. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.duynguyen.RetouchPro.handoff</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>retouchpro</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

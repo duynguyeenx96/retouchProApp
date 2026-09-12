@@ -26,15 +26,32 @@ public struct EditorView: View {
     let close: () -> Void
 
     @State private var chrome = EditorChrome()
+    /// One per open editor, holding one `ExportRenderer` (built on the first
+    /// export, not at launch — see ``MetalExportRunner``).
+    @State private var exporter = ExportController.standard()
     @State private var layout: EditorLayout = .threePane
     @State private var isPickingFiles = false
     @State private var isPickingPhotos = false
     @State private var pickedPhotos: [PhotosPickerItem] = []
 
-    public init(model: EditorModel, cache: PreviewImageCache, close: @escaping () -> Void) {
+    /// - Parameter opensInEditor: start on the editor (1a / 1b) instead of the
+    ///   project's library (2a / 2c). The Share Extension hand-off passes
+    ///   `true`: "Mở với RetouchPro" promises the canvas, not a grid with one
+    ///   thumbnail in it (docs/ADR-0017). Everything else leaves it `false`,
+    ///   which is the behaviour opening a project has always had.
+    @MainActor
+    public init(
+        model: EditorModel,
+        cache: PreviewImageCache,
+        opensInEditor: Bool = false,
+        close: @escaping () -> Void
+    ) {
         self.model = model
         self.cache = cache
         self.close = close
+        let chrome = EditorChrome()
+        if opensInEditor { chrome.tab = .edit }
+        _chrome = State(initialValue: chrome)
     }
 
     public var body: some View {
@@ -108,7 +125,10 @@ public struct EditorView: View {
         .overlay { exportOverlay }
         #if os(iOS)
             .sheet(isPresented: exportSheetBinding) {
-                PhoneExportSheet(chrome: chrome, shot: model.activeShot) {
+                PhoneExportSheet(
+                    chrome: chrome, shot: model.activeShot, exporter: exporter,
+                    export: runExport
+                ) {
                     chrome.isShowingExport = false
                 }
                 .presentationDetents([.height(430)])
@@ -172,10 +192,17 @@ public struct EditorView: View {
                 ZStack {
                     RPTheme.scrimMac
                         .ignoresSafeArea()
-                        .onTapGesture { chrome.isShowingExport = false }
+                        // Not while a file is being written: dismissing the
+                        // dialog mid-export would hide the only place the
+                        // finished file's path is shown.
+                        .onTapGesture {
+                            if !exporter.isExporting { chrome.isShowingExport = false }
+                        }
                     MacExportDialog(
                         chrome: chrome,
-                        shotCount: model.activeShot == nil ? 0 : 1
+                        shotCount: model.activeShot == nil ? 0 : 1,
+                        exporter: exporter,
+                        export: runExport
                     ) {
                         chrome.isShowingExport = false
                     }
@@ -183,6 +210,12 @@ public struct EditorView: View {
                 .transition(.opacity)
             }
         #endif
+    }
+
+    /// One photo, the one the editor has open. `ExportController` refuses a
+    /// second call while the first is running, so a double-click is one file.
+    private func runExport() {
+        Task { await exporter.exportActiveShot(of: model, options: chrome.export) }
     }
 
     // MARK: - Banners

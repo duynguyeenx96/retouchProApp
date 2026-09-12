@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Generated keys (CFBundleExecutable, versions, …) are merged in by
+	     GENERATE_INFOPLIST_FILE; this file carries the NSExtension dictionary,
+	     which generation cannot express.
+
+	     NSExtensionActivationSupportsImageWithMaxCount = 1 is the whole
+	     activation rule (docs/PLAN.md §Phase 3B item 1): the extension appears
+	     in the Share Sheet for exactly one image and for nothing else — not
+	     text, not URLs, not a multi-photo selection, which would silently do
+	     something other than what the user asked for. -->
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+	</dict>
+</dict>
+</plist>
