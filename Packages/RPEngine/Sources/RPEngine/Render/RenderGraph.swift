@@ -35,10 +35,10 @@ public struct RenderRequest: Sendable {
     /// order (docs/PLAN.md §6.1).
     ///
     /// **One slot, shared by every mask that belongs to no face** — the
-    /// hand-painted brush (``ManualMaskCoverage``), "Khoá nền"'s subject mask
-    /// (``BackgroundLockMaskSource``, via ``TextureGateMask``) and §6.2's
-    /// full-frame skin mask. ``RenderGateMask`` explains why they are one slot
-    /// and not three, and why the composition is a product.
+    /// hand-painted brush (``ManualMaskCoverage``) and "Khoá nền"'s subject mask
+    /// (``BackgroundLockMaskSource``, via ``TextureGateMask``).
+    /// ``RenderGateMask`` explains why they are one slot and not two, and why
+    /// the composition is a product.
     ///
     /// These are **references to live GPU coverage**, not values: a painted mask
     /// changes while the user drags a finger and the canvas re-issues this
@@ -55,15 +55,51 @@ public struct RenderRequest: Sendable {
     /// slider in every document that never used a brush.
     public var gateMasks: [any RenderGateMask]
 
+    /// Whole-frame skin coverage (``BodySkinMask``), **also already scaled to the
+    /// texture being rendered**, or `nil`.
+    ///
+    /// docs/PLAN.md §6.2 "Sửa da": the "Da" sliders' mask is per-face today
+    /// because BiSeNet only runs on a crop, so body skin in the frame stays
+    /// untouched next to a smoothed face. This is the seam that lets the *same*
+    /// slider values reach the rest of the body — it is not per-face, which is
+    /// why it cannot live in ``faces``.
+    ///
+    /// ## Why this is not a ``gateMasks`` entry
+    ///
+    /// ``RenderGateMask``'s doc comment used to name this mask as the gate
+    /// slot's third consumer, and that was wrong in one specific, load-bearing
+    /// way: **a gate narrows and this mask widens.** `GateMaskCompositor` is a
+    /// multiply — `coverage x gate` — so a gate can only ever remove covered
+    /// area, which is the invariant every consumer of that protocol relies on
+    /// ("no gates ⇒ exactly the pre-6.1 render"). Intersecting the per-face
+    /// BiSeNet coverage with a whole-body skin mask would be nonzero only where
+    /// *both* already say skin, i.e. inside the face crops, which is precisely
+    /// the area the feature exists to grow beyond. A conforming type would be
+    /// lying about what it does, and the lie would be silent: the render would
+    /// simply never reach the neck.
+    ///
+    /// So it stays a field of its own, consumed one step *earlier* than the
+    /// gates: ``SkinRenderNode`` unions it into the per-face coverage first, and
+    /// then runs the unchanged gate-narrowing pass over the wider result. A
+    /// painted brush or "Khoá nền" therefore still narrows the final region, and
+    /// the order reads as "find skin everywhere it plausibly is, then restrict
+    /// to where the user and the subject mask say is fair game".
+    ///
+    /// Read only by ``SkinRenderNode``, and only when
+    /// `RPEngineFeatureFlags.bodySkinSync` is on; every other node ignores it.
+    public var bodySkinMask: RenderMask?
+
     public init(
         editState: EditState = EditState(), faces: [FaceRenderInput] = [],
         quality: RenderQuality = .preview,
-        gateMasks: [any RenderGateMask] = []
+        gateMasks: [any RenderGateMask] = [],
+        bodySkinMask: RenderMask? = nil
     ) {
         self.editState = editState
         self.faces = faces
         self.quality = quality
         self.gateMasks = gateMasks
+        self.bodySkinMask = bodySkinMask
     }
 }
 

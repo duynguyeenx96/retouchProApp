@@ -78,12 +78,37 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
     /// `EyesTeethRenderNode.maskKinds`, which landed first.
     public static let maskKinds: Set<RenderMaskKind> = [.skin]
 
+    /// Width of the crop-border ramp that blends the per-face mask into the
+    /// whole-frame one, as a fraction of face width (docs/PLAN.md §6.2: the two
+    /// masks must join "mượt (feather ở cổ)").
+    ///
+    /// The same 0.150 as ``lowRadiusFraction``, and for the same reason: it is
+    /// the scale at which the composite already works: a step in the mask
+    /// narrower than the large blur's radius is a step the eye can find. On a
+    /// 600 px face that is a 90 px ramp, which is most of the gap between a
+    /// CelebAMask-HQ crop's lower edge and the chin.
+    public static let neckFeatherFraction: CGFloat = 0.150
+
     private let context: MetalContext
     private let guidedFilter: GuidedFilter
     /// Rasterises `.skin` from every face into one full-resolution coverage
     /// texture. Was this node's own `encodeMask` until the "Mắt/Răng" group
     /// needed the same thing for two more kinds — see ``MaskRasteriser``.
     private let skinMask: MaskRasteriser
+    /// The same machinery for the whole-frame skin mask (docs/PLAN.md §6.2),
+    /// which is *also* just bytes + size + an affine and so rasterises through
+    /// exactly the same kernel. A second instance rather than a second kind so
+    /// the two upload caches invalidate independently: the body mask changes
+    /// when the picture changes, the face masks when the analysis does.
+    ///
+    /// Built in ``MaskRasteriser/init(wholeFrame:)`` form — the one "Khoá nền"
+    /// added for masks that belong to no face — so the mask is handed over
+    /// directly instead of being smuggled through a `FaceRenderInput` with a
+    /// zero `faceWidth` that no face ever had.
+    ///
+    /// Costs nothing until it is encoded — `MaskRasteriser` allocates on first
+    /// `encode`, not on `init`.
+    private let bodyMask: MaskRasteriser
     private let compositePipeline: any MTLComputePipelineState
 
     /// Phase 6.1: multiplies a ``RenderGateMask`` into the skin coverage.
@@ -141,6 +166,10 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         /// 144 MB of intermediates alongside them.
         private var baseTexture: (any MTLTexture)?
         private var lowTexture: (any MTLTexture)?
+        /// Where the merged face + whole-frame coverage goes (docs/PLAN.md §6.2).
+        /// `r8Unorm`, so 24 MB at 24 MP, and allocated only on the first render
+        /// that actually carries a `RenderRequest.bodySkinMask`.
+        private var unionTexture: (any MTLTexture)?
 
         init(
             width: Int, height: Int, device: any MTLDevice,
@@ -172,9 +201,21 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         /// former would hand a golden test a stale layer the shader did not bind.
         var lastBaseUsed = false
         var lastLowUsed = false
+        /// Whether the most recent encode merged in a whole-frame mask.
+        var lastUnionUsed = false
 
         var storedBase: (any MTLTexture)? { lastBaseUsed ? baseTexture : nil }
         var storedLow: (any MTLTexture)? { lastLowUsed ? lowTexture : nil }
+        var storedUnion: (any MTLTexture)? { lastUnionUsed ? unionTexture : nil }
+
+        func union() throws -> any MTLTexture {
+            if let unionTexture { return unionTexture }
+            let made = try SpikeTextureIO.makeTexture(
+                width: width, height: height, device: device, pixelFormat: .r8Unorm,
+                usage: [.shaderRead, .shaderWrite])
+            unionTexture = made
+            return made
+        }
 
         private func makeLayer() throws -> any MTLTexture {
             try SpikeTextureIO.makeTexture(
@@ -190,6 +231,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         /// was not before).
         var byteCount: Int {
             let layers = (baseTexture == nil ? 0 : 8) + (lowTexture == nil ? 0 : 8)
+                + (unionTexture == nil ? 0 : 1)
             return width * height * layers + guidedResources.byteCount
         }
     }
@@ -213,6 +255,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         // deliberately not bypassed here: the kernel's own gate stays meaningful.
         self.guidedFilter = try GuidedFilter(context: context)
         self.skinMask = try MaskRasteriser(kind: .skin, context: context)
+        self.bodyMask = try MaskRasteriser(wholeFrame: context)
         self.compositePipeline = try context.computePipeline("rp_skin_composite")
     }
 
@@ -235,6 +278,12 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         if RPEngineFeatureFlags.manualMask || RPEngineFeatureFlags.backgroundLock {
             try GateMaskCompositor.prewarm(context: context)
         }
+        // Same rule for the whole-body union (docs/PLAN.md §6.2): prewarm exists
+        // to move work off the interaction path, not to build a pipeline for a
+        // feature that is switched off.
+        if RPEngineFeatureFlags.bodySkinSync {
+            _ = try context.computePipeline("rp_body_skin_union")
+        }
     }
 
     public func isActive(for request: RenderRequest) -> Bool {
@@ -252,7 +301,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         let layers = cache?.byteCount ?? 0
         let gated = gatedMasks.reduce(0) { $0 + $1.width * $1.height }
         lock.unlock()
-        return layers + gated + skinMask.allocatedBytes
+        return layers + gated + skinMask.allocatedBytes + bodyMask.allocatedBytes
     }
 
     public func releaseIntermediates() {
@@ -262,6 +311,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         lastBoundMask = nil
         lock.unlock()
         skinMask.releaseIntermediates()
+        bodyMask.releaseIntermediates()
     }
 
     /// The intermediates from the most recent `encode`, so the golden harness can
@@ -274,19 +324,46 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
     /// a failure.
     ///
     /// Internal, not public: nothing outside the tests should reach in here.
+    /// `mask` is the mask the composite was actually **bound**, which after the
+    /// two Phase 6 additions is no longer always `skinMask.output`: it is the
+    /// per-face coverage widened by the whole-frame skin mask (§6.2) and then
+    /// narrowed by any live ``RenderGateMask`` (§6.1). Handing back the per-face
+    /// texture in either case would let a golden test pass while the shader read
+    /// something else.
     func debugLayers()
         -> (base: (any MTLTexture)?, low: (any MTLTexture)?, mask: any MTLTexture)?
     {
         lock.lock()
         let cached = cache
+        let bound = lastBoundMask
         lock.unlock()
-        // The mask the **last encode actually bound**, which is the gated one
-        // when a hand-painted mask narrowed it (Phase 6.1). Reporting the
-        // ungated `skinMask.output` instead would hand the golden harness a
-        // different mask from the one the composite read, and a gated render
-        // would fail the comparison for a reason that is not a bug.
-        guard let cached, let mask = lastBoundMask ?? skinMask.output else { return nil }
+        // The mask the **last encode actually bound** — the union when a
+        // whole-frame skin mask widened it, the gated texture when a painted
+        // mask or "Khoá nền" narrowed it, both when both were in play.
+        // Reporting the ungated, un-unioned `skinMask.output` instead would hand
+        // the golden harness a different mask from the one the composite read,
+        // and such a render would fail the comparison for a reason that is not a
+        // bug.
+        guard let cached, let mask = bound ?? skinMask.output else { return nil }
         return (cached.storedBase, cached.storedLow, mask)
+    }
+
+    /// The per-face coverage on its own, before the whole-frame merge. Internal;
+    /// `BodySkinUnionTests` compares the two.
+    var debugFaceMask: (any MTLTexture)? { skinMask.output }
+
+    /// The rasterised whole-frame coverage on its own, or `nil` when the last
+    /// encode did not use one.
+    var debugBodyMask: (any MTLTexture)? { bodyMask.output }
+
+    /// The union of the face and whole-frame coverages **before** any
+    /// ``RenderGateMask`` narrowed it, or `nil` when the last encode did not
+    /// union anything. Internal; `BodySkinUnionTests` needs the widen step and
+    /// the narrow step apart to check the order they compose in.
+    var debugUnionMask: (any MTLTexture)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache?.storedUnion
     }
 
     /// The fast-guided-filter `s` the currently cached `GuidedFilter.Resources`
@@ -321,7 +398,7 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         let cache = try self.cache(
             width: source.width, height: source.height, subsample: subsample)
         guard
-            let rawMask = try skinMask.encode(
+            let faceCoverage = try skinMask.encode(
                 into: commandBuffer, faces: faces, width: source.width, height: source.height)
         else {
             // Unreachable: `faces` is filtered to those carrying `.skin`, so the
@@ -331,16 +408,56 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
             return
         }
 
-        // Phase 6.1 — the whole-frame gates (hand-painted brush, and later
-        // "Khoá nền"), if the request carries any. This is the *whole* of "gate
-        // this group with a mask": the node keeps its kernels, its constants and
-        // its measured behaviour, and only the coverage texture bound at index 3
-        // below changes (docs/PLAN.md §6.1 — "không phải kỹ thuật mới, chỉ thêm
-        // 1 nguồn mask nữa"). With no gate the value is `rawMask` and this node
-        // is byte-for-byte its pre-6.1 self, which is what keeps ADR-0009's
+        // ------------------------------------------------------------------
+        // The coverage the composite reads is built in two steps, and the order
+        // is the point:
+        //
+        //   1. **widen** — §6.2 unions the per-face BiSeNet coverage with the
+        //      whole-frame skin mask, so the same slider values reach neck,
+        //      shoulders and arms the face crop never covered;
+        //   2. **narrow** — §6.1 multiplies in every live ``RenderGateMask``
+        //      (the hand-painted brush, "Khoá nền"'s subject mask).
+        //
+        // Widen-then-narrow, not the other way round: a gate answers "is this
+        // pixel fair game for the user", and that answer has to apply to the
+        // *final* region the group will touch. Gating the face mask first and
+        // unioning afterwards would let the body mask re-add area the brush had
+        // just erased, i.e. the brush would visibly fail to protect a shoulder.
+        // Reading it aloud: find skin everywhere it plausibly is, then restrict
+        // to where the user and the subject mask say is fair game.
+        //
+        // This is also why the body mask is *not* a `RenderGateMask` — see
+        // `RenderRequest.bodySkinMask`. Gates compose by multiplication, and a
+        // multiply can never add the area this step exists to add.
+        // ------------------------------------------------------------------
+
+        // Step 1. Only reached with the flag on *and* a mask supplied; `faces`
+        // is non-empty here, which the merge needs anyway — every length in this
+        // node is a fraction of face width, and "sync the body to the face" has
+        // no meaning without a face.
+        var maskTexture = faceCoverage
+        cache.lastUnionUsed = false
+        if RPEngineFeatureFlags.bodySkinSync, let body = request.bodySkinMask {
+            if let bodyCoverage = try bodyMask.encode(
+                into: commandBuffer, masks: [body], width: source.width,
+                height: source.height)
+            {
+                maskTexture = try encodeUnion(
+                    into: commandBuffer, faceCoverage: faceCoverage,
+                    bodyCoverage: bodyCoverage, faces: faces, cache: cache)
+                cache.lastUnionUsed = true
+            }
+        }
+
+        // Step 2. This is the *whole* of "gate this group with a mask": the node
+        // keeps its kernels, its constants and its measured behaviour, and only
+        // the coverage texture bound at index 3 below changes (docs/PLAN.md §6.1
+        // — "không phải kỹ thuật mới, chỉ thêm 1 nguồn mask nữa"). With no gate
+        // and no body mask the value is still `faceCoverage` and this node is
+        // byte-for-byte its pre-Phase-6 self, which is what keeps ADR-0009's
         // golden PSNR valid.
-        let maskTexture = try gate(
-            rawMask, with: request.gateMasks, into: commandBuffer,
+        maskTexture = try gate(
+            maskTexture, with: request.gateMasks, into: commandBuffer,
             width: source.width, height: source.height)
         lock.lock()
         lastBoundMask = maskTexture
@@ -466,6 +583,67 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         return Array(gatedMasks.prefix(count))
     }
 
+    // MARK: - Whole-frame union (docs/PLAN.md §6.2 "Sửa da")
+
+    /// Merges the per-face coverage with the whole-frame coverage into one mask.
+    ///
+    /// The rule is **not** `max(face, body)` — see `BodySkinShaders.metal` for
+    /// why. Inside a parsing crop the BiSeNet mask is authoritative (it knows
+    /// lips, eyes and hair are not skin; the colour classifier does not), outside
+    /// every crop the whole-frame mask is all there is, and the two are joined by
+    /// a smoothstep ramp `neckFeatherFraction × faceWidth` wide at the crop
+    /// border — which is the seam across the neck the plan asks to be feathered.
+    ///
+    /// The result is `>=` the per-face mask at every pixel, so switching this
+    /// feature on can only ever *add* covered area.
+    private func encodeUnion(
+        into commandBuffer: any MTLCommandBuffer, faceCoverage: any MTLTexture,
+        bodyCoverage: any MTLTexture, faces: [FaceRenderInput], cache: Cache
+    ) throws -> any MTLTexture {
+        // At most 64 faces, so the transform table stays inside setBytes' 4 KB
+        // budget and costs no per-frame allocation. A frame with more than 64
+        // faces has no face wide enough for these sliders to matter.
+        var transforms: [BodySkinUnionTransform] = faces.prefix(64).compactMap { face in
+            guard let mask = face.masks[.skin] else { return nil }
+            let t = mask.imageToMask
+            // Mask pixels per image pixel. sqrt(|det|) is exact for the
+            // rotation + uniform scale a CropRegion produces and is the
+            // geometric mean for anything else.
+            let scale = (abs(t.a * t.d - t.b * t.c)).squareRoot()
+            let feather = Self.neckFeatherFraction * face.faceWidth * scale
+            let bounded = min(
+                max(feather.isFinite ? feather : 1, 1),
+                CGFloat(min(mask.width, mask.height)) / 2)
+            return BodySkinUnionTransform(
+                rowX: SIMD3<Float>(Float(t.a), Float(t.c), Float(t.tx)),
+                rowY: SIMD3<Float>(Float(t.b), Float(t.d), Float(t.ty)),
+                maskSize: SIMD2<Float>(Float(mask.width), Float(mask.height)),
+                feather: Float(bounded))
+        }
+        guard !transforms.isEmpty else { return faceCoverage }
+
+        let pipeline = try context.computePipeline("rp_body_skin_union")
+        let output = try cache.union()
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return faceCoverage }
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(faceCoverage, index: 0)
+        encoder.setTexture(bodyCoverage, index: 1)
+        encoder.setTexture(output, index: 2)
+        encoder.setBytes(
+            &transforms, length: MemoryLayout<BodySkinUnionTransform>.stride * transforms.count,
+            index: 0)
+        var params = BodySkinUnionParams(
+            size: SIMD2<UInt32>(UInt32(output.width), UInt32(output.height)),
+            faceCount: UInt32(transforms.count))
+        encoder.setBytes(&params, length: MemoryLayout<BodySkinUnionParams>.stride, index: 1)
+        let dispatch = MetalContext.threadgroups(
+            forWidth: output.width, height: output.height, pipeline: pipeline)
+        encoder.dispatchThreadgroups(
+            dispatch.threadgroups, threadsPerThreadgroup: dispatch.threadsPerThreadgroup)
+        encoder.endEncoding()
+        return output
+    }
+
     // MARK: - Radii
 
     static func smoothRadius(faceWidth: CGFloat) -> Int {
@@ -523,6 +701,22 @@ struct SkinMaskParams {
 struct SkinMaskTransform {
     var rowX: SIMD3<Float>
     var rowY: SIMD3<Float>
+}
+
+/// Must match `BodySkinUnionParams` in BodySkinShaders.metal.
+struct BodySkinUnionParams {
+    var size: SIMD2<UInt32>
+    var faceCount: UInt32
+}
+
+/// Must match `BodySkinUnionTransform` in BodySkinShaders.metal. Metal aligns
+/// `float3` to 16 bytes, so this is 16 + 16 + 8 + 4 padded to 48 on both sides;
+/// `SkinRenderNodeTests.parameterStructsMatchShaderLayout` pins it.
+struct BodySkinUnionTransform {
+    var rowX: SIMD3<Float>
+    var rowY: SIMD3<Float>
+    var maskSize: SIMD2<Float>
+    var feather: Float
 }
 
 struct SkinCompositeParams {

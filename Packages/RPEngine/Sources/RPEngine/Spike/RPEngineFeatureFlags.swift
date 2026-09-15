@@ -160,6 +160,27 @@ public enum RPEngineFeatureFlags {
         contourSliders = false
     }
 
+    /// Phase 6 §6.2 "Sửa da": extend the "Da" sliders from the per-face BiSeNet
+    /// mask to a whole-frame skin mask (``BodySkinMask`` / ``SkinCore``), so
+    /// neck, shoulders and arms in the frame get the *same* slider values as the
+    /// face instead of staying untouched.
+    ///
+    /// **Not a new slider group and not a new kernel gate.** It only decides
+    /// whether ``SkinRenderNode`` reads `RenderRequest.bodySkinMask`; with it off
+    /// that field is ignored and the node renders exactly what it rendered
+    /// before, which is what
+    /// `BodySkinUnionTests.flagOffIgnoresTheWholeFrameMask` pins. So it is
+    /// deliberately *not* part of ``enableSkinRenderGraph()``: turning the Da
+    /// group on must not turn an unshipped mask source on with it.
+    ///
+    /// Default off until the IoU and ms/frame numbers in
+    /// `Research/bench/p6-skin-sync-*.json` are read and the UI toggle
+    /// (docs/PLAN.md §6.2: "một toggle… chi tiết UI chốt lúc build") exists.
+    public static var bodySkinSync: Bool {
+        get { value("bodySkinSync") }
+        set { setValue("bodySkinSync", newValue) }
+    }
+
     /// Turns on the two flags the skin path needs: ``skinSliders`` and
     /// ``guidedFilter`` (``SkinRenderNode`` owns a ``GuidedFilter``, whose own
     /// gate is not bypassed).

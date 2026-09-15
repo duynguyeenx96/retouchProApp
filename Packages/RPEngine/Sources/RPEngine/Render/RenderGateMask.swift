@@ -15,11 +15,28 @@ import Metal
 ///   which deliberately stopped at "mask ready, not wired" precisely so that the
 ///   two would share one slot rather than add one each (docs/ADR-0018).
 ///
-/// and §6.2's "đồng bộ da toàn thân" names a third: a full-frame skin mask that
-/// `SkinRenderNode` must merge in the same place. Three separate
-/// `RenderRequest` members would mean three `if let` chains in every node and
-/// three answers to "what happens when two of them are set". One protocol and
-/// one array answers it once: **gates intersect**, in order, by multiplication.
+/// Two separate `RenderRequest` members would mean two `if let` chains in every
+/// node and two answers to "what happens when both of them are set". One
+/// protocol and one array answers it once: **gates intersect**, in order, by
+/// multiplication.
+///
+/// ## What is *not* a gate: §6.2's whole-body skin mask
+///
+/// This comment used to name §6.2's "đồng bộ da toàn thân" full-frame skin mask
+/// as a third consumer of this slot. It shipped as its own field
+/// (`RenderRequest.bodySkinMask`) instead, and the reason is the one thing this
+/// protocol cannot bend on: **a gate narrows; that mask widens.**
+/// ``GateMaskCompositor`` is a multiply, so a gate can only ever remove covered
+/// area — which is exactly the invariant that makes "no gates ⇒ the pre-6.1
+/// render" true. Intersecting the per-face BiSeNet coverage with a whole-body
+/// skin mask would be nonzero only where both already agree, i.e. inside the
+/// face crops, and could never reach the neck the feature exists to reach. A
+/// conforming type would be lying about what it does.
+///
+/// `SkinRenderNode` therefore consumes it one step *earlier*: it unions the
+/// body mask into the per-face coverage first, then runs the unchanged gate
+/// pass over the wider result. A painted brush or "Khoá nền" still narrows the
+/// final region, and nothing here had to change to allow it.
 ///
 /// ## Intersection is the only defensible composition
 ///

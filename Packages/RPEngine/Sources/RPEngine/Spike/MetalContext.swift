@@ -94,6 +94,11 @@ public final class MetalContext: @unchecked Sendable {
         // listed last for the same reason PreviewShaders is: the line numbers of
         // the earlier files must not move.
         ("RenderShaderSources", "ManualMaskShaders"),
+        // Phase 6 §6.2 "Sửa da": the whole-body skin-mask union
+        // (BodySkinShaders.metal). Depends on nothing in the files above and is
+        // appended **last** for that reason — adding it anywhere else would move
+        // every later file's line numbers in the concatenated source.
+        ("RenderShaderSources", "BodySkinShaders"),
     ]
 
     public init(device: (any MTLDevice)? = nil) throws {
