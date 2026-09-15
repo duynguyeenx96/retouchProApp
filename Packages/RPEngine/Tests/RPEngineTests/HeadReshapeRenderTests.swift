@@ -93,31 +93,75 @@ struct HeadReshapeRenderTests {
         #expect(SpikeTextureIO.maxAbsoluteDifference(source, output) == 0)
     }
 
-    @Test("A head-only edit on a face with no hair mask costs nothing")
-    func aHeadOnlyEditWithoutHairIsInactive() throws {
+    /// The hat case, in the shape production actually produces it.
+    ///
+    /// `FaceAnalysisRenderBridge` attaches a `.hair` `RenderMask` to **every**
+    /// face whose parsing succeeded, for every requested kind — so "no hair"
+    /// never arrives as a missing key. It arrives as a mask that is present and
+    /// whose coverage is entirely below `HairBoundary.coverageThreshold`: a hat
+    /// (BiSeNet keeps `hat` as its own class 18), a shaved head, a parsing miss.
+    ///
+    /// Testing only `masks[.hair] = nil` was therefore false confidence — it
+    /// exercised a shape the app cannot produce, and the shape it can produce
+    /// scheduled the node and paid for a full-frame `encodeCopy` to return the
+    /// picture unchanged.
+    @Test("A head-only edit on a present-but-empty hair mask costs nothing")
+    func aHeadOnlyEditWithoutAUsableSilhouetteIsInactive() throws {
         guard let context = SpikeS3Support.context else { return }
         let flags = RPEngineTestFlags.enterHeadRenderGraph()
         defer { flags.leave { RPEngineTestFlags.disableHeadAndWarp() } }
 
         let node = try WarpRenderNode(context: context)
-        var bald = SyntheticHead.make()
-        bald.face.masks[.hair] = nil
-        let request = SyntheticHead.request(Self.allHead, faces: [bald.face])
-        #expect(!node.isActive(for: request))
+        var hatted = SyntheticHead.make()
+        let real = try #require(hatted.face.masks[.hair])
+        // Present, correctly sized, correctly placed — and nothing in it reaches
+        // the half-coverage isoline. 127 rather than 0 so this is a mask with
+        // real content that simply never says "hair", which is what a feathered
+        // parse of a hat looks like at the hairline.
+        hatted.face.masks[.hair] = RenderMask(
+            width: real.width, height: real.height,
+            values: [UInt8](repeating: HairBoundary.coverageThreshold - 1, count: real.values.count),
+            maskToImage: real.maskToImage)
+
+        let request = SyntheticHead.request(Self.allHead, faces: [hatted.face])
+        #expect(!node.isActive(for: request), "an unusable hair mask scheduled the node")
         // …and going through the node anyway is still an exact copy.
-        let (source, output) = try Self.run(node, context: context, request: request, head: bald)
+        let (source, output) = try Self.run(
+            node, context: context, request: request, head: hatted)
         #expect(SpikeTextureIO.maxAbsoluteDifference(source, output) == 0)
 
-        // A "Mặt" edit on the same face is unaffected by the head group being on.
-        let both = SyntheticHead.request(
-            Self.allHead, face: FaceSliders(slim: 50), faces: [bald.face])
-        #expect(node.isActive(for: both))
-        let built = try #require(
-            node.headControlPoints(
-                for: both,
-                imageSize: CGSize(width: CGFloat(bald.width), height: CGFloat(bald.height))))
-        #expect(built.hairHandleCount == 0)
-        #expect(built.ringHandleCount == 0)
+        // The answer is memoised like any other: repeated `isActive` during a
+        // drag must not re-trace the same mask.
+        let before = node.debugTraceCount
+        for _ in 0..<10 { _ = node.isActive(for: request) }
+        #expect(node.debugTraceCount == before, "isActive re-traced an unusable mask")
+
+        // The missing-key case is still handled, even though the bridge cannot
+        // produce it — a `FaceRenderInput` built by hand (or by a future provider
+        // that does not ask for `.hair`) must not crash or activate.
+        var bald = SyntheticHead.make()
+        bald.face.masks[.hair] = nil
+        let baldRequest = SyntheticHead.request(Self.allHead, faces: [bald.face])
+        #expect(!node.isActive(for: baldRequest))
+        let (baldSource, baldOutput) = try Self.run(
+            node, context: context, request: baldRequest, head: bald)
+        #expect(SpikeTextureIO.maxAbsoluteDifference(baldSource, baldOutput) == 0)
+
+        // A "Mặt" edit on either face is unaffected by the head group being on:
+        // it activates on its own sliders and produces no head handles.
+        for head in [hatted, bald] {
+            let both = SyntheticHead.request(
+                Self.allHead, face: FaceSliders(slim: 50), faces: [head.face])
+            #expect(node.isActive(for: both))
+            let built = try #require(
+                node.headControlPoints(
+                    for: both,
+                    imageSize: CGSize(
+                        width: CGFloat(head.width), height: CGFloat(head.height))))
+            #expect(built.hairHandleCount == 0)
+            #expect(built.ringHandleCount == 0)
+            #expect(built.maxDisplacement > 0, "the Mặt group stopped working")
+        }
     }
 
     @Test("The mask requirements ask for hair only when the head group is on")

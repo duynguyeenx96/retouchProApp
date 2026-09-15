@@ -403,7 +403,7 @@ public enum HeadReshape {
     ///
     /// Measured on an M1 Pro, Release, one 512² hair mask
     /// (`Research/bench/p6-head-reshape-macos.json`): the trace is **1.37 ms**
-    /// and the whole handle build **1.46 ms**, against a 2048 px preview render
+    /// and the whole handle build **1.50 ms**, against a 2048 px preview render
     /// of **0.83 ms**. Dragging a head slider changes the sliders and nothing
     /// else — the mask and the mesh are fixed for the shot — so without this the
     /// group would spend nearly twice the render, every frame, recomputing an

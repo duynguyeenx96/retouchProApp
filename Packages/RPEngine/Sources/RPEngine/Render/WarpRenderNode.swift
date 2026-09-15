@@ -145,11 +145,42 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
             guard $0.landmarks.count > FaceMesh.highestIndex, $0.faceWidth > 0 else {
                 return false
             }
-            // A head-only edit additionally needs a hair mask: with no
-            // silhouette ``HeadReshape`` produces no handles at all, and saying
-            // so here keeps that case free rather than costing a copy pass.
-            return face || $0.masks[.hair] != nil
+            // A head-only edit additionally needs a **usable** silhouette, and
+            // that is a question about the mask's contents, not about whether one
+            // was attached.
+            //
+            // Asking `masks[.hair] != nil` was wrong, and wrong in the direction
+            // that never shows up in a unit test: `FaceAnalysisRenderBridge`
+            // attaches a `.hair` mask for **every** face whose parsing succeeded
+            // and for every requested kind, so in production the key is always
+            // present — including for a subject in a hat, a shaved head, or a
+            // parsing miss, where the mask is real and its coverage is all below
+            // `HairBoundary.coverageThreshold`. The node would then be scheduled,
+            // find no silhouette inside `encode`, and fall back to
+            // `RenderGraph.encodeCopy` — a real full-frame GPU copy to produce a
+            // picture identical to its input, which is exactly the cost this
+            // branch exists to avoid.
+            //
+            // So it traces. That is not an extra trace: it goes through the same
+            // `SilhouetteCache` `encode` uses, keyed on the mask and the mesh by
+            // value, so the first `isActive` of a shot pays the ~1.4 ms once and
+            // the encode that follows it is a cache hit. A frame that is inactive
+            // pays it once too, and then answers `false` for free for the rest of
+            // the drag.
+            return face || self.hasUsableSilhouette($0)
         }
+    }
+
+    /// Does this face have a hair silhouette the "Đầu" group could act on?
+    ///
+    /// Memoised through the node's own ``HeadReshape/SilhouetteCache``, so this
+    /// is the *same* trace `encode` needs rather than a second one.
+    private func hasUsableSilhouette(_ input: FaceRenderInput) -> Bool {
+        guard let hair = input.masks[.hair] else { return false }
+        silhouetteLock.lock()
+        defer { silhouetteLock.unlock() }
+        return silhouettes.silhouette(
+            landmarks: input.landmarks, faceWidth: input.faceWidth, hair: hair) != nil
     }
 
     /// Is the "Đầu" group both enabled and asking for something?

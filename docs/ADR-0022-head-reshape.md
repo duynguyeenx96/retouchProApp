@@ -144,16 +144,17 @@ paying 4.1 ms per face to feather a mask nothing reads.
 ### 6. The silhouette is cached by **value**
 
 The trace costs 1.37 ms (median, Release, M1 Pro, 512² mask) and the whole handle
-build 1.46 ms, against a 2048 px preview render of 0.83 ms. A slider drag changes
+build 1.50 ms, against a 2048 px preview render of 0.83 ms. A slider drag changes
 the sliders and nothing else, so recomputing an identical silhouette 60 times a
-second would cost nearly twice the render.
+second would cost nearly twice the render. `isActive` needs the same answer (see
+the hat case below), so it shares the cache rather than tracing on its own.
 
 `HeadReshape.SilhouetteCache` memoises it, keyed on **full value equality** of the
 mask and the mesh — `RenderMask` is `Equatable` and comparing 262 kB of `values`
 is a memcmp at ~20 µs, three orders of magnitude below the trace. No hash, no
 identity token, no buffer address: a cache that serves a stale hairline would warp
 this photo with the previous photo's head, and nothing that can collide is
-acceptable for that. Measured: **1.46 ms cold → 0.036 ms warm**, and
+acceptable for that. Measured: **1.50 ms cold → 0.036 ms warm**, and
 `theSilhouetteIsTracedOncePerMask` pins both halves (ten drags, one trace; one
 changed byte, a second trace).
 
@@ -171,16 +172,16 @@ every other node in this project.
 | GPU lattice vs the `Double` CPU solve | 0.0032 px preview / 0.0060 px export |
 | landmark round trip, export (grid 129) | 0.0080 x face width |
 | landmark round trip, preview (grid 65) | **0.023 x face width** — see below |
-| trace, 512² hair mask | 1.37 ms median, 1.50 ms p95 |
-| handle build, cold → cached | 1.46 ms → 0.036 ms |
-| 2048 px preview, "Mặt" only → "Mặt" + "Đầu" | 0.83 → 0.92 ms wall (+0.049 ms GPU) |
-| 24 MP export, "Mặt" only → "Mặt" + "Đầu" | 2.74 → 2.95 ms wall (bar: 8 s) |
+| trace, 512² hair mask | 1.37 ms median, 1.51 ms p95 |
+| handle build, cold → cached | 1.50 ms → 0.036 ms |
+| 2048 px preview, "Mặt" only → "Mặt" + "Đầu" | 0.825 → 0.912 ms wall (+0.047 ms GPU) |
+| 24 MP export, "Mặt" only → "Mặt" + "Đầu" | 2.75 → 2.92 ms wall (bar: 8 s) |
 | control points | 150 mesh + 9 ring + 71 hair + 16 border (DSC05123) |
 | derotation sign of the test fixture's affine | IoU 0.663 vs 0.634 flipped; the chosen sign wins 11/11 |
 
 The iOS Simulator run agrees where it can: 69.4 dB golden, 0 px against the
 reference, the same round-trip figures (the geometry is CPU and identical), trace
-2.02 ms, 2048 px preview 1.9 ms wall, 24 MP 3.9 ms wall. Read `wall_*_ms` and
+2.51 ms, 2048 px preview 2.11 ms wall, 24 MP 4.81 ms wall. Read `wall_*_ms` and
 ignore `gpu_median_ms` there, per ADR-0009. **Neither is a real device**, the
 limitation every bench in this project records.
 
@@ -225,15 +226,40 @@ of **9** points on a real frame against 16 on a synthetic head, and as few as 4
 ### A subject in a hat, or with no visible hair, gets nothing
 
 CelebAMask-HQ has a separate `hat` class (18) and `FaceParsingGroup.hair` does not
-fold it in. With no hair mask — a hat, a shaved head, a parsing failure — there is
-no silhouette, and `HeadReshape` returns **no handles at all**: the sliders do
-nothing and `isActive` says so, so the edit does not even cost a copy pass.
+fold it in. With no usable hair mask — a hat, a shaved head, a parsing failure —
+there is no silhouette, and `HeadReshape` returns **no handles at all**: the
+sliders do nothing.
 
-This is deliberate. The alternative — warping the face oval alone — would slide
-the face inside a hairline that stays put, which is visibly worse than doing
-nothing. But "the slider silently does nothing on some photos" is a product
-problem, not just an engine one, and it is the second reason the flag is off: a UI
-that shows this group must first decide how it tells the user *why* it is inert.
+`isActive` says so too, so the edit costs nothing — **not even the full-frame
+`encodeCopy` that a scheduled-then-empty node would run**. Getting that right
+needed a correction after review, and the correction is worth recording because
+the first version was wrong in a way no unit test caught. `isActive` originally
+asked `masks[.hair] != nil`, i.e. *was a mask attached*. But
+`FaceAnalysisRenderBridge` attaches a `.hair` mask to **every** face whose
+parsing succeeded, for every requested kind — so in production that key is always
+present, and for a hat it is present and entirely below
+`HairBoundary.coverageThreshold`. The node was therefore scheduled, found no
+silhouette inside `encode`, and fell back to `RenderGraph.encodeCopy`: a real GPU
+pass to produce a picture identical to its input. The test that was meant to
+cover this used `masks[.hair] = nil`, a shape the app cannot produce, and so
+confirmed nothing.
+
+`isActive` now asks the real question — is there a silhouette — through the same
+`SilhouetteCache` `encode` uses, so it is not a second trace: the first
+`isActive` of a shot pays ~1.4 ms once, and every call after it, active or not,
+is a cache hit. `HeadReshapeRenderTests
+.aHeadOnlyEditWithoutAUsableSilhouetteIsInactive` builds the mask the bridge
+actually produces (present, correctly placed, every byte below the threshold),
+checks the node stays inactive and the render bit-exact, and checks that ten
+`isActive` calls during a drag trace once. It fails against the old
+presence-check, which is what makes it a regression test rather than a claim.
+
+Doing nothing here is deliberate. The alternative — warping the face oval alone —
+would slide the face inside a hairline that stays put, which is visibly worse
+than doing nothing. But "the slider silently does nothing on some photos" is a
+product problem, not just an engine one, and it is the second reason the flag is
+off: a UI that shows this group must first decide how it tells the user *why* it
+is inert.
 
 ## Alternatives rejected
 
