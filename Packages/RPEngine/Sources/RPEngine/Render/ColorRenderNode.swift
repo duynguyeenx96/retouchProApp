@@ -26,6 +26,18 @@ import RPCore
 /// by the skin mask. Here it runs on the whole frame. That is a deviation and it
 /// is stated in "Known limitations" below, not hidden.
 ///
+/// ## …except for "Tạo khối" (Contour), which is per-face and says so
+/// docs/PLAN.md §6.2 adds a **masked** dodge/burn to this node:
+/// ``ContourSliders`` (`contourCheek` / `contourNose` / `contourJaw`, in the
+/// `face` section) build a handful of soft ellipses anchored on landmarks
+/// `FaceReshape` already computes, and those gate the *existing* dodge/burn LUT
+/// step — same two gammas, same mix, with the mask supplying the weight and the
+/// direction. So this node does read `request.faces`, but only for that group:
+/// with the three amounts at 0 (or `RPEngineFeatureFlags.contourSliders` off) not
+/// one byte of the render changes, the face list is never touched, and the
+/// "grades a frame with no face in it" property above is intact. Nothing here
+/// reads a *parsing* mask, so contour also works on a face BiSeNet failed on.
+///
 /// ## Structure
 /// One composite pass, one 4 kB LUT, and — only when "Auto D&B" is up — a small
 /// analysis pyramid:
@@ -116,6 +128,13 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
     let curveTable: [Float]
     private let curveTexture: any MTLTexture
 
+    /// The contour mask's lobes, re-filled on every encode and always bound at
+    /// buffer 1. One allocation of `ContourMask.maxLobes × 32` = 4 kB for the
+    /// life of the node: a contour render must not allocate on the interaction
+    /// path, and binding nothing when the group is off is undefined in Metal
+    /// (the same reason the unused analysis layers are bound to the curve LUT).
+    private let lobeBuffer: any MTLBuffer
+
     private let lock = NSLock()
     private var cache: Cache?
 
@@ -181,6 +200,10 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
         let table = ColorToneCurve.table()
         self.curveTable = table
         self.curveTexture = try Self.makeCurveTexture(table, device: context.device)
+        let lobeBytes = MemoryLayout<ContourLobe>.stride * ContourMask.maxLobes
+        guard let buffer = context.device.makeBuffer(length: lobeBytes, options: .storageModeShared)
+        else { throw MetalContext.Failure.cannotMakeBuffer(bytes: lobeBytes) }
+        self.lobeBuffer = buffer
     }
 
     public func prewarm() throws {
@@ -192,19 +215,38 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
         }
     }
 
-    /// No face, no mask, no quality dependency: the only question is whether any
-    /// slider in the group is off 0.
+    /// Off 0 in the colour group, **or** a contour lobe to draw.
+    ///
+    /// The colour half still ignores `request.faces` entirely, so a landscape
+    /// with no face in it grades exactly as before. The contour half is the one
+    /// thing in this node that needs a face, and it is default-off twice over:
+    /// `RPEngineFeatureFlags.contourSliders` and three sliders at 0.
     public func isActive(for request: RenderRequest) -> Bool {
-        !ColorSliders(request.editState).isIdentity
+        if !ColorSliders(request.editState).isIdentity { return true }
+        return !contourLobes(for: request).isEmpty
     }
 
-    /// Bytes of GPU memory this node is holding: the 4 kB curve LUT plus the
-    /// analysis grid once "Auto D&B" has been used at this size.
+    /// The contour lobes for a request, or `[]` when the feature flag is off,
+    /// the three sliders are at 0, or no face carries a usable mesh.
+    ///
+    /// Reading the flag here rather than in `init` is deliberate: contour is an
+    /// addition to a node that already ships, so turning the flag off has to
+    /// leave the "Color" group constructible and bit-exact what it was — not
+    /// throw `RPEngineFeatureDisabled` at a caller who only wanted Exposure.
+    func contourLobes(for request: RenderRequest) -> [ContourLobe] {
+        guard RPEngineFeatureFlags.contourSliders else { return [] }
+        return ContourMask.lobes(
+            faces: request.faces, sliders: ContourSliders(request.editState))
+    }
+
+    /// Bytes of GPU memory this node is holding: the 4 kB curve LUT, the 4 kB
+    /// contour lobe buffer, plus the analysis grid once "Auto D&B" has been used
+    /// at this size.
     public var allocatedBytes: Int {
         lock.lock()
         let analysis = cache?.byteCount ?? 0
         lock.unlock()
-        return analysis + ColorToneCurve.size * 16
+        return analysis + ColorToneCurve.size * 16 + lobeBuffer.length
     }
 
     public func releaseIntermediates() {
@@ -233,7 +275,8 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
         request: RenderRequest
     ) throws {
         let sliders = ColorSliders(request.editState)
-        guard !sliders.isIdentity else {
+        let lobes = contourLobes(for: request)
+        guard !sliders.isIdentity || !lobes.isEmpty else {
             // Not reachable through RenderGraph (isActive gates it), but a direct
             // caller must still get the picture rather than an empty texture.
             try RenderGraph.encodeCopy(
@@ -260,6 +303,17 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
             lock.unlock()
         }
 
+        // The lobes are copied into the persistent buffer before the encoder is
+        // made, so the CPU write is ordered before the dispatch that reads it.
+        // `.storageModeShared` and a 4 kB memcpy: no upload command buffer, no
+        // wait, nothing on the interaction path (the pattern MaskRasteriser
+        // cannot use, because its payload is a 512² mask array).
+        if !lobes.isEmpty {
+            lobes.withUnsafeBytes { source in
+                lobeBuffer.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
+            }
+        }
+
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(compositePipeline)
         encoder.setTexture(source, index: 0)
@@ -270,8 +324,11 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
         encoder.setTexture(analysis?.big ?? curveTexture, index: 2)
         encoder.setTexture(analysis?.small ?? curveTexture, index: 3)
         encoder.setTexture(destination, index: 4)
-        var params = ColorParams(sliders, size: (width, height), analysisSize: analysisSize)
+        var params = ColorParams(
+            sliders, size: (width, height), analysisSize: analysisSize,
+            contourLobeCount: lobes.count)
         encoder.setBytes(&params, length: MemoryLayout<ColorParams>.stride, index: 0)
+        encoder.setBuffer(lobeBuffer, offset: 0, index: 1)
         let dispatch = MetalContext.threadgroups(
             forWidth: width, height: height, pipeline: compositePipeline)
         encoder.dispatchThreadgroups(
@@ -441,8 +498,15 @@ struct ColorParams {
     var curves: Float
     var autoDodgeBurn: Float
     var curveLUTSize: UInt32
+    /// Number of ``ContourLobe`` entries in buffer 1. 0 turns the whole contour
+    /// branch off in the kernel. The three "Tạo khối" amounts are **not** here:
+    /// each lobe already carries its region's amount in `strength`.
+    var contourLobeCount: UInt32
 
-    init(_ sliders: ColorSliders, size: (Int, Int), analysisSize: SIMD2<UInt32>) {
+    init(
+        _ sliders: ColorSliders, size: (Int, Int), analysisSize: SIMD2<UInt32>,
+        contourLobeCount: Int = 0
+    ) {
         func amount(_ band: HueBand) -> Float { Float(sliders[band] / 100) }
         self.hslA = SIMD4<Float>(amount(.red), amount(.orange), amount(.yellow), amount(.green))
         self.hslB = SIMD4<Float>(amount(.aqua), amount(.blue), amount(.purple), amount(.magenta))
@@ -459,6 +523,7 @@ struct ColorParams {
         self.curves = Float(sliders.curves / 100)
         self.autoDodgeBurn = Float(sliders.autoDodgeBurn / 100)
         self.curveLUTSize = UInt32(ColorToneCurve.size)
+        self.contourLobeCount = UInt32(contourLobeCount)
     }
 }
 

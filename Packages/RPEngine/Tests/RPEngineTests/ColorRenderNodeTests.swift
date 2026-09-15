@@ -778,17 +778,24 @@ struct ColorRenderNodeTests {
 
         let node = try ColorRenderNode(context: context)
         let lutBytes = ColorToneCurve.size * 16
-        #expect(node.allocatedBytes == lutBytes)
+        // Phase 6.2 ("Tạo khối", docs/ADR-0020) gave this node a second
+        // permanent allocation: the 4 kB contour lobe buffer, made in `init` and
+        // never released, so it belongs in the *fixed* baseline rather than
+        // being a leak. What this test is about is unchanged — the **analysis
+        // grid** is the lazy one, and `releaseIntermediates()` still returns the
+        // node to exactly this floor.
+        let fixedBytes = lutBytes + MemoryLayout<ContourLobe>.stride * ContourMask.maxLobes
+        #expect(node.allocatedBytes == fixedBytes)
 
         _ = try Self.runNode(
             node, context: context, request: Self.request(ColorSliders(exposure: 100)))
-        #expect(node.allocatedBytes == lutBytes, "a grade without D&B allocated an analysis grid")
+        #expect(node.allocatedBytes == fixedBytes, "a grade without D&B allocated an analysis grid")
         #expect(node.debugAnalysis() == nil)
 
         _ = try Self.runNode(
             node, context: context, request: Self.request(ColorSliders(autoDodgeBurn: 100)))
         let size = ColorRenderNode.analysisSize(width: Self.width, height: Self.height)
-        #expect(node.allocatedBytes == lutBytes + 4 * size.width * size.height * 4)
+        #expect(node.allocatedBytes == fixedBytes + 4 * size.width * size.height * 4)
         #expect(node.debugAnalysis() != nil)
 
         // …and the *reported* layers follow the last request, not what is still
@@ -798,7 +805,7 @@ struct ColorRenderNodeTests {
         #expect(node.debugAnalysis() == nil)
 
         node.releaseIntermediates()
-        #expect(node.allocatedBytes == lutBytes)
+        #expect(node.allocatedBytes == fixedBytes)
     }
 
     // MARK: - Values

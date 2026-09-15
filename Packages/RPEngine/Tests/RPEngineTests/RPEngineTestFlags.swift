@@ -86,6 +86,24 @@ enum RPEngineTestFlags {
         enter { RPEngineFeatureFlags.enableColorRenderGraph() }
     }
 
+    /// Same, for the Phase 6.2 "Tạo khối" (contour) path. Pair with
+    /// `defer { flags.leave { RPEngineFeatureFlags.disableContourRenderGraph() } }`
+    /// — note that restore clears `contourSliders` **only**, leaving
+    /// `colorSliders` on, which is deliberate and explained on
+    /// `disableContourRenderGraph()`. A suite that wants both off says so by
+    /// calling `disableColorRenderGraph()` as well.
+    static func enterContourRenderGraph() -> Scope {
+        enter { RPEngineFeatureFlags.enableContourRenderGraph() }
+    }
+
+    /// Restores both flags `enableContourRenderGraph()` set. Used as the `leave`
+    /// argument by the contour suites, which are the only callers that know
+    /// they, and not the colour group, turned `colorSliders` on.
+    static func disableContourAndColor() {
+        RPEngineFeatureFlags.disableContourRenderGraph()
+        RPEngineFeatureFlags.disableColorRenderGraph()
+    }
+
     /// A held lock plus the flag change that goes with it.
     ///
     /// **Non-copyable on purpose.** The previous version was a copyable struct

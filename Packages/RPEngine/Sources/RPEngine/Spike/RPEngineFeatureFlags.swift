@@ -121,6 +121,45 @@ public enum RPEngineFeatureFlags {
         set { setValue("manualMask", newValue) }
     }
 
+    /// Phase 6.2: "Tạo khối" (Contour) — the landmark-anchored soft masks that
+    /// gate ``ColorRenderNode``'s dodge/burn LUT step (``ContourSliders``,
+    /// ``ContourMask``).
+    ///
+    /// **Not** a second gate on the "Color" group: this bit is read per *render*,
+    /// inside `ColorRenderNode.contourLobes(for:)`, not in that node's `init`. So
+    /// with it off the node still builds and still grades, and the render is
+    /// bit-exact what it was before this group existed — which is the property
+    /// `ContourRenderTests.flagOffIsBitExactTheOldRender` measures. Turning it on
+    /// borrows no other group's kernel flag (the mask is evaluated inside the
+    /// colour composite), so, like ``colorSliders``, it takes exactly one bit
+    /// down with it.
+    public static var contourSliders: Bool {
+        get { value("contourSliders") }
+        set { setValue("contourSliders", newValue) }
+    }
+
+    /// Turns on the two flags the "Tạo khối" path needs: ``contourSliders`` plus
+    /// ``colorSliders``, because the mask is applied by ``ColorRenderNode`` and
+    /// that node refuses to build without its own flag.
+    public static func enableContourRenderGraph() {
+        colorSliders = true
+        contourSliders = true
+    }
+
+    /// Clears ``contourSliders`` and **nothing else** — in particular it leaves
+    /// ``colorSliders`` alone.
+    ///
+    /// That asymmetry with ``enableContourRenderGraph()`` is the point, and it is
+    /// the lesson ``disableSkinRenderGraph()`` records: `colorSliders` is a
+    /// *shared* gate (the eighteen colour sliders need it too), so clearing it
+    /// from here would let the contour group switch the colour group off behind
+    /// its back — exactly the failure the deleted umbrella `renderGraph` flag had.
+    /// A caller who wants the colour group off as well says so by calling
+    /// ``disableColorRenderGraph()``.
+    public static func disableContourRenderGraph() {
+        contourSliders = false
+    }
+
     /// Turns on the two flags the skin path needs: ``skinSliders`` and
     /// ``guidedFilter`` (``SkinRenderNode`` owns a ``GuidedFilter``, whose own
     /// gate is not bypassed).

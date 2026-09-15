@@ -364,18 +364,22 @@ enum ColorReference {
     /// `rp_color_composite` in `Double`.
     ///
     /// `big` and `small` are the analysis planes (may be empty when Auto D&B is
-    /// 0); `curveTable` is the LUT the node uploaded.
+    /// 0); `curveTable` is the LUT the node uploaded; `contourLobes` are the
+    /// **exact `Float` lobes the node uploaded** (docs/PLAN.md §6.2 "Tạo khối"),
+    /// so this comparison measures the kernel's mask evaluation and not a second
+    /// transcription of the mask geometry — the same arrangement the curve LUT
+    /// uses.
     static func composite(
         source: [Float], width: Int, height: Int,
         big: [Double], small: [Double], analysisSize: (width: Int, height: Int),
-        amounts a: Amounts, curveTable: [Float]
+        amounts a: Amounts, curveTable: [Float], contourLobes: [ContourLobe] = []
     ) -> [Float] {
         var out = source
         let active =
             abs(a.exposure) + abs(a.contrast) + abs(a.highlights) + abs(a.shadows)
             + abs(a.wbTemperature) + abs(a.wbTint) + abs(a.vibrance) + abs(a.saturation)
             + a.curves + a.autoDodgeBurn + a.hslAbsoluteTotal
-        guard active > 0 else { return out }
+        guard active > 0 || !contourLobes.isEmpty else { return out }
 
         for y in 0..<height {
             for x in 0..<width {
@@ -392,6 +396,17 @@ enum ColorReference {
                     let w = min(1, abs(dev) * dnbGain * a.autoDodgeBurn)
                     let g = dev < 0 ? dodgeGamma : burnGamma
                     c = mix(c, powEach(c, g), w)
+                }
+
+                // 1b. Contour — the same LUT step with a landmark-anchored mask
+                //     supplying the weight and the direction.
+                if !contourLobes.isEmpty {
+                    let m = ContourMask.value(
+                        at: CGPoint(x: Double(x) + 0.5, y: Double(y) + 0.5), lobes: contourLobes)
+                    let w = abs(m)
+                    if w > 0 {
+                        c = mix(c, powEach(c, m > 0 ? dodgeGamma : burnGamma), w)
+                    }
                 }
 
                 // 2. Exposure + White Balance, in linear light.
@@ -492,7 +507,8 @@ enum ColorReference {
 
     /// The whole node in `Double`: analysis (when needed) then composite.
     static func renderNode(
-        source: [Float], width: Int, height: Int, sliders: ColorSliders, curveTable: [Float]
+        source: [Float], width: Int, height: Int, sliders: ColorSliders, curveTable: [Float],
+        contourLobes: [ContourLobe] = []
     ) -> [Float] {
         var big: [Double] = []
         var small: [Double] = []
@@ -505,7 +521,8 @@ enum ColorReference {
         }
         return composite(
             source: source, width: width, height: height, big: big, small: small,
-            analysisSize: size, amounts: Amounts(sliders), curveTable: curveTable)
+            analysisSize: size, amounts: Amounts(sliders), curveTable: curveTable,
+            contourLobes: contourLobes)
     }
 
     // MARK: - Behaviour

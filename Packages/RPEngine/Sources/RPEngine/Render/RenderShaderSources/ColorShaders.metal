@@ -172,6 +172,24 @@ struct ColorParams {
     float curves;          //  0…1  (one-directional)
     float autoDodgeBurn;   //  0…1  (one-directional)
     uint curveLUTSize;
+    // "Tạo khối" (Contour, docs/PLAN.md §6.2). 0 = the group is off, and every
+    // line of the contour branch below is skipped — the render is then bit-exact
+    // what it was before the group existed. The three sliders' amounts are not
+    // here: they are already baked into each lobe's `strength`, because a lobe
+    // belongs to exactly one of the three regions.
+    uint contourLobeCount;
+};
+
+/// One soft ellipse of the contour mask, in image pixels. Must match
+/// `ContourLobe` in ContourMask.swift field for field (the Swift side pins the
+/// stride in a test).
+struct ContourLobe {
+    float2 centre;
+    float2 axisU;        // unit; the short axis is its perpendicular (-y, x)
+    float2 halfExtent;   // (along axisU, across it), pixels — always a fraction
+                         // of faceWidth on the CPU side, never a pixel constant
+    float strength;      // signed: + dodges (highlight), - burns (shadow)
+    float pad;
 };
 
 /// Stops of exposure at slider ±100. One, because a portrait that needs more
@@ -323,6 +341,36 @@ static inline float rp_color_analysis(
     return mix(mix(a, b, fx), mix(c, d, fx), fy);
 }
 
+/// The contour mask at one pixel centre: the signed sum of every lobe, clamped
+/// to -1…1.
+///
+/// Positive means "highlight here" and negative means "shadow here"; the caller
+/// turns that into the *existing* dodge/burn LUT step. The falloff is
+/// `1 - smoothstep(0, 1, r)` on the ellipse's normalised radius, i.e. 1 at the
+/// centre and 0 at the rim with zero slope at both ends, so two overlapping lobes
+/// blend and a lobe's rim never shows as an edge.
+///
+/// Summation order is the buffer's order and the clamp is last — the `Double` CPU
+/// reference (`ContourMask.value(at:lobes:)`) does the same two things in the same
+/// order, because a different order would be a different float32 sum.
+static inline float rp_contour_mask(
+    constant ContourLobe *lobes, uint count, uint2 gid)
+{
+    float2 p = float2(gid) + 0.5;
+    float m = 0.0;
+    for (uint i = 0; i < count; ++i) {
+        float2 d = p - lobes[i].centre;
+        float2 u = lobes[i].axisU;
+        float a = dot(d, u) / lobes[i].halfExtent.x;
+        float b = dot(d, float2(-u.y, u.x)) / lobes[i].halfExtent.y;
+        float r2 = a * a + b * b;
+        if (r2 >= 1.0) { continue; }
+        float r = sqrt(r2);
+        m += lobes[i].strength * (1.0 - r * r * (3.0 - 2.0 * r));
+    }
+    return clamp(m, -1.0, 1.0);
+}
+
 kernel void rp_color_composite(
     texture2d<float, access::read> source [[texture(0)]],
     texture2d<float, access::read> curveLUT [[texture(1)]],
@@ -330,6 +378,7 @@ kernel void rp_color_composite(
     texture2d<float, access::read> dnbSmall [[texture(3)]],
     texture2d<float, access::write> destination [[texture(4)]],
     constant ColorParams &prm [[buffer(0)]],
+    constant ContourLobe *contourLobes [[buffer(1)]],
     uint2 gid [[thread_position_in_grid]])
 {
     if (gid.x >= prm.size.x || gid.y >= prm.size.y) { return; }
@@ -345,7 +394,12 @@ kernel void rp_color_composite(
     // Bit-exact passthrough with every slider at 0. Each step below is already
     // the identity at 0, but the final clamp is not, and "slider at 0 changes
     // nothing" has to hold for out-of-range inputs too.
-    if (!(active > 0.0)) {
+    //
+    // Contour is tested separately rather than added to `active`: its amounts do
+    // not reach the kernel as scalars (they are baked into the lobes), and a
+    // frame with contour up but every colour slider at 0 must still take the
+    // branch below.
+    if (!(active > 0.0) && prm.contourLobeCount == 0u) {
         destination.write(src, gid);
         return;
     }
@@ -362,6 +416,29 @@ kernel void rp_color_composite(
         float w = min(1.0, fabs(dev) * kRPDnBGain * prm.autoDodgeBurn);
         float g = (dev < 0.0) ? kRPDodgeGamma : kRPBurnGamma;
         c = mix(c, pow(max(c, 0.0), float3(g)), w);
+    }
+
+    // 1b. Contour ("Tạo khối", docs/PLAN.md §6.2). The SAME dodge/burn LUT step
+    //     as Auto D&B above — same two gammas, same endpoint-preserving mix — with
+    //     the landmark-anchored mask supplying the weight and the direction where
+    //     Auto D&B has the frame's own local luminance error supply both. That is
+    //     the whole difference between the two, and it is why this needed no new
+    //     kernel: a contour is a dodge/burn that knows where the cheekbone is.
+    //
+    //     Immediately after Auto D&B and before the grade, for the same reason:
+    //     it is a modelling correction of the incoming picture, and everything
+    //     from step 2 on is a global grade of the corrected one.
+    //
+    //     Outside every lobe the mask is exactly 0, `w` is exactly 0, and `mix`
+    //     with t = 0 returns `c` bit-for-bit — which is what makes "the forehead
+    //     centre moved by exactly 0" a measurable claim and not a tolerance.
+    if (prm.contourLobeCount > 0u) {
+        float m = rp_contour_mask(contourLobes, prm.contourLobeCount, gid);
+        float w = fabs(m);
+        if (w > 0.0) {
+            float g = (m > 0.0) ? kRPDodgeGamma : kRPBurnGamma;
+            c = mix(c, pow(max(c, 0.0), float3(g)), w);
+        }
     }
 
     // 2. Exposure + White Balance, in **linear light**. Both are scalings of the
