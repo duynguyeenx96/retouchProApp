@@ -52,6 +52,16 @@ import RPCore
 /// 2048 px and an export at 24 MP render the same *shape*
 /// (`FaceReshapeTests.displacementsScaleWithTheFace`).
 ///
+/// ## The "Đầu" group rides in the same solve (Phase 6.2, docs/ADR-0022)
+/// `HeadSliders` adds control points the 478-point mesh cannot supply — the
+/// traced hair silhouette (``HairBoundary``) and an oval ring expanded out to it
+/// — and they go into **this** node's single `ControlPoints`, not a second warp
+/// pass, for the reason above: two passes are two full-frame resamples. The
+/// group has its own flag, `RPEngineFeatureFlags.headSliders`, read per *render*
+/// rather than in `init`, so with it off this node builds, activates and solves
+/// exactly the handles it solved before Phase 6.2 — bit-exact by construction,
+/// not by promise (`HeadReshapeRenderTests.flagOffIsBitExactTheOldRender`).
+///
 /// Gated by `RPEngineFeatureFlags.warpSliders` **and** `.mlsMeshWarp` (the node
 /// owns an `MLSMeshWarp`, whose own gate is not bypassed).
 /// `RPEngineFeatureFlags.enableWarpRenderGraph()` sets both, and its inverse
@@ -65,6 +75,15 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
     private let lock = NSLock()
     private var warps: [MTLPixelFormat: MLSMeshWarp] = [:]
     private var cache: Cache?
+
+    /// The traced hair silhouettes, memoised across renders.
+    ///
+    /// Its **own** lock, not ``lock``: `HeadReshape.controlPoints` is called from
+    /// `encode`, which then calls `makeWarp` and `cache(width:height:grid:)`, and
+    /// both of those take `lock`. `NSLock` is not recursive, so sharing one would
+    /// deadlock the first head render.
+    private let silhouetteLock = NSLock()
+    private let silhouettes = HeadReshape.SilhouetteCache()
 
     /// The lattice buffers for one (size, grid). Small: a 129² grid is 266 kB of
     /// vertices plus 394 kB of indices, independent of image size — which is why
@@ -109,16 +128,36 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
         _ = try makeWarp(for: .rgba32Float)
     }
 
+    /// The masks this node reads. Empty until the "Đầu" group is on: the "Mặt"
+    /// sliders are landmarks only.
+    public static let maskKinds: Set<RenderMaskKind> = [.hair]
+
     public func isActive(for request: RenderRequest) -> Bool {
-        guard !FaceSliders(request.editState).isIdentity else { return false }
+        let face = !FaceSliders(request.editState).isIdentity
+        let head = Self.headSlidersEnabled(for: request)
+        guard face || head else { return false }
         // A face with no mesh (the Da group only needs masks, so an empty
         // `landmarks` is legal) or a degenerate width cannot drive a reshape.
         // Saying so here rather than solving a grid of identity vertices is the
         // difference between "the slider does nothing" and "the slider costs a
         // full-frame resample to do nothing".
         return request.faces.contains {
-            $0.landmarks.count > FaceMesh.highestIndex && $0.faceWidth > 0
+            guard $0.landmarks.count > FaceMesh.highestIndex, $0.faceWidth > 0 else {
+                return false
+            }
+            // A head-only edit additionally needs a hair mask: with no
+            // silhouette ``HeadReshape`` produces no handles at all, and saying
+            // so here keeps that case free rather than costing a copy pass.
+            return face || $0.masks[.hair] != nil
         }
+    }
+
+    /// Is the "Đầu" group both enabled and asking for something?
+    ///
+    /// Read per render, never cached: the flag is process-global and a test that
+    /// flips it must not be answered from a value this node latched at `init`.
+    private static func headSlidersEnabled(for request: RenderRequest) -> Bool {
+        RPEngineFeatureFlags.headSliders && !HeadSliders(request.editState).isIdentity
     }
 
     /// Bytes of GPU memory this node is holding for the current size and grid.
@@ -130,8 +169,14 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
 
     public func releaseIntermediates() {
         lock.lock()
-        defer { lock.unlock() }
         cache = nil
+        lock.unlock()
+        // The silhouettes are CPU value types, not GPU memory, but this is the
+        // "forget what you know about the last shot" call and a stale hairline
+        // would be the wrong thing to keep across it.
+        silhouetteLock.lock()
+        silhouettes.clear()
+        silhouetteLock.unlock()
     }
 
     /// The handles the given request would produce, without touching the GPU.
@@ -143,6 +188,43 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
         FaceReshape.controlPoints(
             faces: request.faces, sliders: FaceSliders(request.editState),
             imageSize: imageSize)
+    }
+
+    /// The combined "Mặt" + "Đầu" handles, or `nil` when the head group is off or
+    /// asleep — in which case the caller falls back to ``controlPoints(for:imageSize:)``
+    /// and the solve is byte-identical to the pre-Phase-6.2 one.
+    ///
+    /// Public for the same reason ``controlPoints(for:imageSize:)`` is: the bench
+    /// and the golden harness need the handles without a GPU.
+    public func headControlPoints(for request: RenderRequest, imageSize: CGSize)
+        -> HeadReshape.Built?
+    {
+        guard Self.headSlidersEnabled(for: request) else { return nil }
+        silhouetteLock.lock()
+        defer { silhouetteLock.unlock() }
+        return HeadReshape.controlPoints(
+            faces: request.faces, face: FaceSliders(request.editState),
+            head: HeadSliders(request.editState), imageSize: imageSize,
+            cache: silhouettes)
+    }
+
+    /// How many hair masks this node has actually traced. Internal; the
+    /// regression test for "a slider drag does not re-trace" reads it.
+    var debugTraceCount: Int {
+        silhouetteLock.lock()
+        defer { silhouetteLock.unlock() }
+        return silhouettes.traceCount
+    }
+
+    /// The control points this node would solve for a request: head-aware when
+    /// the group is on and active, the "Mặt" group's alone otherwise.
+    func solvedControlPoints(for request: RenderRequest, imageSize: CGSize)
+        -> MLSDeformation.ControlPoints?
+    {
+        if let head = headControlPoints(for: request, imageSize: imageSize) {
+            return head.control
+        }
+        return controlPoints(for: request, imageSize: imageSize)?.control
     }
 
     /// The lattice the **most recent** `encode` solved, in image pixels, or `nil`
@@ -173,7 +255,7 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
         request: RenderRequest
     ) throws {
         let imageSize = CGSize(width: source.width, height: source.height)
-        guard let built = controlPoints(for: request, imageSize: imageSize) else {
+        guard let control = solvedControlPoints(for: request, imageSize: imageSize) else {
             // Reachable through the graph only for a degenerate mesh (isActive
             // gates the slider values), and directly for any request. Either way
             // the caller asked for the picture in `destination`.
@@ -188,7 +270,7 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
         let warp = try makeWarp(for: destination.pixelFormat)
         try warp.encode(
             into: commandBuffer, source: source, destination: destination,
-            resources: cache.resources, control: built.control, options: options)
+            resources: cache.resources, control: control, options: options)
     }
 
     // MARK: - Resources

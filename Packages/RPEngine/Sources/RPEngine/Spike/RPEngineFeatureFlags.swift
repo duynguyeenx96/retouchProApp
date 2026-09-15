@@ -160,6 +160,49 @@ public enum RPEngineFeatureFlags {
         contourSliders = false
     }
 
+    /// Phase 6.2: "Đầu" (head reshape) — the hair-silhouette control points that
+    /// extend ``WarpRenderNode``'s MLS solve past the 478-point mesh
+    /// (``HeadSliders``, ``HeadReshape``, ``HairBoundary``).
+    ///
+    /// **Not** a second gate on the "Mặt" group, and read per *render* rather
+    /// than in that node's `init` — the same arrangement ``contourSliders`` has
+    /// inside ``ColorRenderNode``. With this bit off, ``WarpRenderNode`` neither
+    /// traces a hair mask nor looks at a head slider, so it solves exactly the
+    /// handles `FaceReshape` gave it before this group existed and the render is
+    /// bit-exact what ADR-0010 measured (`HeadReshapeRenderTests
+    /// .flagOffIsBitExactTheOldRender`).
+    ///
+    /// Turning it on borrows the **shared** kernel flag ``mlsMeshWarp``, which
+    /// the "Mặt" group also needs — so ``enableHeadRenderGraph()`` sets it and
+    /// ``disableHeadRenderGraph()`` deliberately does not clear it, exactly as
+    /// ``disableContourRenderGraph()`` leaves ``colorSliders`` alone.
+    public static var headSliders: Bool {
+        get { value("headSliders") }
+        set { setValue("headSliders", newValue) }
+    }
+
+    /// Turns on the three flags the "Đầu" path needs: ``headSliders`` plus the
+    /// "Mặt" group's ``warpSliders`` and ``mlsMeshWarp``, because the head
+    /// handles are solved by ``WarpRenderNode`` and that node refuses to build
+    /// without both of its own.
+    public static func enableHeadRenderGraph() {
+        warpSliders = true
+        mlsMeshWarp = true
+        headSliders = true
+    }
+
+    /// Clears ``headSliders`` and **nothing else** — in particular it leaves
+    /// ``warpSliders`` and ``mlsMeshWarp`` alone.
+    ///
+    /// The asymmetry with ``enableHeadRenderGraph()`` is the point, and it is the
+    /// lesson ``disableSkinRenderGraph()`` records: both of those are the "Mặt"
+    /// group's gates, and clearing them from here would let the head group switch
+    /// the reshape group off behind its back. A caller who wants the whole warp
+    /// path off says so by calling ``disableWarpRenderGraph()``.
+    public static func disableHeadRenderGraph() {
+        headSliders = false
+    }
+
     /// Phase 6 §6.2 "Sửa da": extend the "Da" sliders from the per-face BiSeNet
     /// mask to a whole-frame skin mask (``BodySkinMask`` / ``SkinCore``), so
     /// neck, shoulders and arms in the frame get the *same* slider values as the

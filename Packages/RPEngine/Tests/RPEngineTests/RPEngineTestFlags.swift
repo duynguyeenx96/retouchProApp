@@ -96,6 +96,24 @@ enum RPEngineTestFlags {
         enter { RPEngineFeatureFlags.enableContourRenderGraph() }
     }
 
+    /// Same, for the Phase 6.2 "Đầu" (head reshape) path. Pair with
+    /// `defer { flags.leave { RPEngineFeatureFlags.disableHeadRenderGraph() } }`
+    /// — note that restore clears `headSliders` **only**, leaving `warpSliders`
+    /// and `mlsMeshWarp` on, which is deliberate and explained on
+    /// `disableHeadRenderGraph()`. A suite that wants the whole warp path off
+    /// says so with `disableHeadAndWarp()`.
+    static func enterHeadRenderGraph() -> Scope {
+        enter { RPEngineFeatureFlags.enableHeadRenderGraph() }
+    }
+
+    /// Restores all three flags `enableHeadRenderGraph()` set. Used as the
+    /// `leave` argument by the head suites, which are the only callers that know
+    /// they, and not the "Mặt" group, turned the warp path on.
+    static func disableHeadAndWarp() {
+        RPEngineFeatureFlags.disableHeadRenderGraph()
+        RPEngineFeatureFlags.disableWarpRenderGraph()
+    }
+
     /// Restores both flags `enableContourRenderGraph()` set. Used as the `leave`
     /// argument by the contour suites, which are the only callers that know
     /// they, and not the colour group, turned `colorSliders` on.

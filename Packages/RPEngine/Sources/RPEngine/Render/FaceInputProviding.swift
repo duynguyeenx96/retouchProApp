@@ -68,8 +68,9 @@ public struct NoFaceInputProvider: FaceInputProviding {
 ///
 /// Derived from the nodes themselves rather than hard-coded: `SkinRenderNode`
 /// needs `.skin`, `EyesTeethRenderNode` needs `.eyes` and `.mouth`,
-/// `WarpRenderNode` needs none (it is landmarks only), and `ColorRenderNode`
-/// does not see faces at all.
+/// `WarpRenderNode` needs `.hair` **only for the "Đầu" group** (the "Mặt"
+/// sliders are landmarks only, so the mask is asked for on `headSliders` rather
+/// than on `warpSliders`), and `ColorRenderNode` does not see faces at all.
 public enum RenderMaskRequirements {
     /// The union of the mask kinds the enabled slider groups read.
     public static func forEnabledGroups() -> Set<RenderMaskKind> {
@@ -78,6 +79,7 @@ public enum RenderMaskRequirements {
         if RPEngineFeatureFlags.eyesTeethSliders {
             kinds.formUnion(EyesTeethRenderNode.maskKinds)
         }
+        if RPEngineFeatureFlags.headSliders { kinds.formUnion(WarpRenderNode.maskKinds) }
         return kinds
     }
 }
