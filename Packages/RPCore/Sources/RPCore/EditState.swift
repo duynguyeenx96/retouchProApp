@@ -232,6 +232,14 @@ public struct EditState: Hashable, Sendable {
     /// Section names used by the render graph. The *parameters* inside each
     /// section are Phase 2's to define; only the namespaces are fixed here so
     /// presets can be filtered by group (docs/PLAN.md Phase 3).
+    ///
+    /// ``all`` is the list of **slider-panel** namespaces — the six groups
+    /// `RPUI.SliderPanelLayout` draws, in the order it draws them. A namespace
+    /// that is not a panel of sliders is declared here but deliberately kept out
+    /// of ``all`` (today: ``mask``), because several callers read `all` as
+    /// "everything the panel covers" (`SliderPanelLayoutTests`,
+    /// `PresetLibraryKind.templates`) and a namespace with no panel behind it
+    /// would orphan them.
     public enum SectionKey {
         /// "Da" — smoothing, texture, even tone, redness, shine, dark circles.
         public static let skin = "skin"
@@ -245,6 +253,21 @@ public struct EditState: Hashable, Sendable {
         public static let makeup = "makeup"
         /// Phase 5 hair.
         public static let hair = "hair"
+
+        /// Where an effect is allowed to act — docs/PLAN.md §6.1's shared
+        /// masking infrastructure, **not** a set of sliders.
+        ///
+        /// One parameter today: `"backgroundLock"`, the "Khoá nền" on/off flag
+        /// (docs/ADR-0018), read and written through `RPEngine.BackgroundLock`
+        /// the way `"selectedFace"` is read through `RPEngine.FaceSelection` —
+        /// RPCore fixes the namespace, the engine owns the meaning.
+        ///
+        /// It is a *section* and not a ``PerImageState`` key because it
+        /// transfers: "keep my retouch off the background" says nothing about
+        /// which photo it was said on, unlike a face index. It is **not** in
+        /// ``all``, because there is no slider panel for it — see the enum's own
+        /// note.
+        public static let mask = "mask"
 
         public static let all = [skin, face, eyesTeeth, color, makeup, hair]
     }
