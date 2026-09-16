@@ -59,11 +59,18 @@ struct BodySkinSyncWiringTests {
         }
     }
 
-    static func withBodySkinSync(_ on: Bool, _ body: () async throws -> Void) async rethrows {
-        let previous = RPEngineFeatureFlags.bodySkinSync
-        RPEngineFeatureFlags.bodySkinSync = on
-        defer { RPEngineFeatureFlags.bodySkinSync = previous }
-        try await body()
+    /// Takes ``RPUIMaskFlagLock`` for the whole body: `.serialized` orders this
+    /// suite's own tests, but `BackgroundLockWiringTests` drives the same two
+    /// process-global flags and Swift Testing runs suites concurrently, so
+    /// without the lock its "both flags off" case lands inside this suite's
+    /// "bodySkinSync on" case.
+    static func withBodySkinSync(_ on: Bool, _ body: () async throws -> Void) async throws {
+        try await RPUIMaskFlagLock.exclusive {
+            let previous = RPEngineFeatureFlags.bodySkinSync
+            RPEngineFeatureFlags.bodySkinSync = on
+            defer { RPEngineFeatureFlags.bodySkinSync = previous }
+            try await body()
+        }
     }
 
     static func decodedFixture() throws -> (PreviewImage, URL) {

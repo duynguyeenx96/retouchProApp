@@ -86,6 +86,41 @@ public final class LivePreviewController {
     /// the segmentation request failed — **not** that everything was masked out.
     public private(set) var bodySkinUsedSubjectMask = false
 
+    /// The open shot's whole-frame subject mask, in the preview texture's
+    /// pixels, or `nil` when no person was found (or when nothing asked for
+    /// one).
+    ///
+    /// **One mask, two consumers.** It was already being computed here for
+    /// "Sửa da" (`bodySkinMask` multiplies it in, ADR-0021 §v2); "Khoá nền"
+    /// needs the same pixels, and a `VNGeneratePersonSegmentationRequest` is
+    /// 17 ms at `.balanced`. So it is computed once per shot and published, and
+    /// neither feature re-asks — the cache contract in
+    /// `SubjectMaskProviding`'s doc comment, honoured one level above the
+    /// provider as well as inside it.
+    ///
+    /// `nil` is a legitimate answer (a landscape, a product shot) and must be
+    /// read as "there is nothing to lock", never as an all-zero mask.
+    public private(set) var subjectMask: RenderMask?
+
+    /// ``subjectMask`` rasterised to a full-resolution coverage texture and
+    /// wrapped for `RenderRequest.gateMasks` — docs/PLAN.md §6.1 "Khoá nền".
+    ///
+    /// `nil` unless `RPEngineFeatureFlags.backgroundLock` is on (off by default,
+    /// docs/ADR-0018) *and* the shot has a subject. Held per shot rather than
+    /// rebuilt per frame: it is one `r8Unorm` texture the size of the preview,
+    /// and a slider drag issues tens of redraws a second.
+    ///
+    /// Built regardless of the document's own toggle, because the toggle is read
+    /// at request-assembly time (``BackgroundLock/gateMasks(for:subjectGate:)``)
+    /// and flipping it must not cost a re-segmentation. The whole path still
+    /// costs nothing in the shipping build: with the flag off nothing here runs
+    /// at all.
+    public private(set) var backgroundLockGate: TextureGateMask?
+    /// Lazily built, and only when the flag is on — its initialiser throws while
+    /// `RPEngineFeatureFlags.backgroundLock` is off.
+    @ObservationIgnored
+    private var backgroundLockSource: BackgroundLockMaskSource?
+
     /// Which quality level the subject mask is asked for.
     ///
     /// `.balanced`, and this is a measured choice rather than a middle one.
@@ -98,6 +133,13 @@ public final class LivePreviewController {
     /// 17.2 ms) for a 2016 px mask that the 320 px classifier grid immediately
     /// throws away. Once per shot, so 17 ms is affordable; no iPhone number
     /// exists yet, which is the other reason the whole path is flag-gated.
+    ///
+    /// **"Khoá nền" does not get a quality level of its own.** It consumes
+    /// ``subjectMask`` — the one mask this controller already computes — so it
+    /// inherits this one, and `RPEngine.SubjectMaskQuality` still declares no
+    /// default anywhere (docs/ADR-0018: that choice is blocked on an iPhone
+    /// measurement nobody has made). Two levels would mean two requests per shot
+    /// for the same pixels.
     public static let subjectMaskQuality: SubjectMaskQuality = .balanced
 
     /// Bumped whenever the graph must run again. The `MTKView` compares it with
@@ -177,7 +219,7 @@ public final class LivePreviewController {
         // rendered once, rather than blaming this photo for the last one's
         // missing hairline.
         detectionNotices = [:]
-        clearBodySkinMask()
+        clearShotMasks()
         defer { isPreparing = false }
 
         do {
@@ -215,7 +257,7 @@ public final class LivePreviewController {
             )
         }
 
-        await prepareBodySkinMask(for: image, contentHash: contentHash)
+        await prepareShotMasks(for: image, contentHash: contentHash)
     }
 
     /// Drops the shot's textures. Call when the editor closes.
@@ -226,16 +268,16 @@ public final class LivePreviewController {
         openContentHash = nil
         faceAnalysisRan = false
         detectionNotices = [:]
-        clearBodySkinMask()
+        clearShotMasks()
         invalidate()
     }
 
-    // MARK: - Whole-body skin mask (docs/PLAN.md §6.2 "Sửa da", ADR-0021)
+    // MARK: - Per-shot masks (§6.2 "Sửa da" / ADR-0021, §6.1 "Khoá nền" / ADR-0018)
 
-    /// Runs the subject segmentation and the whole-frame skin classifier **once
-    /// per shot**, and keeps the result for ``renderRequest``.
+    /// Runs the subject segmentation **once per shot** and hands the result to
+    /// both features that want it, then runs the whole-frame skin classifier.
     ///
-    /// ## Why the flag is checked first and nothing runs behind it
+    /// ## Why the flags are checked first and nothing runs behind them
     /// This is not a cheap step: a `VNGeneratePersonSegmentationRequest` (17 ms
     /// at `.balanced`) plus a CPU colour classification of every pixel of the
     /// preview (17.8 ms at 2048 px, `Research/bench/p6-skin-sync-macos.json`).
@@ -243,8 +285,16 @@ public final class LivePreviewController {
     /// it stays off because the classifier is still 0.000 IoU on the deepest skin
     /// tone (ADR-0021 §5) — `SkinRenderNode` ignores `RenderRequest.bodySkinMask`
     /// entirely, so computing one would be ~35 ms of work per shot thrown away.
-    /// The guard is therefore the *whole* cost model of this feature, not an
-    /// optimisation.
+    /// The guards are therefore the *whole* cost model of these features, not an
+    /// optimisation. With **both** flags off (the shipping build) this method
+    /// returns before touching Vision at all, which is what makes "Khoá nền
+    /// changes nothing today" true rather than merely invisible.
+    ///
+    /// ## One request, two consumers
+    /// "Sửa da" multiplies the subject mask into its skin coverage (ADR-0021 §v2)
+    /// and "Khoá nền" rasterises it into a gate (ADR-0018). Both read
+    /// ``subjectMask``; the request is issued once. If only one of the two flags
+    /// is on, the other half is skipped and the segmentation still happens once.
     ///
     /// ## Order, and why the subject mask comes first
     /// The segmentation is awaited before the classifier because it is an
@@ -253,7 +303,9 @@ public final class LivePreviewController {
     /// missing subject mask (`nil` — no person in the frame) is passed through as
     /// `nil` and the classifier runs unmultiplied, which is v1's behaviour. It is
     /// **not** turned into an all-zero mask; that would silently remove all skin
-    /// coverage from every frame Vision does not recognise a person in.
+    /// coverage from every frame Vision does not recognise a person in — and for
+    /// "Khoá nền" the same `nil` means "there is nothing to lock", so the gate is
+    /// simply absent and every node keeps its pre-6.1 behaviour.
     ///
     /// ## Where the work happens
     /// Both halves are off the main actor — the classifier in a detached task,
@@ -261,21 +313,30 @@ public final class LivePreviewController {
     /// the shot, so a slider drag never reaches this method (the rule
     /// docs/ADR-0013 records for face analysis, applied to a second Vision
     /// request).
-    private func prepareBodySkinMask(for image: PreviewImage, contentHash: String) async {
-        guard RPEngineFeatureFlags.bodySkinSync else { return }
+    private func prepareShotMasks(for image: PreviewImage, contentHash: String) async {
+        guard RPEngineFeatureFlags.bodySkinSync || RPEngineFeatureFlags.backgroundLock else {
+            return
+        }
         var subject: RenderMask?
         do {
             subject = try await subjectProvider.subjectMask(
                 for: image, contentHash: contentHash, quality: Self.subjectMaskQuality)
         } catch {
             // Not fatal and not a canvas failure: the classifier still has an
-            // answer without a subject prior, it is just the v1 answer.
+            // answer without a subject prior, it is just the v1 answer, and
+            // "Khoá nền" simply gates nothing.
             Self.log.error(
                 "subject mask failed for \(contentHash, privacy: .public): \(String(describing: error), privacy: .public)"
             )
         }
         guard openContentHash == contentHash else { return }
+        subjectMask = subject
+        prepareBackgroundLockGate(for: image)
 
+        guard RPEngineFeatureFlags.bodySkinSync else {
+            invalidate()
+            return
+        }
         let source = image.cgImage
         let prior = subject
         let result: BodySkinMask.Result?
@@ -304,10 +365,60 @@ public final class LivePreviewController {
         invalidate()
     }
 
-    private func clearBodySkinMask() {
+    /// Rasterises ``subjectMask`` into the gate texture "Khoá nền" multiplies
+    /// into every node's coverage — docs/PLAN.md §6.1, docs/ADR-0018.
+    ///
+    /// Synchronous and blocking (`waitUntilCompleted`) on purpose: it is one
+    /// `rp_skin_mask` dispatch, once per shot, on a path that has already
+    /// awaited a 17 ms Vision request — and the alternative, publishing the gate
+    /// from a completion handler, would put a second "did the shot change while
+    /// we were away" race next to the one this method is already inside.
+    ///
+    /// Everything here is skipped while `RPEngineFeatureFlags.backgroundLock` is
+    /// off, which is the shipping default and is also enforced one level down:
+    /// `BackgroundLockMaskSource.init` throws `RPEngineFeatureDisabled`.
+    private func prepareBackgroundLockGate(for image: PreviewImage) {
+        backgroundLockGate = nil
+        guard RPEngineFeatureFlags.backgroundLock, let mask = subjectMask else { return }
+        let width = Int(image.pixelSize.width)
+        let height = Int(image.pixelSize.height)
+        guard width > 0, height > 0 else { return }
+        do {
+            // The mask arrives in the preview image's pixels — the very pixels
+            // uploaded as the source texture — so it needs no rescaling on the
+            // way in, the same property that lets `faces` and `bodySkinMask` go
+            // in unscaled.
+            let source = try backgroundLockSource ?? BackgroundLockMaskSource(
+                context: renderer.context)
+            backgroundLockSource = source
+            guard let commandBuffer = renderer.context.commandQueue.makeCommandBuffer() else {
+                return
+            }
+            let texture = try source.encode(
+                into: commandBuffer, mask: mask, width: width, height: height)
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+            guard let texture else { return }
+            // Identity: the rasteriser writes at the size of the picture being
+            // rendered, which is what `TextureGateMask`'s default transform
+            // documents.
+            backgroundLockGate = TextureGateMask(texture: texture)
+            Self.log.log(
+                "background lock gate: \(texture.width, privacy: .public)x\(texture.height, privacy: .public)"
+            )
+        } catch {
+            Self.log.error(
+                "background lock gate failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func clearShotMasks() {
         bodySkinMask = nil
         bodySkinCoverageFraction = nil
         bodySkinUsedSubjectMask = false
+        subjectMask = nil
+        backgroundLockGate = nil
+        backgroundLockSource?.releaseIntermediates()
     }
 
     // MARK: - Edits
@@ -334,10 +445,20 @@ public final class LivePreviewController {
     /// already in the grid `RenderRequest.bodySkinMask` documents ("also already
     /// scaled to the texture being rendered"). That is the same property that
     /// lets ``faces`` go in unscaled.
+    ///
+    /// ``backgroundLockGate`` is **appended** to `gateMasks` rather than
+    /// assigned over it, and only when
+    /// ``RPEngine/BackgroundLock/gateMasks(for:subjectGate:)`` says all three of
+    /// its conditions hold. With the feature flag off, the document's toggle
+    /// off, or no subject in the frame, the array stays empty — which
+    /// `RenderGateMask` defines as "the node renders exactly the pixels it
+    /// rendered before Phase 6.1", not "select nothing".
     public var renderRequest: RenderRequest {
         var request = RenderRequest(
             editState: editState, allFaces: faces, quality: renderer.quality)
         request.bodySkinMask = bodySkinMask
+        request.gateMasks += BackgroundLock.gateMasks(
+            for: editState, subjectGate: backgroundLockGate)
         return request
     }
 
