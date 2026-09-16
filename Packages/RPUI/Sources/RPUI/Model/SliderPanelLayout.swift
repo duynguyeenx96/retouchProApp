@@ -76,6 +76,25 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// and the UI says so instead of offering a control that silently no-ops.
     public let needsFace: Bool
 
+    /// The `RenderNode.name` whose ``RPEngine/RenderNode/detectionNotice(for:)``
+    /// this group should also show, or `nil` for a group that has no detection
+    /// behind it.
+    ///
+    /// ``needsFace`` answers one detection question — "is there a face at all" —
+    /// and it is the only one the panel could ask before Phase 6. The groups
+    /// added since depend on *further* detections that can fail independently of
+    /// the face: the whole-body skin classifier ("Sửa da", `"skin"`), the hair
+    /// silhouette trace ("Đầu", `"warp"`). Rather than teach the panel each of
+    /// those, the group names the node and the node says, in one end-user
+    /// sentence, what it could not find (`GroupAvailability.blockedReason`). The
+    /// treatment is identical to the no-face case: the same `info.circle` line in
+    /// `RPTheme.textTertiary`, the same disabled sliders.
+    ///
+    /// `nil` for every group whose sliders cannot fail this way, and that is not
+    /// a "not yet" — "Cọ mask thủ công" is user input and "Tạo khối" is pure
+    /// landmark geometry, so neither has anything to detect.
+    public let notifiesFromNodeNamed: String?
+
     public var id: String { key }
 
     /// `true` for the Phase 5 groups. They are drawn dimmed and inert rather
@@ -99,8 +118,10 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
         phase: String,
         parameters: [SliderParameter] = [],
         plannedParameters: [String] = [],
-        needsFace: Bool = false
+        needsFace: Bool = false,
+        notifiesFromNodeNamed: String? = nil
     ) {
+        self.notifiesFromNodeNamed = notifiesFromNodeNamed
         self.key = key
         self.title = title
         self.panelTitle = panelTitle

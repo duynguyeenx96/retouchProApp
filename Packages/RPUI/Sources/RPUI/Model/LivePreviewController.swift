@@ -110,6 +110,16 @@ public final class LivePreviewController {
     public private(set) var lastRenderMilliseconds: Double = 0
     /// Node names the last redraw actually ran.
     public private(set) var lastNodes: [String] = []
+    /// What each render node's detection could **not** find on the last redraw,
+    /// keyed by node name (`RenderReport.notices`). Empty on a healthy render.
+    ///
+    /// Surfaced exactly the way ``lastNodes`` is — written by ``recordFrame(milliseconds:report:)``
+    /// after every draw, never computed here — so it is a *live* fact about the
+    /// current shot and the current sliders rather than a one-shot event. The
+    /// panel reads it through `GroupAvailability.blockedReason(...)` and shows it
+    /// the same way it shows "no face detected": a persistent line above a
+    /// disabled group, not a banner the user dismisses.
+    public private(set) var detectionNotices: [String: String] = [:]
     private var recentMilliseconds: [Double] = []
 
     public init(
@@ -162,6 +172,11 @@ public final class LivePreviewController {
         failureMessage = nil
         faces = []
         faceAnalysisRan = false
+        // The previous shot's notices are about the previous shot. Dropping them
+        // here means the panel says nothing until the new shot has actually been
+        // rendered once, rather than blaming this photo for the last one's
+        // missing hairline.
+        detectionNotices = [:]
         clearBodySkinMask()
         defer { isPreparing = false }
 
@@ -210,6 +225,7 @@ public final class LivePreviewController {
         sourceSize = .zero
         openContentHash = nil
         faceAnalysisRan = false
+        detectionNotices = [:]
         clearBodySkinMask()
         invalidate()
     }
@@ -359,6 +375,11 @@ public final class LivePreviewController {
     public func recordFrame(milliseconds: Double, report: RenderReport) {
         lastRenderMilliseconds = milliseconds
         lastNodes = report.nodes
+        // Assigned unconditionally, including when it is empty: a notice has to
+        // disappear the moment the render stops reporting it (the user turned
+        // the slider back to 0, or opened a shot whose hairline traces), which an
+        // "only overwrite when non-empty" merge would prevent.
+        detectionNotices = report.notices
         recentMilliseconds.append(milliseconds)
         if recentMilliseconds.count > 30 { recentMilliseconds.removeFirst() }
     }

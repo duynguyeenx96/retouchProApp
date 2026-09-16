@@ -18,10 +18,14 @@ import SwiftUI
 ///   tooltip / VoiceOver hint.
 /// * **Dragging does not write to disk.** The drag mutates memory and repaints
 ///   the GPU canvas; the release writes `edits/<id>.json` once.
-/// * **Face-dependent groups say when they cannot work.** With no face detected
-///   (no Core ML models, or no face in the frame) the Da / Mặt / Mắt & Răng
-///   sliders would silently do nothing, so the group is disabled with the reason
-///   written out rather than offering a dead control.
+/// * **Detection-dependent groups say when they cannot work.** With no face
+///   detected (no Core ML models, or no face in the frame) the Da / Mặt /
+///   Mắt & Răng sliders would silently do nothing, so the group is disabled with
+///   the reason written out rather than offering a dead control. The same line
+///   now carries whatever the group's render node reports it could not find
+///   (`SliderSectionDescriptor.notifiesFromNodeNamed` → `RenderReport.notices`);
+///   the rule itself lives in ``GroupAvailability`` so it can be tested without
+///   a view.
 struct GroupSliderList: View {
     @Bindable var model: EditorModel
     let section: SliderSectionDescriptor
@@ -31,17 +35,14 @@ struct GroupSliderList: View {
     var showsCaption = false
 
     /// Why this group cannot do anything right now, or `nil` when it can.
+    ///
+    /// Re-evaluated on every render, deliberately: see ``GroupAvailability``.
     private var blockedReason: String? {
-        if section.isLocked { return "\(section.phase) · chưa khả dụng" }
-        guard section.needsFace else { return nil }
-        guard model.detectedFaceCount == 0 else { return nil }
-        guard let live = model.live else {
-            return "Máy này không có preview GPU."
-        }
-        if !live.isReady { return "Preview GPU chưa sẵn sàng." }
-        return live.faceAnalysisRan
-            ? "Không nhận diện được khuôn mặt trong ảnh này."
-            : "Chưa chạy được phân tích khuôn mặt — nhóm này cần model Core ML."
+        GroupAvailability.blockedReason(
+            section: section,
+            detectedFaceCount: model.detectedFaceCount,
+            preview: GroupAvailability.previewState(of: model.live),
+            notices: model.live?.detectionNotices ?? [:])
     }
 
     var body: some View {
