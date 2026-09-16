@@ -70,7 +70,7 @@ final class PersonSegmenterSubjectMaskProvider: SubjectMaskProviding {
         let started = ContinuousClock.now
         let segmenter = try PersonSegmenter(quality: visionQuality(quality))
         let found = try segmenter.mask(for: image)
-        let ms = Double((started.duration(to: .now)).components.attoseconds) / 1e15
+        let ms = milliseconds(since: started)
         if let found {
             AppLog.write(
                 "person segmentation: \(found.width)x\(found.height) mask for \(key) — "
@@ -142,6 +142,19 @@ final class PersonSegmenterSubjectMaskProvider: SubjectMaskProviding {
 
     static func cacheKey(contentHash: String, size: CGSize, quality: SubjectMaskQuality) -> String {
         "\(contentHash)@\(Int(size.width))x\(Int(size.height))@\(quality.rawValue)"
+    }
+
+    /// Elapsed milliseconds, **including whole seconds**.
+    ///
+    /// Not a style preference: `Duration.components` is a *pair*
+    /// `(seconds, attoseconds)`, so the idiom `components.attoseconds / 1e15`
+    /// silently reports only the fractional part — a 2.26 s run logs as
+    /// "261.1 ms". Seen in this project's own log while verifying this change on
+    /// a real photo, which is why it is spelled out here rather than inlined.
+    static func milliseconds(since start: ContinuousClock.Instant) -> Double {
+        let elapsed = start.duration(to: .now)
+        return Double(elapsed.components.seconds) * 1000
+            + Double(elapsed.components.attoseconds) / 1e15
     }
 
     /// RPEngine's quality names to RPVision's. Two enums rather than one because

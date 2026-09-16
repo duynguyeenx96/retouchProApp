@@ -33,6 +33,14 @@ struct RootView: View {
                     renderer: container.previewRenderer,
                     faceProvider: container.faceProvider)
             }
+            // The "Sửa da" whole-body mask (docs/ADR-0021 §v2), off unless
+            // RP_BODYSKIN_SELFTEST is set. It needs its own hook because its
+            // Vision request cannot run on the Simulator at all, so a real
+            // device is the only place the intersection actually happens.
+            if let target = BodySkinSelfTest.target() {
+                await BodySkinSelfTest.run(
+                    target: target, renderer: container.previewRenderer, live: container.live)
+            }
             // Same idea for the export path, off unless RP_EXPORT_SELFTEST is
             // set: it runs `ExportController.exportActiveShot` — the Export
             // button's own action — against a shot already in the library, so
