@@ -137,6 +137,40 @@ struct SkinSyncBenchTests {
         let cleanIoUs = tones.compactMap { ($0["clean"] as? [String: Any])?["iou"] as? Double }
         let best = cleanIoUs.max() ?? 0
         #expect(best > 0.8, "best clean-frame IoU across the tone ladder is only \(best)")
+
+        // v2 (docs/ADR-0021): the subject multiply must never *lose* area on a
+        // frame it was already right about, and must never resurrect tone VI.
+        for tone in tones {
+            let name = tone["tone"] as? String ?? "?"
+            for column in ["clean", "cluttered"] {
+                let block = try #require(tone[column] as? [String: Any])
+                let v1 = try #require(block["iou"] as? Double)
+                let v2 = try #require(
+                    (block["v2_subject_mask"] as? [String: Any])?["iou"] as? Double)
+                if name.hasPrefix("VI_") {
+                    // The honest half of this feature: v2 fixes background
+                    // false positives, not the Kovac reject line. If this ever
+                    // fails, something changed upstream of the multiply and the
+                    // ADR's claim has to be rewritten, not the test.
+                    #expect(v1 == 0, "\(name)/\(column) v1 IoU moved to \(v1)")
+                    #expect(v2 == 0, "\(name)/\(column) v2 IoU moved to \(v2)")
+                } else {
+                    #expect(
+                        v2 >= v1 - 0.02,
+                        "\(name)/\(column): v2 lost IoU (\(v1) -> \(v2))")
+                }
+            }
+        }
+        // What v2 *does* fix, on every tone: the background leak. The wood is
+        // outside the subject mask, so it cannot be reported as skin any more,
+        // whatever the classifier thought of it.
+        for tone in tones {
+            let name = tone["tone"] as? String ?? "?"
+            let cluttered = try #require(tone["cluttered"] as? [String: Any])
+            let v2 = try #require(cluttered["v2_subject_mask"] as? [String: Any])
+            let leak = try #require(v2["leak_wood_mean"] as? Double)
+            #expect(leak < 0.02, "\(name): v2 still leaks onto the wood (\(leak))")
+        }
     }
 
     // MARK: - port: SkinCore == skincore.js
@@ -216,6 +250,29 @@ struct SkinSyncBenchTests {
                     block["leak_wood_mean"] = scored.leakWood
                     block["leak_wall_mean"] = scored.leakWall
                 }
+
+                // v2, on the very same frame: the same classifier with the
+                // subject mask multiplied in (docs/ADR-0021 §v2). Side by side
+                // with the v1 block above, because the interesting number is the
+                // *difference* and a reader must not have to diff two files to
+                // find it.
+                let v2 = BodySkinMask.make(
+                    rgb: frame.rgb, componentsPerPixel: 3, width: frame.width,
+                    height: frame.height, subject: frame.subjectMask())
+                let scoredV2 = frame.score(v2.mask.values)
+                var v2Block: [String: Any] = [
+                    "iou": scoredV2.iou,
+                    "precision": scoredV2.precision,
+                    "recall": scoredV2.recall,
+                    "leak_background_mean": scoredV2.leakBackground,
+                    "coverage_fraction": v2.coverageFraction,
+                    "iou_delta": scoredV2.iou - scored.iou,
+                ]
+                if clutter {
+                    v2Block["leak_wood_mean"] = scoredV2.leakWood
+                    v2Block["leak_wall_mean"] = scoredV2.leakWall
+                }
+                block["v2_subject_mask"] = v2Block
                 entry[clutter ? "cluttered" : "clean"] = block
             }
             tones.append(entry)
@@ -227,10 +284,12 @@ struct SkinSyncBenchTests {
             "frame": "320x240 (the shipped working grid): a head ellipse + a neck/shoulder band of one skin tone; 'cluttered' adds a rattan/wood block and a beige wall, 'clean' does not. Deterministic +-5 per-channel noise either way.",
             "threshold": 127,
             "tones": tones,
+            "v2_subject_mask_note":
+                "Every tone carries a 'v2_subject_mask' block: the SAME classifier run with a subject mask multiplied into its coverage (BodySkinMask.make(subject:), docs/ADR-0021 §v2). The mask is CONSTRUCTED from the frame's own silhouette — dilated 4 px, rendered at 96x72 over a 320x240 frame so the resampling is exercised — and is NOT a VNGeneratePersonSegmentationRequest output: there is no person in a synthetic ellipse for Vision to find, and the iOS Simulator cannot perform the request at all. So 'v2_subject_mask' measures what intersecting with a GOOD subject mask buys, i.e. an upper bound on the field result, not Vision's mask quality.",
             "known_limit_deep_tones":
-                "skincore.js's Kovac gate rejects R <= 95 outright, so tone VI (91,60,17) scores ~0 even on the clean frame. That is the shipped panel's behaviour transcribed, not a port bug — and it is the single biggest reason this feature is default-off.",
+                "skincore.js's Kovac gate rejects R <= 95 outright, so tone VI (91,60,17) scores ~0 even on the clean frame. That is the shipped panel's behaviour transcribed, not a port bug — and it is the single biggest reason this feature is default-off. v2 DOES NOT FIX THIS and cannot: the subject mask enters as a multiply, and a multiply on a coverage the colour rule already zeroed is still zero. Compare each tone's 'iou' with its 'v2_subject_mask.iou' — tone VI is 0 in both columns, by construction. The one thing v2 does change for tone VI is the shape of the failure: on the cluttered frame v1 claimed 12.5 % of the frame (all of it wood) while v2 claims 0.0 %, so the feature now does nothing visible instead of smoothing the furniture. Silent nothing is still a silent failure, and it is still why the flag is off.",
             "known_limit_wood":
-                "A rattan/wood block sits inside the CbCr skin ellipse and can score HIGHER than a mid/deep skin tone, so on the cluttered frame the per-image back-projection learns the wood instead of the skin and the 2 % component floor then keeps the wood and drops the model. docs/PLAN.md §6.2's optional v2 — intersecting with VNGeneratePersonSegmentationRequest ('Khoá nền', §6.1) — is aimed at exactly this, and these numbers are the argument for doing it before the toggle ships.",
+                "A rattan/wood block sits inside the CbCr skin ellipse and can score HIGHER than a mid/deep skin tone, so on the cluttered frame the per-image back-projection learns the wood instead of the skin and the 2 % component floor then keeps the wood and drops the model. v2 fixes this by HALVES, and the halves have to be read separately. FIXED: the wood is outside the subject mask, so leak_wood_mean goes 0.60-0.87 -> 0.00 on every tone and the four tones whose skin model survived calibration jump to their clean-frame recall (I 0.610->0.989, II 0.530->0.872, III 0.572->0.941, V 0.602->0.983). NOT FIXED: tone IV cluttered stays 0.000. There the calibration itself collapsed — the 2 % component floor kept the wood component and dropped the skin one — and a multiply applied to the OUTPUT cannot restore a component the classifier never kept. The reason is structural: skincore.js applies its own 'subj' prior at step 3, BEFORE the step-4 back-projection learning, whereas this multiply happens after SkinCore has finished. Porting that step-3 prior is the next move and it is a change to a file pinned as an exact transcription of the shipped panel, so it needs its own decision and its own fixture, not a quiet edit.",
         ]
     }
 
@@ -318,6 +377,28 @@ struct SkinSyncBenchTests {
             }
             out["classifier_\(label)_ms"] = samples.sorted()[samples.count / 2]
             out["classifier_\(label)_size"] = [width, height]
+
+            // v2's own cost, separately: the subject multiply runs on the 320 px
+            // working grid, not on the frame, so it is expected to disappear into
+            // the noise next to the classification itself. Reported rather than
+            // assumed. The *segmentation request* that produces the mask is the
+            // expensive half and is measured in its own file,
+            // Research/bench/p6-background-lock-*.json (17.2 ms at .balanced).
+            // From *this* frame, so the mask's affine lands on these pixels.
+            // `dilation: 0` only to keep the fixture's own construction cheap at
+            // 24 MP; the dilation changes the mask's shape, not the multiply's cost.
+            let subject = frame.subjectMask(dilation: 0)
+            var withSubject: [Double] = []
+            for _ in 0..<iterations {
+                let start = DispatchTime.now().uptimeNanoseconds
+                _ = BodySkinMask.make(
+                    rgb: frame.rgb, componentsPerPixel: 3, width: width, height: height,
+                    subject: subject)
+                withSubject.append(
+                    Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+            }
+            out["classifier_\(label)_with_subject_ms"] = withSubject.sorted()[
+                withSubject.count / 2]
         }
 
         // GPU: the marginal cost of the union dispatch inside the node.
@@ -482,6 +563,74 @@ struct SyntheticSkinFrame {
                 rgb[i * 3 + 2] = UInt8(clamping: colour.2 + noise())
             }
         }
+    }
+
+    /// A stand-in for a person-segmentation mask over this frame
+    /// (docs/ADR-0021 §v2).
+    ///
+    /// **Constructed, and not a `VNGeneratePersonSegmentationRequest` output.**
+    /// It could not be: this frame is an ellipse and a band, there is no person
+    /// in it for Vision to find, and the iOS Simulator cannot perform the request
+    /// at all. So what the `v2_subject_mask` numbers measure is *the effect of
+    /// intersecting with a good subject mask*, not the quality of Vision's mask —
+    /// they are an upper bound on what v2 buys in the field, and the JSON says so
+    /// in `v2_subject_mask_note`.
+    ///
+    /// Three deliberate imperfections, so it is not a perfect oracle:
+    /// * it is **dilated** by `dilation` px, the way a segmentation mask
+    ///   overshoots a silhouette, so it cannot act as a pixel-exact answer key;
+    /// * it is rendered at a **different resolution and aspect ratio** (96x72
+    ///   over a 320x240 frame), which is what Vision actually does — it stretches
+    ///   the picture into its own 4:3 grid — and therefore exercises the
+    ///   resampling in `BodySkinMask.intersect` rather than an identity;
+    /// * a texel is subject if *any* covered source pixel is, i.e. it errs
+    ///   generous, like a real mask at a boundary.
+    func subjectMask(width: Int = 96, height: Int = 72, dilation: Int = 4) -> RenderMask {
+        var dilated = truth
+        if dilation > 0 {
+            for y in 0..<self.height {
+                for x in 0..<self.width where !truth[y * self.width + x] {
+                    var hit = false
+                    var dy = -dilation
+                    while dy <= dilation && !hit {
+                        var dx = -dilation
+                        while dx <= dilation && !hit {
+                            let sx = x + dx, sy = y + dy
+                            if sx >= 0, sx < self.width, sy >= 0, sy < self.height,
+                                truth[sy * self.width + sx]
+                            {
+                                hit = true
+                            }
+                            dx += 1
+                        }
+                        dy += 1
+                    }
+                    if hit { dilated[y * self.width + x] = true }
+                }
+            }
+        }
+        var values = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                let x0 = Int(Double(x) * Double(self.width) / Double(width))
+                let x1 = max(x0, Int(Double(x + 1) * Double(self.width) / Double(width)) - 1)
+                let y0 = Int(Double(y) * Double(self.height) / Double(height))
+                let y1 = max(y0, Int(Double(y + 1) * Double(self.height) / Double(height)) - 1)
+                var hit = false
+                for sy in y0...min(y1, self.height - 1) where !hit {
+                    for sx in x0...min(x1, self.width - 1) where dilated[sy * self.width + sx] {
+                        hit = true
+                        break
+                    }
+                }
+                values[y * width + x] = hit ? 255 : 0
+            }
+        }
+        return RenderMask(
+            width: width, height: height, values: values,
+            maskToImage: CGAffineTransform(
+                scaleX: CGFloat(self.width) / CGFloat(width),
+                y: CGFloat(self.height) / CGFloat(height)))
     }
 
     struct Score {
