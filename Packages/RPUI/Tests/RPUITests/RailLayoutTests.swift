@@ -8,16 +8,22 @@ import RPEngine
 /// The Turn 3 tool rail (docs/design/SPEC.md §"Turn 3 — expanded toolset rail",
 /// screens 3a-3f).
 ///
-/// What is checkable without a window: the eighteen labels in the shipped
+/// What is checkable without a window: the nineteen labels in the shipped
 /// order, and SPEC's wiring table — which six items open a real panel, which
-/// twelve are locked, and that no item points at a section key the panel
+/// thirteen are locked, and that no item points at a section key the panel
 /// cannot resolve. The pill/dimming is looked at on a device.
 ///
-/// Eighteen, not the canvas's nineteen: "Xoá vật thể" was cut from scope
-/// entirely on 2026-09-11 (`docs/design/SPEC.md` §Turn 3 "Cut from scope"),
-/// not locked — so ``RailLayout/items`` never had a descriptor for it to begin
-/// with, and the "pure permutation of the canvas" test below accounts for the
-/// one dropped member instead of asserting a 1:1 set match.
+/// Nineteen, but **not the canvas's nineteen** — one member out and one in, so
+/// the "permutation of the canvas" test below accounts for both rather than
+/// asserting a 1:1 set match:
+///
+/// * out — "Xoá vật thể", cut from scope entirely on 2026-09-11
+///   (`docs/design/SPEC.md` §Turn 3 "Cut from scope"), not locked, so
+///   ``RailLayout/items`` never had a descriptor for it;
+/// * in — "Khoá nền" (docs/PLAN.md §6.1, docs/ADR-0018), appended last and
+///   shipping **locked**: the engine behind it is finished but
+///   `RPEngineFeatureFlags.backgroundLock` stays off until someone measures
+///   `VNGeneratePersonSegmentationRequest` on a real iPhone.
 @Suite("Tool rail structure")
 struct RailLayoutTests {
 
@@ -31,7 +37,13 @@ struct RailLayoutTests {
         "Mẫu", "Răng", "Tự động", "Trang điểm", "Thu gọn", "Cơ thể",
         "Sửa da", "Săn chắc", "Căng mọng", "Mụn", "Đầu", "Tạo khối",
         "Kiềm dầu", "Bọng mắt", "Tóc",
+        "Khoá nền",
     ]
+
+    /// The one member that is **not** from the design canvas: a scope switch,
+    /// not a tool, appended after every canvas member so their relative order is
+    /// provably untouched.
+    private static let addedLabels: Set<String> = ["Khoá nền"]
 
     /// The canvas's original nineteen, kept so the reorder is checkably a
     /// *pure permutation minus the one cut member* — not one silently added or
@@ -53,25 +65,28 @@ struct RailLayoutTests {
     /// `sectionKey`, which is why the two rules below are stated separately.
     private static let screenLabels: Set<String> = ["Mẫu"]
 
-    @Test("Eighteen items, workflow order: Mặt → Mắt → Mịn da lead")
+    @Test("Nineteen items, workflow order: Mặt → Mắt → Mịn da lead, Khoá nền last")
     func labelsAndOrder() {
-        #expect(RailLayout.items.count == 18)
+        #expect(RailLayout.items.count == 19)
         #expect(RailLayout.items.map(\.label) == Self.expectedLabels)
         #expect(RailLayout.items.prefix(3).map(\.label) == ["Mặt", "Mắt", "Mịn da"])
+        #expect(RailLayout.items.last?.label == "Khoá nền")
     }
 
     /// The reorder moved rows and dropped exactly one documented member
     /// ("Xoá vật thể", cut from scope 2026-09-11); nothing else was added,
     /// dropped, or re-keyed. Ids are what the views use for identity, so they
     /// are checked too.
-    @Test("The order is a pure permutation of the canvas's nineteen, minus the one cut item")
+    @Test("The order is a permutation of the canvas's nineteen, minus one cut item plus one added")
     func orderIsAPermutationOfTheCanvas() {
-        #expect(Set(RailLayout.items.map(\.label)) == Set(Self.canvasLabels).subtracting(["Xoá vật thể"]))
+        #expect(
+            Set(RailLayout.items.map(\.label))
+                == Set(Self.canvasLabels).subtracting(["Xoá vật thể"]).union(Self.addedLabels))
         #expect(
             Set(RailLayout.items.map(\.id)) == [
                 "templates", "teeth", "auto", "makeup", "face", "slim", "body", "smooth",
                 "skinFix", "firm", "plump", "acne", "head", "contour", "shine", "eyes",
-                "eyeBags", "hair",
+                "eyeBags", "hair", "backgroundLock",
             ])
 
         // The fifteen that did not lead and were not cut keep the canvas's
@@ -79,8 +94,9 @@ struct RailLayoutTests {
         let moved: Set<String> = ["Mặt", "Mắt", "Mịn da"]
         let dropped: Set<String> = ["Xoá vật thể"]
         #expect(
-            RailLayout.items.map(\.label).filter { !moved.contains($0) }
-                == Self.canvasLabels.filter { !moved.contains($0) && !dropped.contains($0) })
+            RailLayout.items.map(\.label).filter {
+                !moved.contains($0) && !Self.addedLabels.contains($0)
+            } == Self.canvasLabels.filter { !moved.contains($0) && !dropped.contains($0) })
     }
 
     @Test("Every item has a stable unique id and an icon")
@@ -130,28 +146,28 @@ struct RailLayoutTests {
         #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Mẫu"])
     }
 
-    /// Eleven locked: nine with no section at all, plus Trang điểm and Tóc
-    /// whose sections exist but are themselves Phase 5. ("Xoá vật thể" is not
-    /// among these — it was cut from scope entirely, not locked; "Mẫu" was
-    /// unlocked in Phase 3, which is why this is eleven and not the twelve of
-    /// Turn 3.)
-    @Test("The other eleven items are locked, for the two different reasons")
+    /// Twelve locked, for three different reasons: nine with no section at all,
+    /// Trang điểm and Tóc whose sections exist but are themselves Phase 5, and
+    /// "Khoá nền", which has a finished engine and is held back on purpose.
+    /// ("Xoá vật thể" is not among these — it was cut from scope entirely, not
+    /// locked; "Mẫu" was unlocked in Phase 3.)
+    @Test("The other twelve items are locked, for the three different reasons")
     func lockedItems() {
         let locked = RailLayout.items.filter(\.isLocked)
-        #expect(locked.count == 11)
+        #expect(locked.count == 12)
         #expect(
             locked.map(\.label) == [
                 "Tự động", "Trang điểm", "Thu gọn", "Cơ thể", "Sửa da", "Săn chắc",
-                "Căng mọng", "Mụn", "Đầu", "Tạo khối", "Tóc",
+                "Căng mọng", "Mụn", "Đầu", "Tạo khối", "Tóc", "Khoá nền",
             ])
 
-        // No section behind it at all: nine of the eleven.
-        let unbacked = locked.filter { $0.sectionKey == nil }
+        // No section behind it at all and no specific reason: nine of the twelve.
+        let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
         #expect(unbacked.count == 9)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
         // The two Phase 5 groups keep the panel's own wording.
-        let phaseFive = locked.filter { $0.sectionKey != nil }
+        let phaseFive = locked.filter { $0.sectionKey != nil && $0.lockedReason == nil }
         #expect(phaseFive.map(\.sectionKey) == [
             EditState.SectionKey.makeup, EditState.SectionKey.hair,
         ])
@@ -180,7 +196,7 @@ struct RailLayoutTests {
         let byLabel = Dictionary(uniqueKeysWithValues: RailLayout.items.map { ($0.label, $0) })
         chrome.activeGroupKey = EditState.SectionKey.skin
 
-        for label in ["Tự động", "Thu gọn", "Trang điểm", "Tóc"] {
+        for label in ["Tự động", "Thu gọn", "Trang điểm", "Tóc", "Khoá nền"] {
             chrome.selectRailItem(try #require(byLabel[label]))
             #expect(chrome.activeGroupKey == EditState.SectionKey.skin, "\(label) switched the panel")
             #expect(chrome.presetLibrary == nil, "\(label) opened a screen")
@@ -195,6 +211,53 @@ struct RailLayoutTests {
 
         chrome.selectRailItem(try #require(byLabel["Mặt"]))
         #expect(chrome.activeGroupKey == EditState.SectionKey.face)
+    }
+
+    // MARK: - "Khoá nền" — structurally ready, deliberately locked
+
+    /// docs/PLAN.md §6.1 / docs/ADR-0018. The rail entry exists so that turning
+    /// the feature on later is a flag flip plus a control rather than a UI
+    /// project — but it must **not** be usable today, because
+    /// `RPEngineFeatureFlags.backgroundLock` is off and the ADR's blocker (no
+    /// `VNGeneratePersonSegmentationRequest` measurement on an A-series chip, and
+    /// therefore no defensible `qualityLevel`) is still open.
+    ///
+    /// The three claims that matter, in the order they would break: it is there,
+    /// it is locked, and it says why it is locked in words a user can act on.
+    @MainActor
+    @Test("Khoá nền ships as a locked rail item with an honest reason")
+    func backgroundLockShipsLocked() throws {
+        let item = try #require(RailLayout.items.first { $0.id == "backgroundLock" })
+        #expect(item.label == "Khoá nền")
+        #expect(!item.systemImage.isEmpty)
+
+        // Locked, and locked the way the rail already expresses "locked": no
+        // section, no screen. Not a working toggle behind a disabled style.
+        #expect(item.sectionKey == nil)
+        #expect(item.presentation == nil)
+        #expect(item.isLocked)
+        #expect(!RailLayout.activeItems.contains { $0.id == item.id })
+
+        // …and the hint is the specific reason, not the generic placeholder the
+        // eleven not-started tools get.
+        #expect(item.lockedHint == "Phase 6.1 · cần đo trên iPhone thật trước")
+        #expect(item.lockedHint != "chưa khả dụng")
+        #expect(item.lockedReason == item.lockedHint)
+
+        // Tapping it is inert: the panel does not move and no screen opens.
+        let chrome = EditorChrome()
+        chrome.activeGroupKey = EditState.SectionKey.skin
+        chrome.selectRailItem(item)
+        #expect(chrome.activeGroupKey == EditState.SectionKey.skin)
+        #expect(chrome.presetLibrary == nil)
+    }
+
+    /// The override is scoped to the one item that needs it: every other locked
+    /// entry keeps the derived wording, so this did not quietly become a second
+    /// place where lock hints are written.
+    @Test("lockedReason is set on exactly one item")
+    func lockedReasonIsScoped() {
+        #expect(RailLayout.allItems.filter { $0.lockedReason != nil }.map(\.id) == ["backgroundLock"])
     }
 
     // MARK: - "Mẫu" — the one item that opens a screen
@@ -241,12 +304,12 @@ struct RailLayoutTests {
 
     // MARK: - The pinned "Màu" affordance
 
-    /// The regression this exists for: the eighteen-item rail replaced a
-    /// six-group tab row, and the canvas's `RAIL` const has no colour entry — so
-    /// for one commit the eighteen working Color sliders had **no** way in.
+    /// The regression this exists for: the long tool rail replaced a six-group
+    /// tab row, and the canvas's `RAIL` const has no colour entry — so for one
+    /// commit the eighteen working Color sliders had **no** way in.
     /// `docs/design/SPEC.md` §"macOS panel (3f) structural note" asks for it as
     /// an always-visible top-level tab alongside the rail.
-    @Test("Màu is a pinned rail item, last, not one of the scrolling eighteen")
+    @Test("Màu is a pinned rail item, last, not one of the scrolling nineteen")
     func colorItemIsPinnedAndSeparate() throws {
         #expect(!RailLayout.items.contains { $0.sectionKey == EditState.SectionKey.color })
         #expect(RailLayout.colorItem.sectionKey == EditState.SectionKey.color)
@@ -289,7 +352,7 @@ struct RailLayoutTests {
 
     /// The general form of the same rule: no working slider group may be
     /// orphaned by the rail. Today that is Da / Mặt / Mắt & Răng from the
-    /// eighteen and Màu from the pinned chip; a seventh working group added in a
+    /// nineteen and Màu from the pinned chip; a seventh working group added in a
     /// later phase fails here until it gets an affordance.
     @Test("Every unlocked slider section is reachable from the rail")
     func noWorkingSectionIsOrphaned() {

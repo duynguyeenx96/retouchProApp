@@ -53,16 +53,30 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// sliders, so it has no `EditState` namespace and cannot be expressed as a
     /// ``sectionKey``. An item with a presentation is not locked.
     public let presentation: RailPresentation?
+    /// Overrides the generic ``lockedHint`` for an item whose lock has a
+    /// *specific* reason worth telling the user.
+    ///
+    /// "chưa khả dụng" is the honest answer for a tool nobody has started; it is
+    /// not the honest answer for one whose engine is built and deliberately held
+    /// back. "Khoá nền" is the first of those: its mask, rasteriser and gate slot
+    /// all ship, and the only thing missing is a measurement on a real iPhone
+    /// (docs/ADR-0018 — *"Both flags stay off and no default `qualityLevel` is
+    /// declared anywhere"*). Saying so is the difference between "we forgot" and
+    /// "we are not shipping a number we have not measured".
+    ///
+    /// `nil` on every other item, which keeps the derived wording below.
+    public let lockedReason: String?
 
     public init(
         id: String, label: String, systemImage: String, sectionKey: String? = nil,
-        presentation: RailPresentation? = nil
+        presentation: RailPresentation? = nil, lockedReason: String? = nil
     ) {
         self.id = id
         self.label = label
         self.systemImage = systemImage
         self.sectionKey = sectionKey
         self.presentation = presentation
+        self.lockedReason = lockedReason
     }
 
     /// `true` when tapping this item can do nothing: no section *and* no screen
@@ -80,6 +94,7 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// (`docs/PLAN.md` §Phase 6 "Turn 3 canvas").
     public var lockedHint: String {
         if presentation != nil { return "" }
+        if let lockedReason { return lockedReason }
         guard let sectionKey,
             let section = SliderPanelLayout.section(forKey: sectionKey)
         else { return "chưa khả dụng" }
@@ -100,18 +115,26 @@ public enum RailPresentation: Hashable, Sendable {
     case presetLibrary(PresetLibraryKind)
 }
 
-/// The eighteen-item tool rail, in **the user's workflow order**.
+/// The nineteen-item tool rail, in **the user's workflow order**.
 ///
 /// It is data, not view code, for the same reason ``SliderPanelLayout`` is: the
 /// order is a product decision and a test can assert the wiring table
 /// (docs/design/SPEC.md §Turn 3) instead of a reviewer counting icons on a
 /// screenshot. Six items are active — Mặt, Mắt, Mịn da, Răng, Kiềm dầu,
-/// Bọng mắt — and the other twelve are locked.
+/// Bọng mắt — and the other thirteen are locked.
 ///
-/// **Eighteen, not the canvas's nineteen: "Xoá vật thể" was cut from scope
-/// entirely on 2026-09-11**, not locked — see `docs/design/SPEC.md` §Turn 3
-/// "Cut from scope" for why (no face/landmark pipeline reuse for free-form
-/// object selection, unlike every other locked item here).
+/// **The membership is no longer exactly the canvas's `RAIL` const**: one member
+/// was cut and one was added, both on the record.
+///
+/// * **Cut — "Xoá vật thể"**, entirely out of scope on 2026-09-11, not locked;
+///   see `docs/design/SPEC.md` §Turn 3 "Cut from scope" for why (no
+///   face/landmark pipeline reuse for free-form object selection, unlike every
+///   other locked item here).
+/// * **Added — "Khoá nền"** (docs/PLAN.md §6.1), which the canvas never drew
+///   because it is a scope switch rather than a tool. It is appended last and
+///   ships locked; the descriptor below says why at length.
+///
+/// So: nineteen, the same count as the canvas by coincidence, not the same set.
 ///
 /// **The order is no longer the design canvas's `RAIL` const.** The canvas order
 /// buried the three tools the user actually opens first (Mặt was 5th, Mịn da
@@ -180,6 +203,31 @@ public enum RailLayout {
         RailItemDescriptor(
             id: "hair", label: "Tóc", systemImage: "comb",
             sectionKey: EditState.SectionKey.hair),
+
+        // **Not from the design canvas's `RAIL` const** — the nineteenth entry,
+        // appended after the canvas's own members so their relative order is
+        // untouched.
+        //
+        // "Khoá nền" (docs/PLAN.md §6.1) is not another tool: it is a scope
+        // switch that narrows whatever the other tools do, which is why it sits
+        // at the end of the list rather than among them, and why it has no
+        // ``sectionKey`` — it owns no slider panel. Its document value is
+        // `RPEngine.BackgroundLock` (one boolean in `EditState`), and the engine
+        // behind it is finished: `PersonSegmenter` → `SubjectMaskProviding` →
+        // `BackgroundLockMaskSource` → `RenderRequest.gateMasks`.
+        //
+        // It ships **locked anyway**, and that is the whole point of the entry:
+        // `RPEngineFeatureFlags.backgroundLock` is off and stays off until
+        // `VNGeneratePersonSegmentationRequest` has been measured on a real
+        // iPhone (docs/ADR-0018 — the macOS numbers are 5.5/17.2/54.5 ms per
+        // quality level and the Simulator cannot run the request at all, so
+        // there is no A-series figure and no defensible `qualityLevel` default).
+        // The structure is in place so that turning it on is a flag flip plus a
+        // control, not a UI project.
+        RailItemDescriptor(
+            id: "backgroundLock", label: "Khoá nền",
+            systemImage: "person.and.background.dotted",
+            lockedReason: "Phase 6.1 · cần đo trên iPhone thật trước"),
     ]
 
     /// The one tool that is **not** in the canvas's rail and still has to be

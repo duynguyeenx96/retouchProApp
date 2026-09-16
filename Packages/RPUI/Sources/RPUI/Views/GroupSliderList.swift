@@ -87,30 +87,31 @@ struct GroupSliderList: View {
     }
 }
 
-/// The eighteen tool buttons of ``RailLayout``, drawn as the phone's bottom row
-/// (screen 3a) or the Mac's far-right rail (screen 3f). (The canvas's `RAIL`
-/// const has nineteen — "Xoá vật thể" was cut from scope 2026-09-11, see
-/// `docs/design/SPEC.md` §Turn 3 "Cut from scope".)
+/// The nineteen tool buttons of ``RailLayout``, drawn as the phone's bottom row
+/// (screen 3a) or the Mac's far-right rail (screen 3f). (Not the canvas's own
+/// nineteen: "Xoá vật thể" was cut from scope 2026-09-11 — see
+/// `docs/design/SPEC.md` §Turn 3 "Cut from scope" — and "Khoá nền" was added,
+/// locked, in Phase 6.1.)
 ///
 /// Two rules carried over unchanged from the six-group rail this replaced:
 ///
 /// * **Locked items are dimmed to 38 % and inert** — shown, not hidden, so the
 ///   shell carries the whole future taxonomy (docs/design/SPEC.md rule 4). With
-///   the Turn 3 rail that is twelve of eighteen: the ten tools with no
-///   engine behind them plus the two Phase 5 groups (Trang điểm, Tóc).
+///   the Turn 3 rail that is thirteen of nineteen: the eleven tools with no
+///   engine slider behind them plus the two Phase 5 groups (Trang điểm, Tóc).
 /// * **Highlight follows the *section*, not the item** — several items open the
 ///   same panel (Mắt / Bọng mắt / Răng → Mắt & Răng; Mịn da / Kiềm dầu → Da),
 ///   so they light up together. That is SPEC's wiring table, not a bug.
 ///
-/// Eighteen items do not fit a phone's width, so the row scrolls horizontally
-/// with a fixed item width instead of splitting the width eighteen ways.
+/// Nineteen items do not fit a phone's width, so the row scrolls horizontally
+/// with a fixed item width instead of splitting the width nineteen ways.
 ///
 /// **Màu is pinned outside that scroll view**, at the trailing edge behind a
 /// hairline: the canvas's `RAIL` const has no colour entry, so replacing the old
 /// six-group tab row with it orphaned the eighteen working Color sliders. SPEC
 /// (§"macOS panel (3f) structural note") asks for it back as an always-visible
 /// top-level tab alongside the rail, which is what `RailLayout.colorItem` is —
-/// same icon, label and selected treatment as the eighteen, just not scrollable.
+/// same icon, label and selected treatment as the nineteen, just not scrollable.
 /// Trailing rather than leading because colour is the user's last step, the same
 /// ordering decision that puts Mặt/Mắt/Mịn da first in `RailLayout.items`.
 struct GroupTabRow: View {
@@ -149,7 +150,7 @@ struct GroupTabRow: View {
         }
     }
 
-    /// One tab, used both for the pinned Màu chip and for the eighteen scrolling
+    /// One tab, used both for the pinned Màu chip and for the nineteen scrolling
     /// ones so the two cannot end up looking different.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
@@ -188,10 +189,10 @@ struct GroupTabRow: View {
     }
 }
 
-/// The macOS far-right rail: the same eighteen tools as 40×40 icon buttons, the
+/// The macOS far-right rail: the same nineteen tools as 40×40 icon buttons, the
 /// active one on a faint mint pill.
 ///
-/// It scrolls vertically — eighteen 40 pt buttons are ~792 pt tall with the
+/// It scrolls vertically — nineteen 40 pt buttons are ~836 pt tall with the
 /// spacing, which is more than the panel has on a laptop screen.
 ///
 /// **Màu is pinned below that scroll view**, behind a hairline, for the reason
@@ -228,7 +229,7 @@ struct GroupIconRail: View {
     }
 
     /// One 40×40 icon button, used both for the pinned Màu item and for the
-    /// eighteen scrolling ones.
+    /// nineteen scrolling ones.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
         let isActive = item.sectionKey == chrome.activeGroupKey
