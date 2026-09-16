@@ -130,6 +130,41 @@ public protocol RenderNode: AnyObject, Sendable {
         destination: any MTLTexture,
         request: RenderRequest
     ) throws
+
+    /// One end-user sentence saying that this node's *detection* found nothing it
+    /// can act on for this request, or `nil` — the default, and the common case.
+    ///
+    /// ## What it is for
+    /// Every detection-dependent feature has a state in which its sliders are
+    /// live, the render runs, and nothing at all happens to the picture, because
+    /// the thing the sliders act *through* (a skin mask, a hair silhouette) was
+    /// not found. Silence there reads as a broken app. This is the one seam
+    /// through which a node hands the UI the sentence to show; the panel renders
+    /// it exactly as it already renders "no face detected"
+    /// (`RPUI.GroupAvailability`), i.e. as a live-computed, non-dismissible line
+    /// above a disabled group — not a toast and not a one-shot banner.
+    ///
+    /// ## The rules a conformer must keep
+    /// * **Cheap.** It is called once per node per render, on the interaction
+    ///   path. Answer from state that already exists — what `isActive(for:)`
+    ///   examined, what the last `encode` computed, a memoised trace — and never
+    ///   by running detection again.
+    /// * **Only when a user could actually reach the state.** A node whose
+    ///   feature flag is off has nothing to report: the user cannot have asked
+    ///   for the thing that failed.
+    /// * **Vietnamese, end-user voice.** It goes straight on screen. "Không phát
+    ///   hiện được da.", not "bodySkinMask coverage == 0".
+    ///
+    /// Unlike `isActive(for:)`, this is asked of **every** node in the graph, not
+    /// only the active ones — see ``RenderGraph/detectionNotices(for:)``.
+    func detectionNotice(for request: RenderRequest) -> String?
+}
+
+extension RenderNode {
+    /// Nodes have nothing to report unless they say so. This default is what
+    /// keeps `detectionNotice(for:)` a zero-change addition for every existing
+    /// conformer.
+    public func detectionNotice(for request: RenderRequest) -> String? { nil }
 }
 
 /// What one `render` call did. Recorded so a bench or a UI overlay never has to
@@ -142,7 +177,31 @@ public struct RenderReport: Sendable, Equatable {
     /// Bytes of intermediate textures the graph itself is holding (node-owned
     /// scratch is reported by the node, not here).
     public var poolBytes: Int = 0
+    /// What each node's detection could **not** find for this request, keyed by
+    /// the same node name that appears in ``nodes``
+    /// (``RenderNode/detectionNotice(for:)``). Empty on a healthy render, which
+    /// is nearly every render.
+    ///
+    /// A key here does **not** imply the node ran: the interesting cases are
+    /// precisely the ones where detection failing is what kept the node out of
+    /// ``nodes`` (a "Đầu" edit with no traceable hairline never activates). See
+    /// ``RenderGraph/detectionNotices(for:)``.
+    public var notices: [String: String] = [:]
     public var isPassthrough: Bool { nodes.isEmpty }
+
+    /// Public so a caller outside RPEngine can *make* a report — a stub
+    /// renderer, or a UI test feeding `LivePreviewController.recordFrame` a
+    /// render that reported a notice. The type was only ever produced here
+    /// before, so the memberwise init defaulted to internal.
+    public init(
+        nodes: [String] = [], gpuMilliseconds: Double = 0, poolBytes: Int = 0,
+        notices: [String: String] = [:]
+    ) {
+        self.nodes = nodes
+        self.gpuMilliseconds = gpuMilliseconds
+        self.poolBytes = poolBytes
+        self.notices = notices
+    }
 }
 
 public enum RenderGraphError: Error, CustomStringConvertible {
@@ -243,6 +302,24 @@ public final class RenderGraph: @unchecked Sendable {
         nodes.filter { $0.isActive(for: request) }
     }
 
+    /// What each node's detection could not find for this request, keyed by node
+    /// name. Cheap — no GPU work, no allocation, and `nil` from every node that
+    /// has not implemented ``RenderNode/detectionNotice(for:)``.
+    ///
+    /// **Asked of every node, not only the active ones.** That is the whole
+    /// point: `WarpRenderNode` answers `false` to `isActive(for:)` for a "Đầu"
+    /// edit whose hair silhouette could not be traced — deliberately, so the
+    /// graph does not pay for a full-frame copy that changes nothing — and that
+    /// is exactly the state the user needs told about. Filtering by `isActive`
+    /// first would drop every notice that matters.
+    public func detectionNotices(for request: RenderRequest) -> [String: String] {
+        var out: [String: String] = [:]
+        for node in nodes {
+            if let notice = node.detectionNotice(for: request) { out[node.name] = notice }
+        }
+        return out
+    }
+
     /// Renders `source` into `destination`.
     ///
     /// With no active node this is a blit, not a no-op: the caller asked for the
@@ -257,6 +334,7 @@ public final class RenderGraph: @unchecked Sendable {
         }
         let active = activeNodes(for: request)
         var report = RenderReport(nodes: active.map(\.name))
+        report.notices = detectionNotices(for: request)
 
         guard let commandBuffer = context.commandQueue.makeCommandBuffer() else {
             throw MetalContext.Failure.noCommandQueue
