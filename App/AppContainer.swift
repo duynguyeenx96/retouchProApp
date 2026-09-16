@@ -58,8 +58,19 @@ final class AppContainer {
     /// (docs/ADR-0015); `live` already has its own reference.
     let faceProvider: (any FaceInputProviding)?
 
+    /// The whole-frame subject mask pipeline
+    /// (`VNGeneratePersonSegmentationRequest`), or `nil` when it is switched off
+    /// or unsupported. Feeds docs/ADR-0021 §v2's whole-body skin mask; "Khoá nền"
+    /// will share it when it is wired.
+    let subjectProvider: (any SubjectMaskProviding)?
+
     /// Which slider groups this launch turned on, for the startup log.
     let enabledRenderGroups: [String]
+    /// Which `RPEnableExperiments` entries this launch honoured. Empty on every
+    /// normal launch.
+    let enabledExperiments: [String]
+    /// Why there is no ``subjectProvider``, when there is none.
+    let subjectMaskReport: String?
     /// Whether face analysis is available (flags on **and** models loaded).
     let faceAnalysisAvailable: Bool
     /// Where the Core ML models came from, or every directory that was tried and
@@ -85,6 +96,10 @@ final class AppContainer {
         // is on, and it is read once at construction.
         let disabled = AppEngineSetup.disabledGroups()
         self.enabledRenderGroups = AppEngineSetup.enableRenderGraph(disabled: disabled)
+        // Off on every normal launch; `RPEnableExperiments` is the developer
+        // escape hatch that lets the §6.2 whole-body skin path be exercised on a
+        // real device without a rebuild (AppEngineSetup.enableKey).
+        self.enabledExperiments = AppEngineSetup.enableExperiments()
 
         let faceProvider: (any FaceInputProviding)?
         var report: [String] = []
@@ -101,8 +116,19 @@ final class AppContainer {
         self.faceModelReport = report
         self.faceProvider = faceProvider
         self.faceAnalysisAvailable = faceProvider != nil
+
+        // The probe costs one 64x48 Vision request and is only paid when the
+        // feature is actually on, which on a normal launch it is not — and it is
+        // the only honest way to tell "this machine cannot run the request"
+        // (the iOS Simulator) from "no person in this photo".
+        let segmentation = PersonSegmenterSubjectMaskProvider.standard(
+            probe: RPVisionFeatureFlags.personSegmentation)
+        self.subjectProvider = segmentation.provider
+        self.subjectMaskReport = segmentation.diagnostic
+
         self.live = LivePreviewController.standard(
-            faceProvider: faceProvider ?? NoFaceInputProvider())
+            faceProvider: faceProvider ?? NoFaceInputProvider(),
+            subjectProvider: segmentation.provider ?? NoSubjectMaskProvider())
 
         self.projects = ProjectsModel()
     }
@@ -120,7 +146,13 @@ final class AppContainer {
         let groups = enabledRenderGroups.isEmpty ? "none" : enabledRenderGroups.joined(separator: ", ")
         let gpu = live == nil ? "no Metal device" : "ready"
         let faces = faceAnalysisAvailable ? "available" : "UNAVAILABLE"
-        return "render groups: \(groups) | live preview: \(gpu) | face analysis: \(faces)"
+        var line = "render groups: \(groups) | live preview: \(gpu) | face analysis: \(faces)"
+        // Only when something is on, so the normal launch line is unchanged and
+        // an experimental launch is impossible to miss in session.log.
+        if !enabledExperiments.isEmpty {
+            line += " | experiments: \(enabledExperiments.joined(separator: ", "))"
+        }
+        return line
     }
 
     /// The startup lines, in the order they should be written. `renderSummary`
@@ -128,7 +160,8 @@ final class AppContainer {
     /// ``presetLibraryReport`` says whether Phase 3's preset stores resolved;
     /// the last line says whether the Share Extension can reach this app at all.
     var startupLog: [String] {
-        [renderSummary] + faceModelReport + [presetLibraryReport, shareHandoff.containerReport]
+        [renderSummary] + faceModelReport + (subjectMaskReport.map { [$0] } ?? [])
+            + [presetLibraryReport, shareHandoff.containerReport]
     }
 
     /// One line for the preset library (docs/PLAN.md §Phase 3): how many

@@ -71,6 +71,63 @@ enum AppEngineSetup {
         return enabled
     }
 
+    /// User-defaults key holding a comma-separated list of **unmeasured or
+    /// incompletely measured** features to turn on for this launch. Empty by
+    /// default, and it must stay that way.
+    ///
+    /// The mirror image of ``disableKey``, and it exists for a narrow reason:
+    /// `bodySkinSync`'s plumbing is wired end to end (segmentation → classifier →
+    /// `RenderRequest.bodySkinMask` → `SkinRenderNode`) but the feature is
+    /// **default off and has to stay off** — `Research/bench/p6-skin-sync-*.json`
+    /// still reports 0.000 IoU for the deepest skin tone on the tone ladder, and
+    /// a feature that silently does nothing for deep skin tones cannot ship on by
+    /// default (docs/ADR-0021 §5). Without a key like this the only way to
+    /// exercise the wiring on a real device is to edit code and rebuild, which is
+    /// how a path ends up shipped untested.
+    ///
+    /// ```
+    /// defaults write com.duynguyen.RetouchPro RPEnableExperiments -string "bodySkinSync"
+    /// ```
+    ///
+    /// This is deliberately **not** a UI toggle: docs/PLAN.md §6.2's toggle waits
+    /// on numbers that do not exist yet.
+    static let enableKey = "RPEnableExperiments"
+
+    /// Which experiments a launch asked for.
+    static func requestedExperiments(
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Set<String> {
+        let raw = environment["RP_ENABLE_EXPERIMENTS"] ?? defaults.string(forKey: enableKey) ?? ""
+        return Set(
+            raw.split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty })
+    }
+
+    /// The one experiment this key recognises today, spelled once.
+    static let bodySkinSyncExperiment = "bodySkinSync"
+
+    /// Turns on the experiments this launch asked for, and returns the ones that
+    /// were actually recognised (an unknown name is ignored, not fatal).
+    ///
+    /// `bodySkinSync` sets **two** flags, on either side of the RPEngine/RPVision
+    /// seam: `RPEngineFeatureFlags.bodySkinSync` lets `SkinRenderNode` read the
+    /// whole-frame mask, and `RPVisionFeatureFlags.personSegmentation` lets
+    /// `PersonSegmenter` construct at all. Neither package writes the other's
+    /// store (that is the rule `RPEngineFeatureFlags.backgroundLock` records), so
+    /// the app — which links both — is the only place they can be set together.
+    @discardableResult
+    static func enableExperiments(_ requested: Set<String> = requestedExperiments()) -> [String] {
+        var enabled: [String] = []
+        if requested.contains(bodySkinSyncExperiment) {
+            RPEngineFeatureFlags.bodySkinSync = true
+            RPVisionFeatureFlags.personSegmentation = true
+            enabled.append(bodySkinSyncExperiment)
+        }
+        return enabled
+    }
+
     /// Enables the face pipeline's flags. Separate from the render graph on
     /// purpose: with no models on this machine the graph still runs (Color is
     /// whole-frame), and the face-dependent groups say why they cannot.

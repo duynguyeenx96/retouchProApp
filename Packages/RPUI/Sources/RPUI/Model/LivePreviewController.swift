@@ -43,6 +43,7 @@ public final class LivePreviewController {
     /// would just be a hop.
     public let renderer: LivePreviewRenderer
     private let faceProvider: any FaceInputProviding
+    private let subjectProvider: any SubjectMaskProviding
 
     /// Unified-log channel, so a face-analysis failure is visible with
     /// `devicectl device process launch --console` on a real iPhone and not only
@@ -68,6 +69,37 @@ public final class LivePreviewController {
     /// explain why the face-dependent sliders do nothing.
     public private(set) var faceAnalysisRan = false
 
+    /// Whole-frame skin coverage for the open shot (docs/PLAN.md §6.2 "Sửa da",
+    /// docs/ADR-0021), already in the preview texture's pixels, or `nil`.
+    ///
+    /// `nil` on every path unless `RPEngineFeatureFlags.bodySkinSync` is on,
+    /// which is the shipping default — see ``prepareBodySkinMask(for:contentHash:)``
+    /// for why the whole computation is skipped rather than computed and ignored.
+    /// `SkinRenderNode` reads it through ``renderRequest``.
+    public private(set) var bodySkinMask: RenderMask?
+    /// Mean coverage of ``bodySkinMask`` over the frame, for the status line and
+    /// the log. `nil` when no mask was computed.
+    public private(set) var bodySkinCoverageFraction: Double?
+    /// `true` when a subject mask was found and multiplied into
+    /// ``bodySkinMask`` (docs/ADR-0021 §v2). `false` means the classifier's
+    /// coverage was used as-is — either because no person was found or because
+    /// the segmentation request failed — **not** that everything was masked out.
+    public private(set) var bodySkinUsedSubjectMask = false
+
+    /// Which quality level the subject mask is asked for.
+    ///
+    /// `.balanced`, and this is a measured choice rather than a middle one.
+    /// `Research/bench/p6-background-lock-macos.json`: `.fast` returns a 256x192
+    /// mask whose mean coverage inside a detected face box is 0.90 (0.71 on one
+    /// frame) against 0.997 for `.balanced`, because at a 2048 px preview a
+    /// 256 px mask is ~25 px across a head. Since this mask is used as a
+    /// *multiplier* on skin coverage, a boundary error there does not blur an
+    /// edge, it deletes skin. `.accurate` costs 3x the milliseconds (54.5 vs
+    /// 17.2 ms) for a 2016 px mask that the 320 px classifier grid immediately
+    /// throws away. Once per shot, so 17 ms is affordable; no iPhone number
+    /// exists yet, which is the other reason the whole path is flag-gated.
+    public static let subjectMaskQuality: SubjectMaskQuality = .balanced
+
     /// Bumped whenever the graph must run again. The `MTKView` compares it with
     /// the version it last drew.
     public private(set) var version = 0
@@ -82,10 +114,12 @@ public final class LivePreviewController {
 
     public init(
         renderer: LivePreviewRenderer,
-        faceProvider: any FaceInputProviding = NoFaceInputProvider()
+        faceProvider: any FaceInputProviding = NoFaceInputProvider(),
+        subjectProvider: any SubjectMaskProviding = NoSubjectMaskProvider()
     ) {
         self.renderer = renderer
         self.faceProvider = faceProvider
+        self.subjectProvider = subjectProvider
     }
 
     /// Builds the standard renderer for this machine, or `nil` when there is no
@@ -95,6 +129,7 @@ public final class LivePreviewController {
     /// without a GPU, and the canvas has a CPU fallback.
     public static func standard(
         faceProvider: any FaceInputProviding = NoFaceInputProvider(),
+        subjectProvider: any SubjectMaskProviding = NoSubjectMaskProvider(),
         context: MetalContext? = MetalContext.shared
     ) -> LivePreviewController? {
         guard let context else { return nil }
@@ -103,7 +138,8 @@ public final class LivePreviewController {
         // slider drag pays the shader compile (236 ms macOS / 1798 ms Simulator,
         // ADR-0007) and reads as a frozen UI.
         try? renderer.prewarm()
-        return LivePreviewController(renderer: renderer, faceProvider: faceProvider)
+        return LivePreviewController(
+            renderer: renderer, faceProvider: faceProvider, subjectProvider: subjectProvider)
     }
 
     // MARK: - Opening a shot
@@ -126,6 +162,7 @@ public final class LivePreviewController {
         failureMessage = nil
         faces = []
         faceAnalysisRan = false
+        clearBodySkinMask()
         defer { isPreparing = false }
 
         do {
@@ -162,6 +199,8 @@ public final class LivePreviewController {
                 "face analysis failed for \(contentHash, privacy: .public): \(String(describing: error), privacy: .public)"
             )
         }
+
+        await prepareBodySkinMask(for: image, contentHash: contentHash)
     }
 
     /// Drops the shot's textures. Call when the editor closes.
@@ -171,7 +210,88 @@ public final class LivePreviewController {
         sourceSize = .zero
         openContentHash = nil
         faceAnalysisRan = false
+        clearBodySkinMask()
         invalidate()
+    }
+
+    // MARK: - Whole-body skin mask (docs/PLAN.md §6.2 "Sửa da", ADR-0021)
+
+    /// Runs the subject segmentation and the whole-frame skin classifier **once
+    /// per shot**, and keeps the result for ``renderRequest``.
+    ///
+    /// ## Why the flag is checked first and nothing runs behind it
+    /// This is not a cheap step: a `VNGeneratePersonSegmentationRequest` (17 ms
+    /// at `.balanced`) plus a CPU colour classification of every pixel of the
+    /// preview (17.8 ms at 2048 px, `Research/bench/p6-skin-sync-macos.json`).
+    /// With `RPEngineFeatureFlags.bodySkinSync` off — the shipping default, and
+    /// it stays off because the classifier is still 0.000 IoU on the deepest skin
+    /// tone (ADR-0021 §5) — `SkinRenderNode` ignores `RenderRequest.bodySkinMask`
+    /// entirely, so computing one would be ~35 ms of work per shot thrown away.
+    /// The guard is therefore the *whole* cost model of this feature, not an
+    /// optimisation.
+    ///
+    /// ## Order, and why the subject mask comes first
+    /// The segmentation is awaited before the classifier because it is an
+    /// *input* to it (ADR-0021 §v2): `BodySkinMask.make` multiplies it into the
+    /// coverage so background wood and rattan cannot be reported as skin. A
+    /// missing subject mask (`nil` — no person in the frame) is passed through as
+    /// `nil` and the classifier runs unmultiplied, which is v1's behaviour. It is
+    /// **not** turned into an all-zero mask; that would silently remove all skin
+    /// coverage from every frame Vision does not recognise a person in.
+    ///
+    /// ## Where the work happens
+    /// Both halves are off the main actor — the classifier in a detached task,
+    /// the segmentation inside the provider's own actor — and both are keyed on
+    /// the shot, so a slider drag never reaches this method (the rule
+    /// docs/ADR-0013 records for face analysis, applied to a second Vision
+    /// request).
+    private func prepareBodySkinMask(for image: PreviewImage, contentHash: String) async {
+        guard RPEngineFeatureFlags.bodySkinSync else { return }
+        var subject: RenderMask?
+        do {
+            subject = try await subjectProvider.subjectMask(
+                for: image, contentHash: contentHash, quality: Self.subjectMaskQuality)
+        } catch {
+            // Not fatal and not a canvas failure: the classifier still has an
+            // answer without a subject prior, it is just the v1 answer.
+            Self.log.error(
+                "subject mask failed for \(contentHash, privacy: .public): \(String(describing: error), privacy: .public)"
+            )
+        }
+        guard openContentHash == contentHash else { return }
+
+        let source = image.cgImage
+        let prior = subject
+        let result: BodySkinMask.Result?
+        do {
+            result = try await Task.detached(priority: .userInitiated) {
+                try BodySkinMask.make(image: source, subject: prior)
+            }.value
+        } catch {
+            Self.log.error(
+                "body skin mask failed for \(contentHash, privacy: .public): \(String(describing: error), privacy: .public)"
+            )
+            result = nil
+        }
+        guard openContentHash == contentHash, let result else { return }
+
+        bodySkinMask = result.mask
+        bodySkinCoverageFraction = result.coverageFraction
+        bodySkinUsedSubjectMask = prior != nil
+        Self.log.log(
+            """
+            body skin mask: \(result.mask.width, privacy: .public)x\
+            \(result.mask.height, privacy: .public), coverage \
+            \(String(format: "%.3f", result.coverageFraction), privacy: .public), \
+            subject mask \(prior == nil ? "absent" : "applied", privacy: .public)
+            """)
+        invalidate()
+    }
+
+    private func clearBodySkinMask() {
+        bodySkinMask = nil
+        bodySkinCoverageFraction = nil
+        bodySkinUsedSubjectMask = false
     }
 
     // MARK: - Edits
@@ -192,8 +312,17 @@ public final class LivePreviewController {
 
     /// What the next redraw will ask the graph for, with the shot's face
     /// selection already applied.
+    ///
+    /// ``bodySkinMask`` needs no rescaling on the way in: it was classified from
+    /// the very `PreviewImage` that was uploaded as the source texture, so it is
+    /// already in the grid `RenderRequest.bodySkinMask` documents ("also already
+    /// scaled to the texture being rendered"). That is the same property that
+    /// lets ``faces`` go in unscaled.
     public var renderRequest: RenderRequest {
-        RenderRequest(editState: editState, allFaces: faces, quality: renderer.quality)
+        var request = RenderRequest(
+            editState: editState, allFaces: faces, quality: renderer.quality)
+        request.bodySkinMask = bodySkinMask
+        return request
     }
 
     /// `true` when the GPU path can put pixels on screen.

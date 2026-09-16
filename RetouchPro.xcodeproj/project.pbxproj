@@ -21,6 +21,7 @@
 		0A000000000000000000007B /* RPImportShotImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000018 /* RPImportShotImporter.swift */; };
 		0A000000000000000000007C /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000019 /* AppLog.swift */; };
 		0A00000000000000000000B4 /* FaceSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A000000000000000000001A /* FaceSelfTest.swift */; };
+		0A00000000000000000000E6 /* PersonSegmenterSubjectMaskProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A00000000000000000000E7 /* PersonSegmenterSubjectMaskProvider.swift */; };
 		0A000000000000000000007D /* RPImport in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000068 /* RPImport */; };
 		0A000000000000000000007E /* RPUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000069 /* RPUI */; };
 		/* The three Core ML models the FaceAnalyzer needs, compiled into the app
@@ -70,6 +71,7 @@
 		   launch either, so the bundle still has no TEST_HOST. */
 		0A0000000000000000000018 /* RPImportShotImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RPImportShotImporter.swift; path = App/RPImportShotImporter.swift; sourceTree = "<group>"; };
 		0A0000000000000000000019 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = App/AppLog.swift; sourceTree = "<group>"; };
+		0A00000000000000000000E7 /* PersonSegmenterSubjectMaskProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PersonSegmenterSubjectMaskProvider.swift; path = App/PersonSegmenterSubjectMaskProvider.swift; sourceTree = "<group>"; };
 		/* And the device self-test's path resolution (docs/ADR-0015), which is a
 		   pure function over a project library and wants a unit test even though
 		   the run itself is only exercised on a real device. */
@@ -478,6 +480,7 @@
 				0A0000000000000000000078 /* FaceAnalysisRenderBridge.swift in Sources */,
 				0A0000000000000000000079 /* AppEngineSetup.swift in Sources */,
 				0A000000000000000000007A /* FaceAnalyzerFaceInputProvider.swift in Sources */,
+				0A00000000000000000000E6 /* PersonSegmenterSubjectMaskProvider.swift in Sources */,
 				0A000000000000000000007B /* RPImportShotImporter.swift in Sources */,
 				0A000000000000000000007C /* AppLog.swift in Sources */,
 				0A00000000000000000000B4 /* FaceSelfTest.swift in Sources */,
