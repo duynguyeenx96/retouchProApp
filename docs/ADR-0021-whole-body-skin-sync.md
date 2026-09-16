@@ -216,6 +216,7 @@ was actually fixed.
 | `BodySkinMask.intersect(…)` | the resampling: working grid → image px → subject px, bilinear, clamped at the edges. |
 | `LivePreviewController` | asks for a subject mask and computes a `BodySkinMask` **once per shot**, and puts the result in `RenderRequest.bodySkinMask`, which until now was `nil` on every path in the app. |
 | `AppEngineSetup.enableKey` (`RPEnableExperiments`) | the developer switch that turns the path on for a launch, since the feature flag stays off. |
+| `App/BodySkinSelfTest.swift` (`RP_BODYSKIN_SELFTEST`) | the device hook, in the shape `RP_FACE_SELFTEST` already established: open a real photo through the product objects and write what came out to `session.log`. |
 
 The multiply is at the `BodySkinMask` layer, **not** inside `SkinCore.classify`.
 That was §4's reservation and it is kept: `SkinCore` remains the transcription of
@@ -268,6 +269,34 @@ averages 0.90 coverage inside a face box (0.71 on one frame), and this mask is a
 *multiplier* on skin coverage, so a boundary error there deletes skin rather than
 blurring an edge.
 
+### On real photos, and how the alignment was checked without a picture
+
+The tone ladder is synthetic. `RP_BODYSKIN_SELFTEST` (`App/BodySkinSelfTest.swift`,
+the "Sửa da" sibling of `RP_FACE_SELFTEST`) runs the real path —
+`LivePreviewController.open` — on a photo from the library and writes the result
+to `session.log`. Four photos on macOS, two portrait, one landscape, one a6300
+ARW:
+
+| photo | frame | frame coverage v1 → v2 | **inside the detected face box** v1 → v2 |
+|---|---|---|---|
+| DSC00657.jpg | 1365x2048 | 0.160 → 0.020 | 0.354 → **0.350** |
+| DSC05122.ARW | 1365x2048 | 0.045 → 0.015 | 0.284 → **0.284** |
+| 3Q6A0510.jpg | 1365x2048 | 0.032 → 0.029 | 0.189 → **0.185** |
+| DSC01660.jpg | 2048x1365 | 0.159 → 0.113 | 0.429 → **0.426** |
+
+The second column is the one that matters, and it is why the self-test logs it.
+A subject mask that is flipped, transposed or scaled wrong lowers the coverage
+figure *exactly like one that is working*, so a single number cannot tell them
+apart. The face box can: it is unambiguously skin and unambiguously inside the
+subject, and it keeps ~99 % of its coverage on every photo while the frame as a
+whole loses 12–87 %. Both orientations are in the table on purpose — the
+landscape frame is 3:2 against Vision's 4:3 grid, which is where a single-scale
+affine would go wrong.
+
+Vision's mask came back 384x512 for the portrait frames and the classifier's grid
+was 320x480, i.e. neither the same size nor the same aspect on either axis, which
+is the case the resampling exists for.
+
 ### Two things v2 does not fix, stated plainly
 
 1. **Deep skin tones are unchanged, and cannot be changed from here.** Tone VI
@@ -312,6 +341,23 @@ defaults write com.duynguyen.RetouchPro RPEnableExperiments -string "bodySkinSyn
 It sets `RPEngineFeatureFlags.bodySkinSync` **and**
 `RPVisionFeatureFlags.personSegmentation`, because neither package writes the
 other's store and the app is the only place that links both.
+
+### What could not be verified
+
+**None of this ran on the iPhone.** The App Group provisioning-profile mismatch
+that has blocked every real-device build in this repo since the Share Extension
+landed is still there — `xcodebuild -destination 'platform=iOS,id=…'` fails at
+`GatherProvisioningInputs` with *"Provisioning profile … doesn't match the
+entitlements file's value for the com.apple.security.application-groups
+entitlement"*, and clearing it needs one pass through the Xcode GUI. What was
+done instead: the iOS **device slice** compiles
+(`-destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO`), the full suite
+is green on the Simulator, and the feature was exercised end to end on macOS
+against real photos as above. That is a real substitute for the sandbox-shaped
+risks and **not** a substitute for the one risk specific to iOS here: Vision's
+segmentation request has no Simulator implementation at all, so the iPhone is the
+only place its cost and its mask resolution can be measured. `RP_BODYSKIN_SELFTEST`
+exists so that is one command when the profile is fixed.
 
 ## What is still open
 
