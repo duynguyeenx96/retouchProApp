@@ -1,6 +1,7 @@
 # ADR-0021 — "Sửa da": whole-body skin sync, and why it widens *before* the gates narrow
 
-Status: accepted — 2026-09-15
+Status: accepted — 2026-09-15; amended 2026-09-16 (see "v2 — the
+person-segmentation intersection")
 Scope: Phase 6 §6.2, "Sửa da — đồng bộ da toàn thân". **Engine only this round**:
 a port of the UXP panel's skin classifier, one new Metal kernel that merges its
 whole-frame coverage with the per-face BiSeNet coverage, and the numbers. There
@@ -196,6 +197,121 @@ Cost, for completeness (macOS Release, M1 Pro):
 * Nothing computes a `BodySkinMask` yet in the app: `RenderRequest.bodySkinMask`
   is `nil` on every path today. Wiring it (and the toggle) is the next piece of
   work, and should not start before the segmentation intersection above.
+  **Superseded 2026-09-16** — the wiring landed with v2 below; the toggle did
+  not.
+
+## v2 — the person-segmentation intersection (2026-09-16)
+
+Amendment, not a rewrite: everything above still holds, including the
+limitations. This section adds what was built for failure (2) of §5 — "skin
+coloured wood outscores mid skin" — and states, with numbers, which half of it
+was actually fixed.
+
+### What was built
+
+| | |
+|---|---|
+| `App/PersonSegmenterSubjectMaskProvider.swift` | new. `RPEngine.SubjectMaskProviding` on top of `RPVision.PersonSegmenter`. Cache key `<contentHash>@<w>x<h>@<quality>`, concurrent callers coalesced onto one run, one `AppLog` line per request. The **first** thing in the app to call `VNGeneratePersonSegmentationRequest` at all — ADR-0018 built `PersonSegmenter` and `BackgroundLockMaskSource` and nothing ever invoked either. |
+| `BodySkinMask.make(…, subject:)` | the multiply, on both byte overloads plus a new `make(image:subject:)` for the canvas. |
+| `BodySkinMask.intersect(…)` | the resampling: working grid → image px → subject px, bilinear, clamped at the edges. |
+| `LivePreviewController` | asks for a subject mask and computes a `BodySkinMask` **once per shot**, and puts the result in `RenderRequest.bodySkinMask`, which until now was `nil` on every path in the app. |
+| `AppEngineSetup.enableKey` (`RPEnableExperiments`) | the developer switch that turns the path on for a launch, since the feature flag stays off. |
+
+The multiply is at the `BodySkinMask` layer, **not** inside `SkinCore.classify`.
+That was §4's reservation and it is kept: `SkinCore` remains the transcription of
+`skincore.js` that `SkinCoreTests` pins byte for byte against a Node-generated
+fixture, and nothing in this change moves it (`port.coverage_max_abs_diff` is
+still 0).
+
+### Why the resampling is not a scale factor
+
+The two masks agree on nothing. The classifier's grid is 320 px wide and follows
+the frame's aspect; `VNGeneratePersonSegmentationRequest` returns a fixed 4:3 (or
+3:4) grid with the picture **stretched** into it — a 2048x1365 frame comes back
+as 512x384 (`PersonSegmenter`'s own measured note). So each working pixel goes
+through `coverageToImage` and then `subject.imageToMask`, and the subject is
+sampled bilinearly at that point, with the nearest edge texel used outside the
+mask. `BodySkinSubjectMaskTests` pins the two things that would otherwise be
+silent: a saturated mask is the **identity at four different resolutions**, and a
+top-half / left-half mask clears the *other* half (a y-flip or a transpose would
+be invisible in a coverage fraction).
+
+### The numbers
+
+`Research/bench/p6-skin-sync-{macos,ios-simulator}.json`, same fixture as §5,
+same threshold 127, with a `v2_subject_mask` block beside every v1 block. The
+subject mask there is **constructed** from the frame's own silhouette (dilated
+4 px, rendered at 96x72 so the resampling is exercised) — a synthetic frame has
+no person in it for Vision to find, and the Simulator cannot run the request at
+all — so these are an **upper bound** on what v2 buys in the field, not a
+measurement of Vision's mask quality.
+
+| tone | clean v1 → v2 | cluttered v1 → v2 | wood leak v1 → v2 |
+|---|---|---|---|
+| I very light | 0.988 → 0.988 | 0.610 → **0.989** | 0.60 → 0.00 |
+| II light | 0.978 → 0.978 | 0.530 → **0.872** | 0.87 → 0.00 |
+| III medium | 0.977 → 0.977 | 0.572 → **0.941** | 0.86 → 0.00 |
+| IV olive | 0.970 → 0.970 | **0.000 → 0.000** | 0.84 → 0.00 |
+| V brown | 0.982 → 0.982 | 0.602 → **0.983** | 0.70 → 0.00 |
+| VI deep | **0.000 → 0.000** | **0.000 → 0.000** | 0.75 → 0.00 |
+
+Every clean-frame number is unchanged **to the last digit**. That is the control:
+where there is nothing to remove, the resampled multiply is an identity, and a
+half-pixel error in it would have shown up here as a dimmed edge.
+
+Cost: the multiply itself is inside the noise (17.8 → 17.8 ms at a 2048 px
+preview, 93.8 → 92.1 ms at 24 MP — it runs on the 320 px grid, not on the frame).
+The mask it needs is not: a `.balanced` segmentation request is ~17 ms
+(`Research/bench/p6-background-lock-macos.json`), once per shot. Quality
+`.balanced` is a measured choice, not a middle one — `.fast`'s 256x192 mask
+averages 0.90 coverage inside a face box (0.71 on one frame), and this mask is a
+*multiplier* on skin coverage, so a boundary error there deletes skin rather than
+blurring an edge.
+
+### Two things v2 does not fix, stated plainly
+
+1. **Deep skin tones are unchanged, and cannot be changed from here.** Tone VI
+   (91,60,17) is rejected by `SkinCore.skinScore`'s Kovac `R <= 95` line, which
+   runs *before* any per-image learning and long before this multiply. A multiply
+   removes false positives; it can never add a pixel the colour rule already
+   scored 0. Tone VI is 0.000 IoU with and without the subject mask, on both the
+   clean and the cluttered frame, and
+   `BodySkinSubjectMaskTests.deepToneIsUnchangedByTheSubjectMask` asserts it so
+   that a future change cannot quietly claim otherwise. The one thing that does
+   move is the *shape* of the failure: on the cluttered frame v1 claimed 12.5 % of
+   the frame (all of it wood) and v2 claims 0.0 %, so the feature now does nothing
+   instead of smoothing the furniture.
+2. **Tone IV on the cluttered frame is still 0.000, and this ADR predicted
+   otherwise.** §5 said the segmentation intersection "is aimed at exactly this".
+   It is aimed at it and it misses, for a reason worth recording: the wood does
+   not merely leak into the output, it **steals the calibration**. By the time
+   `SkinCore` returns, the back-projection has learned the wood and the 2 %
+   component floor has dropped the skin component, so there is no skin coverage
+   left for a multiply to keep — v2 removes the wood (coverage 0.217 → 0.077,
+   wood leak 0.84 → 0.00) and what remains never crosses the 127 threshold.
+   `skincore.js` puts its own `subj` prior at **step 3, before the step-4
+   learning**, which is precisely why it works there and not here. Porting that
+   step-3 prior is the next move, and it changes a file pinned as an exact
+   transcription of the shipped panel — so it needs its own decision, its own
+   fixture case and its own measurement pass, not a quiet edit.
+
+### The flag stays off
+
+`RPEngineFeatureFlags.bodySkinSync` is still `false` and there is still no UI
+toggle. Four of six tones got materially better on a cluttered frame and none got
+worse, but two of six are still a silent 0.000 and one of them is the deepest
+skin tone on the ladder. Shipping that on by default would be shipping a feature
+that does nothing for some users and says nothing about it. `RPEnableExperiments`
+exists so the wiring can be exercised on a real device without a rebuild and
+without shipping it on:
+
+```
+defaults write com.duynguyen.RetouchPro RPEnableExperiments -string "bodySkinSync"
+```
+
+It sets `RPEngineFeatureFlags.bodySkinSync` **and**
+`RPVisionFeatureFlags.personSegmentation`, because neither package writes the
+other's store and the app is the only place that links both.
 
 ## What is still open
 
@@ -203,7 +319,16 @@ Cost, for completeness (macOS Release, M1 Pro):
    there is no photographic IoU and the plan's ship criterion is unmet.
 2. **Deep skin tones.** The Kovac gate is the blocker; lifting it is a change to
    the *shipped panel's* maths and therefore needs its own measurement pass, not
-   a quiet edit.
-3. **Subject intersection.** Wiring "Khoá nền"'s mask as a gate on this node is
-   free (it is already a `TextureGateMask` and the gate step already runs after
-   the union) but changes the numbers above, so it needs a re-measure.
+   a quiet edit. **v2 did not touch this** — see §v2.
+3. ~~**Subject intersection.**~~ Done — see the v2 section above. What it left
+   behind is item 5.
+4. **A UI notice for the silent cases.** A frame whose body-skin mask comes back
+   empty (deep tone, or a calibration collapse) currently looks identical to one
+   where the feature worked. That is the missing piece before any toggle.
+5. **The `subj` prior inside the classifier.** The step-3 multiply
+   `skincore.js` already has, which is what would fix tone IV on a cluttered
+   frame. Deliberately not done here, because it edits the file this project
+   pins as an exact port.
+6. **"Khoá nền" itself.** `BackgroundLockMaskSource` still has no node reading
+   its texture and no UI; it can now share
+   `PersonSegmenterSubjectMaskProvider` when it is wired.

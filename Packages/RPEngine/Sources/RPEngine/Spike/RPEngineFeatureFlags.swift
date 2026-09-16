@@ -216,9 +216,31 @@ public enum RPEngineFeatureFlags {
     /// deliberately *not* part of ``enableSkinRenderGraph()``: turning the Da
     /// group on must not turn an unshipped mask source on with it.
     ///
-    /// Default off until the IoU and ms/frame numbers in
-    /// `Research/bench/p6-skin-sync-*.json` are read and the UI toggle
-    /// (docs/PLAN.md §6.2: "một toggle… chi tiết UI chốt lúc build") exists.
+    /// ## v2 (2026-09-16) — what the person-segmentation intersection changed
+    ///
+    /// `BodySkinMask.make(…, subject:)` now multiplies a whole-frame person mask
+    /// into the coverage, and the app computes one per shot
+    /// (`App/PersonSegmenterSubjectMaskProvider.swift` →
+    /// `LivePreviewController` → `RenderRequest.bodySkinMask`). On the cluttered
+    /// tone-ladder frame it takes four of six tones from ~0.55 IoU to their
+    /// clean-frame recall (I 0.610→0.989, II 0.530→0.872, III 0.572→0.941,
+    /// V 0.602→0.983) and drops the wood leak to 0.00 everywhere, while every
+    /// clean-frame number is unchanged to the last digit.
+    ///
+    /// **It fixes neither of the two 0.000s, and the flag stays off because of
+    /// them** (docs/ADR-0021 §v2):
+    /// * tone VI (deep) is rejected by ``SkinCore``'s Kovac `R <= 95` line, which
+    ///   runs before any of this — a multiply can remove a false positive, never
+    ///   add a pixel back;
+    /// * tone IV on a cluttered frame is still 0.000 because the wood steals the
+    ///   *calibration* inside `SkinCore`, not just the output, and by then the
+    ///   skin component has already been dropped.
+    ///
+    /// So: default off, and **no UI toggle** — docs/PLAN.md §6.2's toggle waits
+    /// on numbers that do not exist yet, and on a way to tell the user when the
+    /// mask came back empty. `AppEngineSetup.enableKey` (`RPEnableExperiments`)
+    /// turns the path on for one launch so it can be exercised on a device
+    /// without shipping it on.
     public static var bodySkinSync: Bool {
         get { value("bodySkinSync") }
         set { setValue("bodySkinSync", newValue) }
