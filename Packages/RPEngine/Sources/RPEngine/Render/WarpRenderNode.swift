@@ -171,6 +171,40 @@ public final class WarpRenderNode: RenderNode, @unchecked Sendable {
         }
     }
 
+    /// "Không phát hiện được viền tóc." — the "Đầu" sliders are asking for
+    /// something and no face in the frame has a traceable hairline.
+    ///
+    /// This is the notice that could not be derived from `isActive(for:)` alone:
+    /// the state it reports is exactly the state that makes `isActive` answer
+    /// `false`, so the graph skips the node, the picture does not change, and
+    /// without this the user is told nothing at all. (``RenderGraph`` therefore
+    /// asks every node, not just the active ones.)
+    ///
+    /// The "no usable silhouette" test is literally the one `isActive` runs —
+    /// ``hasUsableSilhouette(_:)``, memoised through the node's own
+    /// `HeadReshape.SilhouetteCache` — so asking costs a dictionary lookup per
+    /// face after the first trace of the shot, and a frame that already answered
+    /// `isActive` has paid for the answer.
+    ///
+    /// Silent when the group's flag is off (the user cannot have asked for it)
+    /// and when the sliders are at 0 (nothing was asked for), which is the same
+    /// pair of conditions ``headSlidersEnabled(for:)`` gates the handles with.
+    /// A frame with **no faces at all** does produce the notice; in the panel
+    /// that case is caught earlier and more precisely by the group's own
+    /// `needsFace` check ("Không nhận diện được khuôn mặt trong ảnh này"), which
+    /// `RPUI.GroupAvailability` evaluates first.
+    public func detectionNotice(for request: RenderRequest) -> String? {
+        guard Self.headSlidersEnabled(for: request) else { return nil }
+        let usable = request.faces.contains { face in
+            face.landmarks.count > FaceMesh.highestIndex && face.faceWidth > 0
+                && hasUsableSilhouette(face)
+        }
+        return usable ? nil : Self.noHairBoundaryNotice
+    }
+
+    /// What the user is told when no face has a traceable hair silhouette.
+    public static let noHairBoundaryNotice = "Không phát hiện được viền tóc."
+
     /// Does this face have a hair silhouette the "Đầu" group could act on?
     ///
     /// Memoised through the node's own ``HeadReshape/SilhouetteCache``, so this

@@ -89,6 +89,25 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
     /// CelebAMask-HQ crop's lower edge and the chin.
     public static let neckFeatherFraction: CGFloat = 0.150
 
+    /// What the user is told when the whole-body skin classifier found nothing
+    /// (``detectionNotice(for:)``).
+    public static let noSkinNotice = "Không phát hiện được da."
+
+    /// Mean coverage below which ``BodySkinMask``'s answer counts as "found
+    /// nothing", 0…1 on the same scale as `BodySkinMask.Result.coverageFraction`.
+    ///
+    /// 0.001 is a thousandth of the frame — on the classifier's 320-px-wide
+    /// working grid (68 k samples for a 3:2 frame) that is ~68 fully covered
+    /// samples, i.e. a region a few pixels across. A portrait that the
+    /// classifier handles at all scores 0.05–0.35 (`BodySkinMask.Result`), and
+    /// the failure this exists to report scores **0.000**: docs/ADR-0021 §5 —
+    /// Kovac's `R <= 95` line rejects the deepest skin tone outright, so the
+    /// whole frame comes back empty. The threshold is therefore not a tuned
+    /// operating point sitting between two populations; it is a floor just above
+    /// exact zero, chosen so a handful of stray samples cannot suppress the
+    /// message.
+    public static let minimumBodySkinCoverage = 0.001
+
     private let context: MetalContext
     private let guidedFilter: GuidedFilter
     /// Rasterises `.skin` from every face into one full-resolution coverage
@@ -150,6 +169,10 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
 
     private let lock = NSLock()
     private var cache: Cache?
+    /// The answer ``detectionNotice(for:)`` last worked out, with the mask it was
+    /// worked out for. One entry: the mask changes once per shot, the question is
+    /// asked once per frame.
+    private var lastBodyCoverage: (mask: RenderMask, isUsable: Bool)?
 
     private final class Cache {
         let width: Int
@@ -295,6 +318,63 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         return request.faces.contains { $0.masks[.skin] != nil }
     }
 
+    /// "Không phát hiện được da." — the whole-body skin classifier ran for this
+    /// shot and came back with essentially no coverage.
+    ///
+    /// Three conditions, each of them load-bearing:
+    ///
+    /// * **`bodySkinSync` is on.** With the flag off this node ignores
+    ///   `RenderRequest.bodySkinMask` entirely and the canvas never even computes
+    ///   one, so there is no failed detection to report — only a feature the
+    ///   build does not have. Reporting it would put a permanent "no skin
+    ///   detected" line under the sliders of every shipping build.
+    /// * **A mask is present.** `nil` means *not computed* — the flag was off
+    ///   when the shot opened, the classification threw, or the shot is still
+    ///   opening (`LivePreviewController.prepareBodySkinMask` is async, and the
+    ///   first frames of a shot are drawn before it finishes). None of those is
+    ///   "detection found nothing", and turning the async gap into a message
+    ///   would make the notice flash on every shot the user opens.
+    /// * **Its coverage is effectively zero** (``minimumBodySkinCoverage``) —
+    ///   the real, measured failure: ADR-0021 §5's tone-VI frame, where the
+    ///   classifier returns 0.000 IoU and the "Sửa da" sliders therefore reach
+    ///   nothing outside the face crops.
+    ///
+    /// Cost: one memoised pass over the classifier's 320-px-wide working grid,
+    /// with an early exit as soon as enough coverage is seen — so the healthy
+    /// case usually stops in the first rows, and the empty case (the only one
+    /// that scans the lot) is ~68 k byte additions **once per shot**, not once
+    /// per frame: the repeat calls of a slider drag hit ``lastBodyCoverage``,
+    /// whose lookup is an `Array` identity comparison because the request holds
+    /// the very same copy-on-write buffer every frame.
+    public func detectionNotice(for request: RenderRequest) -> String? {
+        guard RPEngineFeatureFlags.bodySkinSync, let mask = request.bodySkinMask else {
+            return nil
+        }
+        return hasUsableBodyCoverage(mask) ? nil : Self.noSkinNotice
+    }
+
+    private func hasUsableBodyCoverage(_ mask: RenderMask) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let last = lastBodyCoverage, last.mask == mask { return last.isUsable }
+        let usable = Self.isUsableBodyCoverage(mask)
+        lastBodyCoverage = (mask, usable)
+        return usable
+    }
+
+    /// `mean(values) / 255 > minimumBodySkinCoverage`, evaluated with an early
+    /// exit. Internal so the tests can pin the threshold without a GPU.
+    static func isUsableBodyCoverage(_ mask: RenderMask) -> Bool {
+        guard !mask.values.isEmpty else { return false }
+        let budget = Double(mask.values.count) * 255 * minimumBodySkinCoverage
+        var sum = 0.0
+        for value in mask.values {
+            sum += Double(value)
+            if sum > budget { return true }
+        }
+        return false
+    }
+
     /// Bytes of GPU memory this node is holding for the current size.
     public var allocatedBytes: Int {
         lock.lock()
@@ -309,6 +389,10 @@ public final class SkinRenderNode: RenderNode, @unchecked Sendable {
         cache = nil
         gatedMasks = []
         lastBoundMask = nil
+        // "Forget what you know about the last shot" includes the last shot's
+        // coverage verdict; keeping it would answer the next shot's first frame
+        // from the previous photo's classification.
+        lastBodyCoverage = nil
         lock.unlock()
         skinMask.releaseIntermediates()
         bodyMask.releaseIntermediates()
