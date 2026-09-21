@@ -345,11 +345,10 @@ private struct PresetCard: View {
 
     static let height: CGFloat = 72
 
-    /// "Da · Mắt & Răng · Màu", in the panel's own group order.
+    /// "Da · Mắt · Màu", in the panel's own group order. Matched per slider, not
+    /// per namespace, so the two panels sharing `eyesTeeth` are named separately.
     private var summary: String {
-        let names = SliderPanelLayout.sections
-            .filter { preset.sections[$0.key]?.isEmpty == false }
-            .map(\.title)
+        let names = SliderPanelLayout.sections(touchedBy: preset.sections).map(\.title)
         return names.isEmpty ? "không đổi gì" : names.joined(separator: " · ")
     }
 

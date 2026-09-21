@@ -557,6 +557,29 @@ Việc lớn bị dời (không phải bỏ, ghi nhận lại theo đúng chỗ 
   subtract một mask cục bộ rồi mới áp slider) — thêm vào Phase 6, làm trước khi làm bất kỳ tool "Thủ công" cụ
   thể nào ở trên vì chúng đều cần nó.
 
+**Cập nhật (2026-09-18) — rail 19 mục phẳng ở trên đã bị thay bằng rail 2 tầng "bộ phận → tính năng con".**
+Đoạn 2026-09-10 ngay trên giữ nguyên làm lịch sử; phần *cấu trúc* của nó không còn đúng. Ba vòng phản hồi của
+user, cùng một lỗi: (1) "Răng" mở panel mắt; (2) "Mắt" và "Bọng mắt" là hai cửa vào **cùng một** nội dung,
+không có gì phân biệt — user bác luôn lập luận "hai mục cùng sáng là đúng"; (3) "Mịn da" và "Kiềm dầu" dùng
+chung icon `sparkles` và mở chung một panel không lọc. Quyết định của user (đã hỏi lại và chốt): **tái cấu
+trúc rail thành 2 tầng** thay vì vá từng cặp. Kết quả đã ship, UI-only, **không thêm RenderGraph node,
+không thêm `EditState.SectionKey`, không migrate gì trên đĩa**:
+- Top level còn **8 mục cuộn + chip "Màu" ghim**, **3 nhóm cha**: **Mặt** *(cha)* · **Da** *(cha)* · Mẫu ·
+  Tự động · Trang điểm · **Cơ thể** *(cha)* · Tóc · Khoá nền.
+- Con của **Mặt**: Hình dáng mặt · Mắt · Răng · Đầu · Tạo khối · Căng mọng · Mụn.
+  Con của **Da**: Mịn da · Kiềm dầu · Sửa da. Con của **Cơ thể**: Thu gọn · Săn chắc.
+- **"Da" là nhóm cha riêng, không nằm trong "Mặt"** (user chỉnh lại ngay trong ngày): mịn da là khái niệm
+  **toàn thân**, engine hôm nay mới chỉ áp qua mask mặt và chính "Sửa da" (`bodySkinSync`, còn khoá) là cái
+  mở rộng nó ra cổ/tay/ngực — nên "Sửa da" là **con của "Da"** chứ không đứng lẻ ở top level.
+- **"Bọng mắt" bị xoá hẳn** (không phải trỏ lại), "Mặt" cũ (15 slider warp) thành con **"Hình dáng mặt"**.
+- Hai namespace tách panel: `eyesTeeth` → "Mắt" (3) / "Răng" (1), `skin` → "Mịn da" (7) / "Kiềm dầu" (1) —
+  qua `SliderSectionDescriptor.storageKey`, engine `SkinSliders`/`EyesTeethSliders` và node giữ nguyên.
+- Chạm mục cha = mở **con chưa khoá đầu tiên** + hiện dải tab con trong panel (`RailChildStrip`); mục cha khoá
+  khi **mọi** con đều khoá (hiện là "Cơ thể"). Chi tiết ở `docs/design/SPEC.md` §Turn 3 "Rail hierarchy".
+- Trạng thái khoá của từng tool **không đổi** trong đợt này: Tạo khối vẫn khoá (node có nhưng
+  `RPEngineFeatureFlags.contourSliders` mặc định tắt), Đầu/Căng mọng/Mụn/Thu gọn/Săn chắc/Sửa da/Tự động/
+  Khoá nền vẫn khoá.
+
 **Cập nhật kế hoạch (2026-09-11), Phase 6 chi tiết + Share Extension:** Input: `docs/HANDOFF-remaining-features-2026-09-10.md` (13 mục rail khoá + yêu cầu Share Extension), 3 research pass
 song song (mask/segmentation, body/head/contour, object-removal+preset+Share Extension — không phải spike đo số,
 chỉ khảo sát API/kỹ thuật khả thi để lên kế hoạch, giống cách §1 ban đầu được viết trước Phase 0). Kết quả: Phase 3

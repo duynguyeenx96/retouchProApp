@@ -25,10 +25,22 @@ struct LivePreviewWiringTests {
     /// and do nothing.
     @Test("Every working group's slider keys are exactly the engine's, in order")
     func panelKeysMatchTheEngine() throws {
+        // Keyed by **panel**: two namespaces are split across two panels each
+        // since 2026-09-18 (`eyesTeeth` → Mắt 3 / Răng 1, `skin` → Mịn da 7 /
+        // Kiềm dầu 1), and each pair together is still the engine's list in the
+        // engine's order — see
+        // `SliderPanelLayoutTests.theEyesAndTeethPanelsCoverTheEngineList` and
+        // `theSkinPanelsCoverTheEngineList`.
         let expected: [String: [String]] = [
-            EditState.SectionKey.skin: SkinSliders.Key.all,
+            SliderPanelLayout.PanelKey.smooth: SkinSliders.Key.all.filter {
+                $0 != SkinSliders.Key.shine
+            },
+            SliderPanelLayout.PanelKey.shine: [SkinSliders.Key.shine],
             EditState.SectionKey.face: FaceSliders.Key.all,
-            EditState.SectionKey.eyesTeeth: EyesTeethSliders.Key.all,
+            SliderPanelLayout.PanelKey.eyes: EyesTeethSliders.Key.all.filter {
+                $0 != EyesTeethSliders.Key.teethWhiten
+            },
+            SliderPanelLayout.PanelKey.teeth: [EyesTeethSliders.Key.teethWhiten],
             EditState.SectionKey.color: ColorSliders.Key.all,
         ]
         for (key, keys) in expected {
@@ -64,7 +76,9 @@ struct LivePreviewWiringTests {
     func faceDependenceIsDeclared() {
         #expect(SliderPanelLayout.section(forKey: EditState.SectionKey.color)?.needsFace == false)
         for key in [
-            EditState.SectionKey.skin, EditState.SectionKey.face, EditState.SectionKey.eyesTeeth,
+            SliderPanelLayout.PanelKey.smooth, SliderPanelLayout.PanelKey.shine,
+            EditState.SectionKey.face,
+            SliderPanelLayout.PanelKey.eyes, SliderPanelLayout.PanelKey.teeth,
         ] {
             #expect(SliderPanelLayout.section(forKey: key)?.needsFace == true, "\(key)")
         }
@@ -133,6 +147,19 @@ struct LivePreviewWiringTests {
         model.resetSection(EditState.SectionKey.skin)
         #expect(model.activeEditState[section: EditState.SectionKey.skin].isEmpty)
         #expect(ColorSliders(model.activeEditState).exposure == 40)
+
+        // Resetting a **panel** only clears that panel's own sliders: the Răng
+        // panel shares the `eyesTeeth` namespace with Mắt (2026-09-18 split), so
+        // clearing the namespace here would wipe three sliders the user never
+        // touched on that panel.
+        model.setSlider(
+            EyesTeethSliders.Key.teethWhiten, in: EditState.SectionKey.eyesTeeth, to: 70)
+        model.setSlider(
+            EyesTeethSliders.Key.eyeBrighten, in: EditState.SectionKey.eyesTeeth, to: 35)
+        let teeth = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.teeth))
+        model.resetSection(teeth)
+        #expect(EyesTeethSliders(model.activeEditState).teethWhiten == 0)
+        #expect(EyesTeethSliders(model.activeEditState).eyeBrighten == 35)
 
         model.resetAllSliders()
         #expect(model.activeEditState.sections.isEmpty)

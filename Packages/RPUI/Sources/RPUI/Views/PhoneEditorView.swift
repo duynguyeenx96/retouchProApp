@@ -92,9 +92,9 @@ struct PhoneEditorView: View {
                 Button("Ảnh sau") { Task { await model.selectNextShot() } }
                 Divider()
                 Button("Đặt lại nhóm \(chrome.activeSection.title)") {
-                    model.resetSection(chrome.activeGroupKey)
+                    model.resetSection(chrome.activeSection)
                 }
-                .disabled(model.activeEditState[section: chrome.activeGroupKey].isEmpty)
+                .disabled(chrome.activeSection.isNeutral(in: model.activeEditState))
                 Button("Đặt lại tất cả", role: .destructive) { model.resetAllSliders() }
                     .disabled(model.activeEditState.sections.isEmpty)
             } label: {
@@ -207,6 +207,17 @@ struct PhoneEditorView: View {
                 .padding(.top, 7)
                 .padding(.bottom, 3)
 
+            // The second level, when the open panel belongs to a body part:
+            // "Mặt" → Hình dáng mặt · Mịn da · Kiềm dầu · Mắt · Răng · … It sits
+            // directly under the grabber, above the sliders it switches, while
+            // the parent stays selected in the rail at the bottom of the sheet.
+            if let parent = chrome.activeRailParent {
+                RailChildStrip(chrome: chrome, parent: parent) { section in
+                    section.activeParameterCount(in: model.activeEditState)
+                }
+                Divider().overlay(RPTheme.hairlineStrong)
+            }
+
             ScrollView {
                 GroupSliderList(
                     model: model, section: chrome.activeSection,
@@ -219,8 +230,8 @@ struct PhoneEditorView: View {
 
             Divider().overlay(RPTheme.hairlineStrong)
 
-            GroupTabRow(chrome: chrome) { key in
-                model.activeEditState[section: key].values.count
+            GroupTabRow(chrome: chrome) { section in
+                section.activeParameterCount(in: model.activeEditState)
             }
         }
         .background(

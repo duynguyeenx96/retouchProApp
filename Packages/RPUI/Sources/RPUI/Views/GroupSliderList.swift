@@ -70,12 +70,14 @@ struct GroupSliderList: View {
                     RPSliderRow(
                         label: parameter.label,
                         direction: parameter.direction,
-                        value: model.slider(parameter.key, in: section.key),
+                        // `storageKey`, never `key`: "Mắt" and "Răng" are two
+                        // panels over the one `eyesTeeth` namespace.
+                        value: model.slider(parameter.key, in: section.storageKey),
                         range: parameter.range,
                         thumbSize: thumbSize,
                         isEnabled: blockedReason == nil,
                         onChange: { value in
-                            model.setSlider(parameter.key, in: section.key, to: value)
+                            model.setSlider(parameter.key, in: section.storageKey, to: value)
                         },
                         onCommit: {
                             // One disk write per drag, at the end.
@@ -87,39 +89,46 @@ struct GroupSliderList: View {
     }
 }
 
-/// The nineteen tool buttons of ``RailLayout``, drawn as the phone's bottom row
-/// (screen 3a) or the Mac's far-right rail (screen 3f). (Not the canvas's own
-/// nineteen: "Xoá vật thể" was cut from scope 2026-09-11 — see
-/// `docs/design/SPEC.md` §Turn 3 "Cut from scope" — and "Khoá nền" was added,
-/// locked, in Phase 6.1.)
+/// The **top level** of ``RailLayout`` — eight tool buttons plus the pinned Màu
+/// chip — drawn as the phone's bottom row (screen 3a) or the Mac's far-right
+/// rail (screen 3f). The sub-features of a parent ("Mặt", "Cơ thể") are not
+/// here: they are one level in, in ``RailChildStrip``.
 ///
-/// Two rules carried over unchanged from the six-group rail this replaced:
+/// Three rules, the first two carried over unchanged from the six-group rail
+/// this replaced:
 ///
 /// * **Locked items are dimmed to 38 % and inert** — shown, not hidden, so the
-///   shell carries the whole future taxonomy (docs/design/SPEC.md rule 4). With
-///   the Turn 3 rail that is thirteen of nineteen: the eleven tools with no
-///   engine slider behind them plus the two Phase 5 groups (Trang điểm, Tóc).
-/// * **Highlight follows the *section*, not the item** — several items open the
-///   same panel (Mắt / Bọng mắt / Răng → Mắt & Răng; Mịn da / Kiềm dầu → Da),
-///   so they light up together. That is SPEC's wiring table, not a bug.
+///   shell carries the whole future taxonomy (docs/design/SPEC.md rule 4). A
+///   parent is locked only when every child is, which today is "Cơ thể".
+/// * **Highlight follows the *panel*, not the item** — an item lights up when
+///   the open panel is the one it opens, and a **parent** lights up when the
+///   open panel is any of its children's (`RailItemDescriptor.opensPanel`).
+///   Since 2026-09-18 no two *siblings* share a panel: that was the duplicate
+///   "Bọng mắt" / "Kiềm dầu" behaviour the user reported, and both duplicates
+///   are gone.
+/// * **A parent's tap opens its first working child** and the panel then shows
+///   the strip, so the second level is never a dead end.
 ///
-/// Nineteen items do not fit a phone's width, so the row scrolls horizontally
-/// with a fixed item width instead of splitting the width nineteen ways.
+/// Nine items still do not fit a phone's width comfortably, so the row keeps its
+/// horizontal scroll and fixed item width.
 ///
 /// **Màu is pinned outside that scroll view**, at the trailing edge behind a
 /// hairline: the canvas's `RAIL` const has no colour entry, so replacing the old
 /// six-group tab row with it orphaned the eighteen working Color sliders. SPEC
 /// (§"macOS panel (3f) structural note") asks for it back as an always-visible
 /// top-level tab alongside the rail, which is what `RailLayout.colorItem` is —
-/// same icon, label and selected treatment as the nineteen, just not scrollable.
+/// same icon, label and selected treatment as the eight, just not scrollable.
 /// Trailing rather than leading because colour is the user's last step, the same
-/// ordering decision that puts Mặt/Mắt/Mịn da first in `RailLayout.items`.
+/// ordering decision that puts "Mặt" first in `RailLayout.items`.
 struct GroupTabRow: View {
     @Bindable var chrome: EditorChrome
-    /// How many sliders of the group behind each item the active shot carries,
-    /// for the small "this group is doing something" dot. An item with no
-    /// section behind it can carry nothing, so it never shows the dot.
-    var activeCount: (String) -> Int = { _ in 0 }
+    /// How many sliders of the panel behind each item the active shot carries,
+    /// for the small "this group is doing something" dot. Takes the **panel**
+    /// rather than a namespace string so that two panels sharing one namespace
+    /// (Mắt / Răng, Mịn da / Kiềm dầu) count only their own sliders. An item with
+    /// no panel behind it can carry nothing, so it never shows the dot; a parent
+    /// adds its children's up.
+    var activeCount: (SliderSectionDescriptor) -> Int = { _ in 0 }
 
     /// Wide enough for "Trang điểm" (the longest surviving label) at 9.5 pt with
     /// the row's own scaling, and narrow enough that the phone shows ~6 items —
@@ -150,11 +159,11 @@ struct GroupTabRow: View {
         }
     }
 
-    /// One tab, used both for the pinned Màu chip and for the nineteen scrolling
-    /// ones so the two cannot end up looking different.
+    /// One tab, used both for the pinned Màu chip and for the scrolling ones so
+    /// the two cannot end up looking different.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
-        let isActive = item.sectionKey == chrome.activeGroupKey
+        let isActive = item.opensPanel(chrome.activeGroupKey)
         Button {
             chrome.selectRailItem(item)
         } label: {
@@ -162,7 +171,7 @@ struct GroupTabRow: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: item.systemImage)
                         .font(.system(size: 17, weight: .regular))
-                    if item.sectionKey.map({ activeCount($0) > 0 }) == true {
+                    if RailDot.count(for: item, activeCount: activeCount) > 0 {
                         Circle()
                             .fill(RPTheme.accent)
                             .frame(width: 5, height: 5)
@@ -189,11 +198,91 @@ struct GroupTabRow: View {
     }
 }
 
-/// The macOS far-right rail: the same nineteen tools as 40×40 icon buttons, the
+/// How many moved sliders sit behind one rail item — its own panel's for a leaf,
+/// all of its children's added up for a parent.
+///
+/// A free function rather than a method on the descriptor because the count
+/// comes from the document, which `RPUI`'s model layer owns and `RailLayout`
+/// (pure data) must not reach into.
+enum RailDot {
+    static func count(
+        for item: RailItemDescriptor, activeCount: (SliderSectionDescriptor) -> Int
+    ) -> Int {
+        item.sectionKeys
+            .compactMap(SliderPanelLayout.section(forKey:))
+            .reduce(0) { $0 + activeCount($1) }
+    }
+}
+
+/// The **second level**: the sub-features of whichever body part the open panel
+/// belongs to, drawn as a pill strip inside the panel itself (2026-09-18).
+///
+/// It is deliberately the same visual language as ``GroupTabRow`` / the Mac
+/// rail's selected state — icon + label, mint on a faint mint pill when active,
+/// 38 % and inert when locked — one level deeper rather than a new kind of
+/// chrome. It appears only when ``EditorChrome/activeRailParent`` is non-nil, so
+/// a top-level leaf's panel (Trang điểm, Tóc, Màu) looks exactly as it did.
+struct RailChildStrip: View {
+    @Bindable var chrome: EditorChrome
+    /// The body part whose children this strip draws.
+    let parent: RailItemDescriptor
+    /// Same "this group is doing something" dot as the rail's.
+    var activeCount: (SliderSectionDescriptor) -> Int = { _ in 0 }
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 4) {
+                ForEach(parent.children ?? []) { child in
+                    pill(child)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityLabel("Nhóm \(parent.label)")
+    }
+
+    @ViewBuilder
+    private func pill(_ child: RailItemDescriptor) -> some View {
+        let isActive = child.opensPanel(chrome.activeGroupKey)
+        Button {
+            chrome.selectRailItem(child)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: child.systemImage)
+                    .font(.system(size: 12))
+                Text(child.label)
+                    .font(RPTheme.text(11, weight: .medium))
+                    .lineLimit(1)
+                if RailDot.count(for: child, activeCount: activeCount) > 0 {
+                    Circle().fill(RPTheme.accent).frame(width: 4, height: 4)
+                }
+            }
+            .foregroundStyle(isActive ? RPTheme.accent : RPTheme.textMuted)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                isActive ? RPTheme.accentRail : .clear,
+                in: Capsule()
+            )
+            .contentShape(Capsule())
+            .opacity(child.isLocked ? RPTheme.lockedOpacity : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(child.isLocked)
+        .help(child.isLocked ? "\(child.label) — \(child.lockedHint)" : child.label)
+        .accessibilityLabel(child.label)
+        .accessibilityHint(child.isLocked ? child.lockedHint : "")
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// The macOS far-right rail: the same top-level tools as 40×40 icon buttons, the
 /// active one on a faint mint pill.
 ///
-/// It scrolls vertically — nineteen 40 pt buttons are ~836 pt tall with the
-/// spacing, which is more than the panel has on a laptop screen.
+/// It scrolls vertically, as it did when the rail was a flat nineteen — the
+/// hierarchy made it shorter, not fixed-height.
 ///
 /// **Màu is pinned below that scroll view**, behind a hairline, for the reason
 /// spelled out on ``GroupTabRow``: the canvas's rail has no colour entry and the
@@ -229,10 +318,10 @@ struct GroupIconRail: View {
     }
 
     /// One 40×40 icon button, used both for the pinned Màu item and for the
-    /// nineteen scrolling ones.
+    /// scrolling ones.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
-        let isActive = item.sectionKey == chrome.activeGroupKey
+        let isActive = item.opensPanel(chrome.activeGroupKey)
         Button {
             chrome.selectRailItem(item)
         } label: {

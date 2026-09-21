@@ -21,6 +21,16 @@ struct SliderPanelView: View {
         VStack(spacing: 0) {
             header
             Divider().overlay(RPTheme.hairline)
+            // The second level (2026-09-18): the sub-features of the body part
+            // the open panel belongs to, between the panel header and its
+            // sliders. Absent for a top-level leaf's panel (Trang điểm, Tóc,
+            // Màu), so those panels look exactly as they did.
+            if let parent = chrome.activeRailParent {
+                RailChildStrip(chrome: chrome, parent: parent) { section in
+                    section.activeParameterCount(in: model.activeEditState)
+                }
+                Divider().overlay(RPTheme.hairline)
+            }
             ScrollView {
                 GroupSliderList(
                     model: model, section: section,
@@ -50,7 +60,9 @@ struct SliderPanelView: View {
             }
             Spacer()
             Button {
-                model.resetSection(section.key)
+                // The panel, not its namespace: "Đặt lại" on Răng must not clear
+                // the three eye sliders it shares `eyesTeeth` with.
+                model.resetSection(section)
             } label: {
                 Text("Đặt lại")
                     .font(RPTheme.text(12))
@@ -60,8 +72,8 @@ struct SliderPanelView: View {
                     .background(RPTheme.fillNeutralSoft, in: RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
-            .disabled(model.activeEditState[section: section.key].isEmpty)
-            .opacity(model.activeEditState[section: section.key].isEmpty ? 0.5 : 1)
+            .disabled(section.isNeutral(in: model.activeEditState))
+            .opacity(section.isNeutral(in: model.activeEditState) ? 0.5 : 1)
             .help("Đưa mọi thanh trượt của nhóm này về 0")
         }
         .padding(.horizontal, 16)

@@ -73,12 +73,11 @@ private struct PresetChip: View {
     let isAutoApply: Bool
     let isHighlighted: Bool
 
-    /// Which of the six namespaces this preset carries — the only honest
-    /// summary available without a renderer.
+    /// Which of the panels this preset carries — the only honest summary
+    /// available without a renderer. Matched per slider, not per namespace, so a
+    /// preset holding only "Trắng răng" reads "Răng" and not "Mắt · Răng".
     private var sectionSummary: String {
-        let names = SliderPanelLayout.sections
-            .filter { preset.sections[$0.key]?.isEmpty == false }
-            .map(\.title)
+        let names = SliderPanelLayout.sections(touchedBy: preset.sections).map(\.title)
         return names.isEmpty ? "empty" : names.joined(separator: " · ")
     }
 

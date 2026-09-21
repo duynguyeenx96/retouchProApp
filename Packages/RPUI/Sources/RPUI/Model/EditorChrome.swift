@@ -144,13 +144,29 @@ public final class EditorChrome {
     /// An item that opens a screen ("Mẫu" → the preset library) **only** opens
     /// it: `activeGroupKey` stays where it was, so closing the library puts the
     /// user back on the panel they were using.
+    ///
+    /// A **parent** ("Mặt", "Cơ thể") has no panel of its own, so it forwards to
+    /// ``RailItemDescriptor/defaultChild`` — the first child that works, or the
+    /// first child at all when the whole group is locked, in which case the
+    /// forward is inert for the same reason any locked item is.
     public func selectRailItem(_ item: RailItemDescriptor) {
+        if let child = item.defaultChild { return selectRailItem(child) }
         switch item.presentation {
         case .presetLibrary(let kind):
             presetLibrary = kind
         case nil:
             if let key = item.sectionKey { selectGroup(key) }
         }
+    }
+
+    /// The body part whose sub-features belong in the panel's second-level strip
+    /// right now, or `nil` when the open panel is a top-level leaf's (Trang
+    /// điểm, Tóc, Màu).
+    ///
+    /// Derived from ``activeGroupKey``, not stored: one piece of state, so the
+    /// strip and the panel cannot disagree about where the user is.
+    public var activeRailParent: RailItemDescriptor? {
+        RailLayout.parent(ofPanelKey: activeGroupKey)
     }
 
     public func cycleSubject() { subject = subject.next }

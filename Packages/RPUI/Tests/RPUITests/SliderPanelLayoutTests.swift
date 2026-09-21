@@ -10,9 +10,158 @@ struct SliderPanelLayoutTests {
     /// The panel must cover every namespace RPCore declares. If Phase 2 adds a
     /// section key without giving it a home in the UI, this fails rather than
     /// the section silently never appearing.
-    @Test("The panel covers exactly EditState.SectionKey.all, in that order")
+    ///
+    /// Asserted on ``SliderPanelLayout/storageKeys`` rather than on the panels'
+    /// own keys since the 2026-09-18 Mắt / Răng split: the invariant that matters
+    /// is *"every namespace has a panel, in RPCore's order"*, not *"exactly one
+    /// panel per namespace"* — a UI grouping and a storage namespace are
+    /// different things, and `eyesTeeth` now has two panels over it.
+    @Test("The panels cover exactly EditState.SectionKey.all, in that order")
     func coversEverySection() {
-        #expect(SliderPanelLayout.sections.map(\.key) == EditState.SectionKey.all)
+        #expect(SliderPanelLayout.storageKeys == EditState.SectionKey.all)
+        for section in SliderPanelLayout.sections {
+            #expect(EditState.SectionKey.all.contains(section.storageKey), "\(section.key)")
+        }
+    }
+
+    /// The split itself (2026-09-18): tapping "Răng" must open **one** slider.
+    /// The bug this replaces was a single four-slider panel shared by both rail
+    /// items, so the three eye sliders appeared under "Răng".
+    @Test("Mắt and Răng are two panels, 3 sliders and 1, over the one namespace")
+    func eyesAndTeethAreSeparatePanels() throws {
+        let eyes = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.eyes))
+        let teeth = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.teeth))
+
+        #expect(eyes.title == "Mắt")
+        #expect(teeth.title == "Răng")
+        #expect(eyes.parameters.map(\.label) == ["Sáng mắt", "Trắng lòng trắng", "Nét mắt"])
+        #expect(teeth.parameters.map(\.label) == ["Trắng răng"])
+        #expect(teeth.parameters.map(\.key) == [EyesTeethSliders.Key.teethWhiten])
+
+        // Different icons: sharing `eye` is what let the rail say "Răng" and
+        // show the eye panel. SF Symbols has no tooth glyph on macOS 15 / iOS 18.
+        #expect(eyes.systemImage == "eye")
+        #expect(teeth.systemImage != eyes.systemImage)
+        #expect(teeth.systemImage == "mouth")
+
+        // UI-only: the storage namespace, and therefore every saved document and
+        // preset, is untouched.
+        #expect(eyes.storageKey == EditState.SectionKey.eyesTeeth)
+        #expect(teeth.storageKey == EditState.SectionKey.eyesTeeth)
+        #expect(SliderPanelLayout.sections(forStorageKey: EditState.SectionKey.eyesTeeth)
+            .map(\.key) == [SliderPanelLayout.PanelKey.eyes, SliderPanelLayout.PanelKey.teeth])
+        // …and the namespace is not itself a panel key any more, so a caller
+        // that means "the eyesTeeth panel" fails loudly instead of guessing.
+        #expect(SliderPanelLayout.section(forKey: EditState.SectionKey.eyesTeeth) == nil)
+    }
+
+    /// The second split of the same day, for the second instance of the same
+    /// bug: "Mịn da" and "Kiềm dầu" were two `sparkles` rail entries opening one
+    /// unfiltered eight-slider panel, so "Kiềm dầu" answered a question about
+    /// oil with seven controls that are not about oil.
+    @Test("Mịn da and Kiềm dầu are two panels, 7 sliders and 1, over the one namespace")
+    func skinIsTwoPanels() throws {
+        let smooth = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.smooth))
+        let shine = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.shine))
+
+        #expect(smooth.title == "Mịn da")
+        #expect(shine.title == "Kiềm dầu")
+        #expect(smooth.parameters.count == 7)
+        #expect(!smooth.parameters.contains { $0.key == SkinSliders.Key.shine })
+        #expect(shine.parameters.map(\.label) == ["Khử bóng dầu"])
+        #expect(shine.parameters.map(\.key) == [SkinSliders.Key.shine])
+
+        // Different icons: sharing `sparkles` is half of what the user reported.
+        #expect(smooth.systemImage == "sparkles")
+        #expect(shine.systemImage != smooth.systemImage)
+        #expect(shine.systemImage == "humidity")
+
+        // UI-only: the storage namespace, and therefore every saved document and
+        // preset, is untouched.
+        #expect(smooth.storageKey == EditState.SectionKey.skin)
+        #expect(shine.storageKey == EditState.SectionKey.skin)
+        #expect(SliderPanelLayout.sections(forStorageKey: EditState.SectionKey.skin)
+            .map(\.key) == [SliderPanelLayout.PanelKey.smooth, SliderPanelLayout.PanelKey.shine])
+        #expect(SliderPanelLayout.section(forKey: EditState.SectionKey.skin) == nil)
+
+        // Each panel counts only its own sliders, so "Đặt lại" on Kiềm dầu
+        // cannot clear the seven it does not show.
+        var state = EditState()
+        state.setSlider(SkinSliders.Key.shine, in: EditState.SectionKey.skin, to: 55)
+        #expect(shine.activeParameterCount(in: state) == 1)
+        #expect(smooth.activeParameterCount(in: state) == 0)
+        #expect(smooth.isNeutral(in: state))
+        #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Kiềm dầu"])
+    }
+
+    /// The two panels together are still exactly the engine's key list, in the
+    /// engine's order — a ninth `SkinSliders` key would land in "Mịn da"
+    /// (everything that is not `shine`) rather than fall out of the UI.
+    @Test("The Mịn da and Kiềm dầu panels partition SkinSliders.Key.all")
+    func theSkinPanelsCoverTheEngineList() throws {
+        let smooth = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.smooth))
+        let shine = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.shine))
+        // Interleaved, not concatenated: `shine` sits in the middle of the
+        // engine's order, so the two panels' keys are checked as a set plus the
+        // count rather than as a join.
+        #expect(Set(smooth.parameters.map(\.key) + shine.parameters.map(\.key))
+            == Set(SkinSliders.Key.all))
+        #expect(smooth.parameters.count + shine.parameters.count == SkinSliders.Key.all.count)
+        #expect(
+            smooth.parameters.map(\.key)
+                == SkinSliders.Key.all.filter { $0 != SkinSliders.Key.shine })
+    }
+
+    /// The two panels together are still exactly the engine's key list, in the
+    /// engine's order — a fifth `EyesTeethSliders` key would land in "Mắt"
+    /// (everything that is not `teethWhiten`) rather than fall out of the UI.
+    @Test("The eyes and teeth panels partition EyesTeethSliders.Key.all")
+    func theEyesAndTeethPanelsCoverTheEngineList() throws {
+        let eyes = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.eyes))
+        let teeth = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.teeth))
+        #expect(
+            eyes.parameters.map(\.key) + teeth.parameters.map(\.key)
+                == EyesTeethSliders.Key.all)
+    }
+
+    /// Each panel counts and resets **its own** sliders. Before the split
+    /// "Đặt lại" cleared the whole namespace, which from the Răng panel would now
+    /// silently wipe three eye sliders the user never touched there.
+    @Test("A panel's active count and neutrality ignore the other panel's sliders")
+    func perPanelCounting() throws {
+        let eyes = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.eyes))
+        let teeth = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.teeth))
+
+        var state = EditState()
+        #expect(eyes.isNeutral(in: state))
+        #expect(teeth.isNeutral(in: state))
+
+        state.setSlider(
+            EyesTeethSliders.Key.teethWhiten, in: EditState.SectionKey.eyesTeeth, to: 60)
+        #expect(teeth.activeParameterCount(in: state) == 1)
+        #expect(eyes.activeParameterCount(in: state) == 0)
+        #expect(!teeth.isNeutral(in: state))
+        #expect(eyes.isNeutral(in: state))
+
+        state.setSlider(
+            EyesTeethSliders.Key.eyeBrighten, in: EditState.SectionKey.eyesTeeth, to: 40)
+        #expect(eyes.activeParameterCount(in: state) == 1)
+        #expect(teeth.activeParameterCount(in: state) == 1)
+
+        // The preset/edit summary names the panels the document actually moved.
+        #expect(
+            SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Mắt", "Răng"])
+        var teethOnly = EditState()
+        teethOnly.setSlider(
+            EyesTeethSliders.Key.teethWhiten, in: EditState.SectionKey.eyesTeeth, to: 60)
+        #expect(SliderPanelLayout.sections(touchedBy: teethOnly.sections).map(\.title) == ["Răng"])
     }
 
     @Test("Every group has a title, an icon, a phase and planned parameters")
@@ -26,12 +175,16 @@ struct SliderPanelLayoutTests {
         #expect(SliderPanelLayout.plannedParameterCount > 40)
     }
 
-    @Test("Lookup by key works for every declared namespace")
+    @Test("Lookup by key works for every panel, and every namespace has one")
     func lookup() {
+        for section in SliderPanelLayout.sections {
+            #expect(SliderPanelLayout.section(forKey: section.key)?.key == section.key)
+        }
         for key in EditState.SectionKey.all {
-            #expect(SliderPanelLayout.section(forKey: key)?.key == key)
+            #expect(!SliderPanelLayout.sections(forStorageKey: key).isEmpty, "\(key)")
         }
         #expect(SliderPanelLayout.section(forKey: "nope") == nil)
+        #expect(SliderPanelLayout.sections(forStorageKey: "nope").isEmpty)
     }
 
     /// Phase 1 ships no working sliders on purpose ("panel slider trống").
@@ -49,7 +202,7 @@ struct SliderPanelLayoutTests {
         var bidirectional = 0
         for section in SliderPanelLayout.sections {
             for parameter in section.parameters {
-                let expected = RPCore.Slider.range(for: parameter.key, in: section.key)
+                let expected = RPCore.Slider.range(for: parameter.key, in: section.storageKey)
                 #expect(parameter.range == expected, "\(section.key).\(parameter.key)")
                 if parameter.isBidirectional {
                     bidirectional += 1

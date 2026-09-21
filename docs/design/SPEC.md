@@ -24,9 +24,9 @@ this spec is primarily an RPUI wiring/visual task, not a new-feature task.
 ## Slider group → engine key mapping (already built in RPEngine — this is a naming/order contract, not new math)
 | Design label (group) | Design slider labels (order) | RPEngine group / keys |
 |---|---|---|
-| Da | Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn | Skin (8 keys, `SkinSliders.Key.all` order) |
+| Da | Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn | Skin (8 keys, `SkinSliders.Key.all` order) — one engine group and one `EditState` namespace, but **two UI panels** since 2026-09-18: "Mịn da" (the 7 others) and "Kiềm dầu" (Khử bóng dầu). See §Turn 3's rail-hierarchy note. |
 | Mặt | Bóp mặt, Gò má, Hàm, Cằm, Trán, Thái dương, Sống mũi, Cánh mũi, Đầu mũi, To mắt, Khoảng cách mắt, Nghiêng mắt, Rộng miệng, Cao miệng, Môi đầy | Warp/Face (15 keys, `WarpSliders.Key.all` order) |
-| Mắt & Răng | Sáng mắt, Trắng lòng trắng, Nét mắt, Trắng răng | EyesTeeth (4 keys) |
+| Mắt & Răng | Sáng mắt, Trắng lòng trắng, Nét mắt, Trắng răng | EyesTeeth (4 keys) — one engine group and one `EditState` namespace, but **two UI panels** since 2026-09-18: "Mắt" (first 3) and "Răng" (Trắng răng). See §Turn 3's reversal note. |
 | Màu | Phơi sáng, Tương phản, Vùng sáng, Vùng tối, Nhiệt độ, Sắc độ, Rực rỡ, Bão hoà, Curves, HSL·Đỏ/Cam/Vàng/Lục/Lam/Lơ/Tím/Hồng, Dodge & Burn tự động | Color (18 keys) |
 | Trang điểm | (empty — Phase 5) | locked, opacity 0.38, non-clickable, section label shows "Phase 5 · chưa khả dụng" |
 | Tóc | (empty — Phase 5) | locked, same treatment |
@@ -43,7 +43,7 @@ keep engine key order authoritative. Do not reorder or rename engine keys to mat
   - Bottom-left: "Đồng bộ" (sync) pill toggle — mint text when on.
   - Bottom-left next to it: subject-category pill ("Nữ"/"Nam"/"Trẻ em"/"Tất cả") with chevron, cycles on tap.
   - Bottom-right: before/after split-view icon toggle button (circular, translucent dark+blur).
-- Bottom sheet (attached, not modal): grabber handle, scrollable slider list (~250pt tall) for the *currently selected group*, each row = label + mono value on top, custom track below (13px thumb, mint fill up to value, thumb draggable via horizontal pan — no native `Slider` chrome, matches mockup's flat-track custom style), then a fixed row of group tabs (icon + tiny label) across the bottom: Da / Mặt / Mắt & Răng / Màu / Trang điểm(locked) / Tóc(locked); home indicator bar under it.
+- Bottom sheet (attached, not modal): grabber handle, scrollable slider list (~250pt tall) for the *currently selected group*, each row = label + mono value on top, custom track below (13px thumb, mint fill up to value, thumb draggable via horizontal pan — no native `Slider` chrome, matches mockup's flat-track custom style), then a fixed row of group tabs (icon + tiny label) across the bottom: Da / Mặt / Mắt & Răng / Màu / Trang điểm(locked) / Tóc(locked); home indicator bar under it. (Turn 3 replaced this six-tab row with the tool rail — flat 19 items at first, then the two-level body-part → sub-feature rail of 2026-09-18 — and on the same day "Mắt & Răng" became the panels "Mắt"/"Răng" and "Da" became "Mịn da"/"Kiềm dầu". See §Turn 3.)
 - Locked groups: 38% opacity, tap does nothing (or shows "Phase 5" toast — no hard requirement, just must not crash/switch).
 
 ## Screen 1b — macOS editor (three-pane: canvas, right slider panel, far-right icon rail)
@@ -91,7 +91,11 @@ wire only what already has a real engine slider behind it, and lock everything e
 inert treatment already established for Trang điểm/Tóc in Screen 1a/1b — do not build new render-graph
 capability as part of this pass. See `docs/PLAN.md` new phase entry for the deferred-work list.
 
-### The 19-item rail (icon + label, from the canvas script's `RAIL` const, in order)
+### The 19-item rail (icon + label, from the canvas script's `RAIL` const, in order) — SUPERSEDED 2026-09-18
+> **This flat 19-item structure is history.** It is kept because the membership and the icon-fidelity rule
+> below are still the source of what shipped, but the *shape* is now two levels (body part → sub-feature) —
+> see the "Rail hierarchy" note two sub-sections down. Read this section as the starting point, not as the
+> current rail.
 Mẫu(layers) · Răng(tooth) · Tự động(spark) · Trang điểm(brush) · Mặt(face) · Thu gọn(slim) · Cơ thể(body) ·
 Mịn da(drop) · Sửa da(spark) · Săn chắc(slim) · Căng mọng(drop) · Mụn(oval) · Đầu(oval) · Tạo khối(spark) ·
 Kiềm dầu(drop) · Mắt(eye) · Bọng mắt(eye) · Tóc(hair) · Xoá vật thể(erase).
@@ -101,21 +105,110 @@ rail on macOS (screen 3f, far right) — same icon/label pairs both places. Acti
 12%-opacity pill background; inactive = `#c9ccd1`/transparent.
 
 **Icon fidelity (decided during implementation, 2026-09-10):** for the 6 active items, the rail icon is the
-underlying `SliderSectionDescriptor.systemImage` it opens, not the mockup's own hand-drawn glyph — e.g. "Răng"
-uses the `eye` SF Symbol (the shared Mắt & Răng panel's icon) rather than a tooth glyph, so the rail icon can
-never visually disagree with the panel it opens. This is intentional and permanent, not a placeholder — SF
-Symbol fidelity to the mockup's custom icon set was never a goal (the mockup's icons are hand-drawn SVG paths
-with no SF Symbol equivalent for most of them anyway).
+underlying `SliderSectionDescriptor.systemImage` it opens, not the mockup's own hand-drawn glyph, so the rail
+icon can never visually disagree with the panel it opens. SF Symbol fidelity to the mockup's custom icon set
+was never a goal (the mockup's icons are hand-drawn SVG paths with no SF Symbol equivalent for most of them
+anyway). The rule itself still stands; the example it used to give — "Răng" borrowing `eye` from a shared
+panel — does not, see the reversal below.
 
-**Wiring policy — active vs. locked:**
+> **Reversed 2026-09-18 — "Răng" is its own panel with its own icon.**
+> This section previously called the shared `eye` icon *and* the shared four-slider "Mắt & Răng" panel
+> "intentional and permanent, not a placeholder", and the wiring table below promised a panel
+> "filtered/scrolled" to each item's keys. Two things were wrong with that. The filtering was never built —
+> the panel always showed all four sliders unfiltered — and the user reported the result as a **functional
+> error, not a cosmetic one**: tapping "Răng" opened Sáng mắt / Trắng lòng trắng / Nét mắt / Trắng răng and
+> lit "Mắt" and "Bọng mắt" up at the same time, i.e. the app answered a question about teeth with three eye
+> controls. Their correction, taken as the decision: **"Răng" shows exactly one slider, "Trắng răng"; "Mắt"
+> and "Bọng mắt" are one group (same body part) with the other three.**
+>
+> What shipped: `SliderPanelLayout.sections` now carries **seven panels over six `EditState` namespaces** —
+> "Mắt" (3 sliders, `eye`) and "Răng" (1 slider, `mouth`) both writing `EditState.SectionKey.eyesTeeth`
+> through the new `SliderSectionDescriptor.storageKey`. The split is **UI-only**: the namespace,
+> `EyesTeethSliders` and `EyesTeethRenderNode` still handle the four keys together, so no document, preset or
+> render-graph node changed and nothing on disk migrated. `SliderPanelLayoutTests` keeps the old invariant in
+> its honest form — every namespace in `EditState.SectionKey.all` has a panel, in RPCore's order — rather than
+> "exactly one panel per namespace".
+>
+> Icon: SF Symbols on macOS 15 / iOS 18 has **no tooth glyph** (`tooth`, `teeth` and `lips` do not resolve;
+> checked at build time and pinned by `RailLayoutTests.everySymbolExists`). "Răng" uses `mouth`, which is also
+> where the whitening happens — the node reads the mouth *interior* mask, there is no teeth parsing class.
+
+### Rail hierarchy — the flat rail becomes body part → sub-feature (decided 2026-09-18, second note of the day)
+The "Răng" fix above was the first of three rounds of feedback on the same underlying problem, and the third
+one replaced the structure rather than patching another pair. In order:
+
+1. **"Răng" opened the eye panel** (fixed above — its own panel, its own icon).
+2. **"Mắt" and "Bọng mắt" were two doors into one place.** The note above called two entries on one panel
+   *correct* because they are the same body part. The user rejected that outright: there is no visible
+   difference between the two entries, they light up together, and one of them is therefore pure noise —
+   *"there should be exactly one icon, not two doors into the same content."*
+3. **"Mịn da" and "Kiềm dầu" were the same bug as (1), unfixed** — same `sparkles` glyph, same unfiltered
+   eight-slider panel, so "Kiềm dầu" answered a question about oil with seven controls that are not about oil.
+
+**Decision (user, explicit, confirmed):** stop de-duplicating pairs and restructure the rail into **two levels
+— body part (parent) → sub-feature (child)**. What shipped:
+
+**Top level: 8 scrolling entries + the pinned "Màu" chip** (was 19 + pinned). **Three parents.**
+
+| Top-level entry | Kind | Children (in order) |
+|---|---|---|
+| **Mặt** (`face.dashed`) | parent | Hình dáng mặt · Mắt · Răng · Đầu · Tạo khối · Căng mọng · Mụn |
+| **Da** (`circle.hexagongrid`) | parent | Mịn da · Kiềm dầu · Sửa da |
+| Mẫu | leaf (screen) | — |
+| Tự động | leaf (locked) | — |
+| Trang điểm | leaf (Phase 5) | — |
+| **Cơ thể** (`figure.stand`) | parent | Thu gọn · Săn chắc |
+| Tóc | leaf (Phase 5) | — |
+| Khoá nền | leaf (locked, Phase 6.1) | — |
+| *Màu* | pinned leaf, outside the scroll | — |
+
+Everything that is not one of the three parents keeps the relative order it already had.
+
+**"Da" is a parent of its own, not a sub-feature of "Mặt"** (user's correction, same day, after a first pass
+filed Mịn da/Kiềm dầu under the face): **skin smoothing is a whole-body concept**. Today's engine only reaches
+it through a face mask, but extending that to neck/arms/chest is exactly what the still-locked "Sửa da"
+(`bodySkinSync`) is for — so "Sửa da" is a **child of "Da"**, i.e. this group's own scope switch, rather than a
+top-level item floating next to the parents.
+
+Three membership changes, all deliberate:
+* **"Bọng mắt" is deleted**, not repointed — point (2) above. There is now exactly one entry into the eye panel.
+* **The old top-level "Mặt" leaf is the child "Hình dáng mặt"** — same 15 sliders, same
+  `EditState.SectionKey.face`, unchanged content; renamed only so a parent and one of its children are not
+  both called "Mặt".
+* **"Mịn da" / "Kiềm dầu" split into two panels** the same way Mắt/Răng did: `PanelKey.smooth` (7 sliders) and
+  `PanelKey.shine` (1, Khử bóng dầu), both writing `EditState.SectionKey.skin` through `storageKey`. UI-only —
+  `SkinSliders` and the render node still handle all eight keys together, nothing on disk migrated.
+  "Kiềm dầu" gets `humidity`; reusing `sparkles` is what caused the complaint. (`face.dashed` for the "Mặt"
+  parent, for the same reason one level up: its child "Hình dáng mặt" owns `face.smiling`.)
+* **"Căng mọng" is filed under "Mặt"**, not "Cơ thể" — user's call, it is lip plumping. Still locked.
+
+**Interaction:** tapping a **parent** does not open a panel of its own — it opens its **first unlocked child**
+(or the first child when the whole group is locked, which is inert exactly as a locked item already is) and the
+panel then shows that parent's children as a **second-level pill strip inside the panel** (`RailChildStrip`,
+same mint-on-faint-mint language as the rail's own selected state, one level deeper — not new chrome). Tapping
+a **leaf**, anywhere, behaves exactly as every rail item did before. The rail's highlight rule generalises:
+`RailItemDescriptor.opensPanel(activeGroupKey)`, so a parent is highlighted whenever any of its children's
+panels is open. **No two siblings share a panel any more**, which is the invariant the whole restructuring
+buys (`RailLayoutTests.oneDoorPerThing`). This is exactly one level deep: the canvas's own third level (the
+per-tool grid + single "Cường độ" slider) is still locked, see below.
+
+**Wiring policy — active vs. locked (updated 2026-09-18 for the hierarchy):**
 | Rail item | Status | Behavior |
 |---|---|---|
-| Mặt | **Active** | Opens the existing Face/Warp slider panel (all 15 keys, current flat `SliderPanelView` list — not the new per-tool grid described below, that grid UI is itself locked, see below) |
-| Mắt, Bọng mắt | **Active** (both) | Opens the existing Mắt & Răng panel filtered/scrolled to the 3 eye keys (Sáng mắt, Trắng lòng trắng, Nét mắt). Two rail entries intentionally point at the same real panel — do not build separate eye-bag logic. |
-| Răng | **Active** | Opens the existing Mắt & Răng panel scrolled to Trắng răng |
-| Mịn da, Kiềm dầu | **Active** | Opens the existing Da/Skin panel (Mịn da, Khử bóng dầu already exist as real keys there) |
+| Mặt *(parent)* | **Active** | No panel of its own; opens "Hình dáng mặt" and shows the child strip. Locked only if all 7 children were locked. |
+| Hình dáng mặt *(child of Mặt)* | **Active** | Opens the Face/Warp panel (all 15 keys, flat `SliderPanelView` list — not the per-tool grid below, that grid UI is itself locked) |
+| Mắt *(child of Mặt)* | **Active** | Opens the **Mắt** panel: exactly the 3 eye keys. The only entry into it — ~~Bọng mắt~~ was deleted 2026-09-18. |
+| Răng *(child of Mặt)* | **Active** | Opens the **Răng** panel: exactly one slider, Trắng răng. Own `sectionKey`, own icon (`mouth`). |
+| Da *(parent)* | **Active** | No panel of its own; opens "Mịn da" and shows its strip. Unlocked because 2 of its 3 children work. |
+| Mịn da *(child of Da)* | **Active** | Opens the **Mịn da** panel: 7 skin sliders, everything except Khử bóng dầu |
+| Kiềm dầu *(child of Da)* | **Active** | Opens the **Kiềm dầu** panel: exactly one slider, Khử bóng dầu. Its own `sectionKey` and its own icon (`humidity`) since 2026-09-18 — it must never highlight together with Mịn da. |
+| Sửa da *(child of Da)* | **Locked** | The whole-body skin-sync toggle for this group (Phase 6.2, `bodySkinSync`). Relocated from top level into "Da" on 2026-09-18; lock state and reason unchanged. |
+| Mẫu | **Active (screen)** | Opens the preset library (Phase 3), leaves the slider panel where it was |
+| Màu (pinned) | **Active** | Opens the Color panel; outside the scroll view, see the structural note below |
 | Trang điểm, Tóc | Locked (Phase 5, unchanged) | Same treatment as Screen 1a/1b already spec'd |
-| Mẫu, Tự động, Thu gọn, Cơ thể, Sửa da, Săn chắc, Căng mọng, Mụn, Đầu, Tạo khối | **Locked, new phase** | Dimmed 38% opacity, tap is inert (no crash, no panel switch, optional "chưa khả dụng" toast) — no engine work backs these yet |
+| Cơ thể *(parent)* + Thu gọn, Săn chắc | **Locked** | Parent is locked because every child is; tap is inert |
+| Tự động, Khoá nền, and the children Đầu, Tạo khối, Căng mọng, Mụn | **Locked, new phase** | Dimmed 38% opacity, tap is inert (no crash, no panel switch) — no engine work backs these yet ("Tạo khối" has a render node behind `RPEngineFeatureFlags.contourSliders`, default off, so still no panel) |
+| ~~Bọng mắt~~ | **Deleted (2026-09-18)** | Not locked, not present — it was a duplicate door into the Mắt panel |
 | ~~Xoá vật thể~~ | **Cut from scope (2026-09-11)** | Removed from the shipped rail entirely — not locked, not present. See callout below. |
 
 **Cut from scope (decided 2026-09-11):** "Xoá vật thể" (free-form object removal) is removed from the rail

@@ -20,15 +20,23 @@ struct DesignShellTests {
 
     // MARK: - Group taxonomy
 
-    /// The six tab labels are the mockup's, in the mockup's order. The *keys*
-    /// are RPCore's and are checked in `SliderPanelLayoutTests`; this is the
-    /// half a reviewer reads off the screen.
-    @Test("The six group tabs carry the design's Vietnamese labels, in order")
+    /// The tab labels are the mockup's, in the mockup's order. The *keys* are
+    /// RPCore's and are checked in `SliderPanelLayoutTests`; this is the half a
+    /// reviewer reads off the screen.
+    ///
+    /// Eight since 2026-09-18, not the mockup's six: the mockup's "Mắt & Răng"
+    /// ships as two panels, "Mắt" (3 sliders) and "Răng" (1), and its "Da" ships
+    /// as "Mịn da" (7) and "Kiềm dầu" (1) — both after a shared panel was
+    /// reported as a functional error. The `eyesTeeth` and `skin` namespaces
+    /// behind them are unchanged.
+    @Test("The group tabs carry the design's Vietnamese labels, in order")
     func groupTabs() {
         #expect(
             SliderPanelLayout.sections.map(\.title) == [
-                "Da", "Mặt", "Mắt & Răng", "Màu", "Trang điểm", "Tóc",
+                "Mịn da", "Kiềm dầu", "Mặt", "Mắt", "Răng", "Màu", "Trang điểm", "Tóc",
             ])
+        #expect(!SliderPanelLayout.sections.map(\.title).contains("Mắt & Răng"))
+        #expect(!SliderPanelLayout.sections.map(\.title).contains("Da"))
     }
 
     @Test("Only the two Phase 5 groups are locked, and they still list their names")
@@ -48,7 +56,7 @@ struct DesignShellTests {
             #expect(!section.sectionCaption.isEmpty, "\(section.key)")
         }
         #expect(
-            SliderPanelLayout.section(forKey: EditState.SectionKey.skin)?.panelTitle
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.smooth)?.panelTitle
                 == "Làm mịn da")
         #expect(
             SliderPanelLayout.section(forKey: EditState.SectionKey.face)?.sectionCaption
@@ -77,7 +85,10 @@ struct DesignShellTests {
     @Test("Tapping a locked group does nothing; tapping a working one switches")
     func selectingGroups() {
         let chrome = EditorChrome()
-        #expect(chrome.activeGroupKey == EditState.SectionKey.skin)
+        // "Mịn da" since the skin split — the first working panel, which is what
+        // `defaultSectionKey` means. (It was `EditState.SectionKey.skin` while
+        // that namespace had exactly one panel.)
+        #expect(chrome.activeGroupKey == SliderPanelLayout.PanelKey.smooth)
         chrome.selectGroup(EditState.SectionKey.color)
         #expect(chrome.activeGroupKey == EditState.SectionKey.color)
         chrome.selectGroup(EditState.SectionKey.makeup)
@@ -314,6 +325,10 @@ struct DesignShellTests {
         }
         _ = GroupTabRow(chrome: chrome).body
         _ = GroupIconRail(chrome: chrome).body
+        // …and the second-level strip, for both parents (2026-09-18 hierarchy).
+        for parent in RailLayout.items.filter(\.isParent) {
+            _ = RailChildStrip(chrome: chrome, parent: parent).body
+        }
         _ = FaceChipsView(model: model).body
         _ = EditorToolbar(
             model: model, chrome: chrome, back: {}, importFromFiles: {}, importFromPhotos: {}

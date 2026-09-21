@@ -213,9 +213,25 @@ public final class EditorModel {
         live?.update(editState: activeEditState)
     }
 
-    /// Sets every slider of one group back to 0 (i.e. removes them).
+    /// Sets every slider of one **namespace** back to 0 (i.e. removes them).
     public func resetSection(_ section: String) {
         activeEditState[section: section] = EditSection()
+        live?.update(editState: activeEditState)
+        Task { await commitEditState() }
+    }
+
+    /// "Đặt lại" on one **panel**: only that panel's own sliders go back to 0.
+    ///
+    /// Not the same as ``resetSection(_:)`` since the 2026-09-18 Mắt / Răng
+    /// split — two panels share the `eyesTeeth` namespace, and clearing the
+    /// namespace from the Răng panel would silently wipe the three eye sliders
+    /// the user never touched there. A locked panel has no parameters of its own,
+    /// so it still clears its namespace.
+    public func resetSection(_ section: SliderSectionDescriptor) {
+        guard !section.parameters.isEmpty else { return resetSection(section.storageKey) }
+        for parameter in section.parameters {
+            activeEditState.setSlider(parameter.key, in: section.storageKey, to: Slider.defaultValue)
+        }
         live?.update(editState: activeEditState)
         Task { await commitEditState() }
     }
