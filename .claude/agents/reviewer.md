@@ -47,10 +47,14 @@ wrong just because you were asked to look; say plainly that the change looks low
    a device; third-party dependencies only where the plan allows and documented in `docs/ADR-*.md`.
 6. **Tests.** Did `xcodebuild test` actually run? Run it yourself if the report does not show output. Golden tests and
    fixtures present for new render nodes.
-7. **Real-device build (required for UI/import/render/wiring changes).** Don't accept "tests pass on macOS/Simulator" as
-   done for anything user-facing — the model-embedding bug (docs/PLAN.md, models loaded via a `#filePath`-derived dev-machine
-   path that only works because macOS/Simulator share the Mac's filesystem) proves Simulator can hide real bugs. Confirm the
-   coder actually built, installed, and launched on the real device:
+7. **Real-device build — only when the user explicitly asked for one this task (standing rule, 2026-09-19).** Default
+   verification is macOS only; do not require or attempt a Simulator or real-device build on your own initiative — the
+   Simulator has no real test photos to verify anything with, and device builds only happen on explicit request. If macOS
+   verification is clean and no device build was requested, that is sufficient; note as a caveat (not a blocker) that the
+   model-embedding bug (docs/PLAN.md, models loaded via a `#filePath`-derived dev-machine path that only works because
+   macOS shares the Mac's filesystem) shows macOS-only testing can still hide a real-device-only bug for anything touching
+   app-target wiring, resource bundling, or sandboxing. When a real-device build **was** requested, confirm the coder
+   actually built, installed, and launched on the real device:
    - `xcrun xctrace list devices` → find the online device under "== Devices ==" (today: "IphoneDuy"), not Simulators.
    - Re-run the build/install yourself if the coder's report doesn't show a real device UDID and a successful
      `devicectl device install app` / `devicectl device process launch` — `xcodebuild build -workspace RetouchPro.xcworkspace

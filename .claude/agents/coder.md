@@ -32,9 +32,12 @@ only the task you were given. Do not start other phases.
 1. **Measure before ship.** Any new mask/landmark/filter algorithm ships behind a default-off flag until it has a number
    (IoU, PSNR, ms/frame) from the harness in `RPTestKit` / `Research/bench`, with a control run. Write results to files;
    never conclude from screenshots.
-2. Build and test after every meaningful change:
-   `xcodebuild test -scheme RetouchPro -destination 'platform=macOS'` and the iOS Simulator destination in the plan.
-   Report the actual output; if something fails, say so.
+2. Build and test after every meaningful change: **macOS only by default** —
+   `xcodebuild test -scheme RetouchPro -destination 'platform=macOS'`. Report the actual output; if something fails, say so.
+   **Do not build/test the iOS Simulator destination unless the user explicitly asks for it** (2026-09-19 standing rule):
+   the Simulator has none of the real test photos this app needs to verify a feature actually works, so a Simulator run
+   burns time without telling anyone anything useful. Verify the feature works on macOS first; only go to a real device
+   when Step 6 below is explicitly requested.
 3. Keep the dependency graph clean: RPUI depends on RPEngine/RPCore, never the reverse. No UIKit/AppKit in RPCore/RPEngine.
 4. Prefer Apple frameworks (Vision, Core Image, Metal, Core ML, ImageCaptureCore). Add third-party packages only when the plan
    names them (e.g. Rocc in Phase 4) and record the reason in `docs/ADR-*.md`.
@@ -42,12 +45,15 @@ only the task you were given. Do not start other phases.
    see step 6 for the real iOS device, which is sandboxed differently).
 6. Do not commit or push unless told to. Do not delete or rewrite files you did not create without saying so first.
 
-## Step 6 — build to the real device before handing off to review
-Simulator and macOS debug builds can hide bugs that only exist in a real device's app sandbox — this already happened once
-(Core ML models loaded from a `#filePath`-derived path into `Research/spikes/*/models`, which works on macOS/Simulator
-because they share the Mac's filesystem, but silently fails on a real device's sandboxed container). So **every task that
-touches app-target wiring, resource bundling, import, rendering, or anything user-facing must be built and run on the real
-device, not just tested on macOS/Simulator, before you report done**:
+## Step 6 — build to the real device only when explicitly asked
+**Standing rule (2026-09-19): do not build to the real device, or the iOS Simulator, unless the user explicitly asks for
+that build this task.** Default verification is macOS only (Step 2) — confirm the feature actually works there first.
+macOS debug builds can still hide bugs that only exist in a real device's app sandbox — this already happened once
+(Core ML models loaded from a `#filePath`-derived path into `Research/spikes/*/models`, which works on macOS because it
+shares the Mac's filesystem, but silently fails on a real device's sandboxed container) — so say so as a caveat in your
+report when your change touches app-target wiring, resource bundling, import, or anything sandboxed, but do **not**
+attempt a device (or Simulator) build on your own initiative to rule it out. When the user *has* asked for a real-device
+build this task:
 1. Find the connected device: `xcrun xctrace list devices` (look under "== Devices ==", not "Offline" or "Simulators"; today
    this is an iPhone named "IphoneDuy" — the UDID can change if re-paired, so look it up each run, don't hardcode it).
 2. Build and install: `xcodebuild build -workspace RetouchPro.xcworkspace -scheme RetouchPro -destination 'platform=iOS,id=<udid>' -allowProvisioningUpdates`,
@@ -69,8 +75,8 @@ work and slows down throughput). That means **you are usually the last check bef
 reporting a task complete:
 1. Re-read the exact task scope you were given and the relevant slice of `docs/PLAN.md` / `docs/design/SPEC.md` — confirm
    you did that and nothing more (no drive-by refactors, no scope creep).
-2. Actually run the build/test commands yourself (step 2) and, for anything user-facing, the real-device build/install/
-   launch (step 6) — don't just assert it would pass.
+2. Actually run the macOS build/test commands yourself (step 2) — don't just assert it would pass. Only do the
+   real-device build/install/launch (step 6) or an iOS Simulator build if the user explicitly asked for one this task.
 3. Diff your own work against the "Fixed decisions" and `docs/ADR-*.md` constraints that apply to what you touched.
 4. If you touched an existing render node's math/constants, re-run its bench/golden script and compare the new number
    against the last recorded one in `docs/PLAN.md`/`Research/bench/*.json` — don't just eyeball "still passes 45 dB."
