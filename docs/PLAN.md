@@ -157,6 +157,24 @@ Kết quả: `Research/spikes/REPORT.md`, chọn model/độ phân giải theo s
 - Import: Files, Photos (giữ RAW), drag-drop Mac, **MTP camera import** (ImageCaptureCore), **FolderWatcher** (chọn thư mục/card → ảnh mới tự vào project).
 - UI khung Evoto: filmstrip (rating/flag), canvas zoom/pan, before/after, panel slider trống.
 
+**Cập nhật (2026-09-21) — xoá ảnh khỏi project và xoá cả project, hai thao tác Phase 1 chưa từng có UI.**
+User phát hiện lúc dùng thật: lỡ import sai ảnh thì không có cách nào gỡ ra khỏi project (chỉ có filmstrip để
+xem, không có menu xoá), và không có cách nào xoá hẳn một project — đáng lo hơn vì mỗi ảnh import là **bản
+sao đầy đủ** (`ProjectStore.addShot(copyingOriginalAt:)` copy file, không phải reference), nên không xoá được
+project = không có cách nào lấy lại dung lượng trên iPhone. Đã ship cả hai, UI-only + 1 API mới trong RPCore:
+- **Xoá ảnh khỏi project**: menu "Xoá ảnh khỏi dự án…" (destructive) trên mỗi ảnh trong filmstrip (Mac) và
+  `PhoneLibraryView` (iOS, không có filmstrip), có alert xác nhận nói rõ "Tệp gốc vẫn được giữ trong dự án,
+  không bị xoá khỏi máy" — dùng lại nguyên `ProjectStore.removeShot` đã có sẵn từ trước (cố ý không xoá file
+  gốc trong `originals/`, chỉ xoá bản ghi + edit state, xem doc comment tại chỗ khai báo), chỉ thêm UI gọi vào.
+- **Xoá cả project**: menu chuột phải/nhấn giữ trên card project ở màn Thư viện (`ProjectsView`), có
+  confirmation dialog nói rõ đây là xoá **mọi bản sao ảnh gốc đã import**, không phải file user chọn ban đầu.
+  API mới: `ProjectStore.deleteBundle()` (xoá nguyên thư mục `.rpproj`, ngoại lệ duy nhất của quy tắc "không
+  bao giờ đụng `originals/`" vì đây là xoá cả bundle, không có gì dở dang để giữ lại) và
+  `ProjectLibrary.deleteProject(at:)`/`ProjectsModel.deleteProject(_:)` gọi xuống nó.
+- Không đổi `EditState`/format đĩa nào khác, không phải render mới — hai việc này đều là CRUD trên
+  `ProjectStore`, không đụng RenderGraph/Vision. 12 test mới (`ProjectDeleteTests`, `ProjectDeletionTests`,
+  5 test trong `EditorModelTests` cho remove-shot).
+
 ### Phase 2 — Vision pipeline + Slider cốt lõi (3 tuần)
 
 - **Từ S1 (đo trên ảnh a6300 thật):** landmark model tự nó đạt 0.193 px @256 (< 1px, dư 5×), nhưng pipeline

@@ -411,3 +411,53 @@ far away). That belongs in its own change, behind its own number.
 * **No pressure.** `BrushPoint.pressure` is 1 for every point a `DragGesture` or
   an `NSEvent` delivers here. The stroke model supports it (§1) and a stylus
   would fill it in.
+
+---
+
+## Overlay visibility and the layer list — 2026-09-21
+
+Everything in this section is an addendum. Nothing above it was rewritten.
+
+**The problem, reported by the user from real use:** §3 above shipped the tint
+staying on screen for as long as the brush was armed — painting, adjusting
+sliders, everything. The report was blunt and correct: dragging a Da slider to
+judge "how strong should this be" is exactly the moment the tint's opaque paint
+sits on top of the one thing that judgement needs, the real pixels underneath.
+The ask, in the user's words, was "giống Lightroom" — the tint shows while
+painting, and once a stroke is done adjusting a slider must never bring it back
+on its own.
+
+**What changed, UI-only, no engine/storage change:**
+
+* `EditorChrome.previewedMaskStrokeIndex: Int?` replaces the brush being the
+  sole source of "should the tint be on screen". The canvas's `maskOverlay` now
+  shows it in exactly two cases: a stroke is in flight (`liveStroke != nil`,
+  unchanged from §3), or this index is set. Never merely because
+  `isBrushing == true` — that was the whole bug.
+* **The brush bar gained a layer list**, "Các nét đã vẽ" — one row per finished
+  `BrushStroke`, oldest first, read straight off `live.manualMaskStrokes` (§1's
+  existing array; no new session-side grouping concept). Hovering a row on Mac
+  (`.onHover`) or tapping it on the phone (`.onTapGesture`, no hover there) sets
+  `previewedMaskStrokeIndex`, and the overlay then draws **only that one
+  stroke** — `ManualMaskOverlay(strokes: [stroke], liveStroke: nil, …)` — not
+  the union, because the question a hover answers is "what does this one do",
+  not "what's painted so far".
+* A stroke is the layer unit, not a paint-then-adjust cycle, even though that
+  is closer to the user's own phrasing ("mỗi khi vẽ overlay xong và tiến hành
+  điều chỉnh thì sẽ là 1 layer"). The session already tracks strokes
+  individually for undo/redo; grouping consecutive strokes into a coarser
+  "layer" would be a second concept with nothing in the engine backing it, for
+  a distinction the hover-to-preview affordance does not actually need.
+* `EditorChrome.disarmBrush()` now also clears `previewedMaskStrokeIndex`, so a
+  preview left on from one session cannot leak into the next time the brush is
+  armed.
+* **The brush bar also gained the active group's own sliders** (`GroupSliderList`
+  for `chrome.activeSection`) directly beneath its own controls, so intensity
+  can be tuned without leaving the mode to tap "Xong" and re-arming it
+  afterward — the loop the user was stuck in when the tint problem above was
+  reported.
+
+No `RenderGraph` node, no `EditState` field, no `ManualMaskSession` API changed.
+`Packages/RPUI/Tests/RPUITests/ManualMaskBrushWiringTests.swift` gained one test
+pinning the disarm-clears-preview behavior; the rest of the suite (203 RPUI
+tests) is unchanged and green.
