@@ -56,6 +56,15 @@ struct LivePreviewMetalView: PlatformViewRepresentable {
     let imageFrame: CGRect
     /// Canvas background, sRGB-encoded.
     var background: SIMD4<Float> = SIMD4<Float>(0.08, 0.08, 0.08, 1)
+    /// Called with the graph's output texture right after a redraw actually ran
+    /// — **not** after a present-only pass, because a pan changes no pixel of
+    /// the picture.
+    ///
+    /// The canvas histogram's hook (docs/ADR-0024). A closure rather than a
+    /// second reference on the controller, because what it does is the *view's*
+    /// business: the Mac editor attaches one, the phone editor does not, and the
+    /// engine keeps knowing nothing about either.
+    var onDidRender: ((any MTLTexture) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
@@ -105,6 +114,7 @@ struct LivePreviewMetalView: PlatformViewRepresentable {
     private func update(_ view: MTKView, _ coordinator: Coordinator) {
         coordinator.imageFrameInPoints = imageFrame
         coordinator.background = background
+        coordinator.onDidRender = onDidRender
         view.setNeedsDisplay(view.bounds)
     }
 
@@ -116,6 +126,7 @@ struct LivePreviewMetalView: PlatformViewRepresentable {
         let controller: LivePreviewController
         var imageFrameInPoints: CGRect = .zero
         var background = SIMD4<Float>(0.08, 0.08, 0.08, 1)
+        var onDidRender: ((any MTLTexture) -> Void)?
         /// The controller version whose graph output is currently in the
         /// renderer's output texture.
         private var drawnVersion = -1
@@ -142,6 +153,13 @@ struct LivePreviewMetalView: PlatformViewRepresentable {
                     let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
                     controller.recordFrame(milliseconds: ms, report: report)
                     drawnVersion = controller.version
+                    // After the graph, before the present: the output texture
+                    // now holds this version's pixels, and whatever reads it
+                    // (the histogram) must not block — `HistogramController`
+                    // encodes and returns in ~1 µs.
+                    if let onDidRender, let output = renderer.outputTexture {
+                        onDidRender(output)
+                    }
                 } catch {
                     // Leave `drawnVersion` alone so the next redraw retries, and
                     // still present the previous picture rather than a black

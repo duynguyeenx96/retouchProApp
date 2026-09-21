@@ -89,6 +89,11 @@ struct MacEditorView: View {
                 showsPaneBadges: true,
                 paneCornerRadius: 4,
                 afterPaneOverlay: AnyView(FaceChipsView(model: model)),
+                // The live RGB histogram, top-right of the picture
+                // (docs/ADR-0024). Only 1b asks for it: the phone editor has no
+                // room for a corner accessory and the user asked for this "trên
+                // MacOS".
+                showsHistogram: true,
                 chrome: chrome
             )
             .padding(RPTheme.Metrics.macCanvasPadding)

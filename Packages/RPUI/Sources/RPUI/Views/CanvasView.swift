@@ -1,4 +1,5 @@
 import CoreGraphics
+import Metal
 import RPCore
 import RPEngine
 import SwiftUI
@@ -37,6 +38,10 @@ struct CanvasView: View {
     var paneCornerRadius: CGFloat = 0
     /// Extra chrome for the *edited* pane, e.g. the Mac's face chips.
     var afterPaneOverlay: AnyView?
+    /// Float the live RGB histogram in the top-right of the picture
+    /// (docs/ADR-0024). macOS only — the Mac editor (1b) passes `true`, the
+    /// phone editor never does, and on iOS the overlay does not compile at all.
+    var showsHistogram = false
     /// The shell's chrome, for the one thing the canvas needs from it: whether
     /// "Cọ mask thủ công" is armed and what the brush is set to (docs/PLAN.md
     /// §6.1). Optional because the smoke tests and SwiftUI previews build the
@@ -59,6 +64,13 @@ struct CanvasView: View {
     /// stroke in flight — the brush's half of the measurement ADR-0019 asks for
     /// before the flag goes on. Logged once per stroke, not per event.
     @State private var strokePaintMilliseconds: Double = 0
+    #if os(macOS)
+        /// The floating histogram's own state (docs/ADR-0024). Held here rather
+        /// than on ``LivePreviewController`` because it is chrome: the engine
+        /// hands out a texture, this view decides whether anyone reads it, and
+        /// the phone canvas simply never does.
+        @State private var histogram = HistogramController()
+    #endif
 
     var body: some View {
         GeometryReader { geometry in
@@ -118,6 +130,7 @@ struct CanvasView: View {
                         .padding(.bottom, 12)
                 }
             }
+            .overlay(alignment: .topTrailing) { histogramOverlay }
             .overlay(alignment: .bottom) { livePreviewWarning }
             .onAppear { adopt(size: content) }
             .onChange(of: content) { _, size in adopt(size: size) }
@@ -211,9 +224,12 @@ struct CanvasView: View {
             // `live.version` is read *here*, in the body, so that a slider move
             // re-evaluates this view and the representable's `update` fires.
             // See `LivePreviewMetalView.version`.
-            LivePreviewMetalView(controller: live, version: live.version, imageFrame: frame)
-                .frame(width: size.width, height: size.height)
-                .clipped()
+            LivePreviewMetalView(
+                controller: live, version: live.version, imageFrame: frame,
+                onDidRender: histogramHook
+            )
+            .frame(width: size.width, height: size.height)
+            .clipped()
         } else {
             picture(fallback, frame: frame, in: size)
         }
@@ -227,6 +243,46 @@ struct CanvasView: View {
             .position(x: frame.midX, y: frame.midY)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .clipped()
+    }
+
+    // MARK: - The histogram (docs/ADR-0024)
+
+    /// Top-**trailing**, and 12 pt in from the corner.
+    ///
+    /// Two reasons, in order. Lightroom, Capture One and Camera Raw all put the
+    /// histogram top-right, so a working photographer's eye already goes there
+    /// — and `docs/design/RetouchPro.dc.html#1b` says nothing about a histogram,
+    /// so there is no house convention to follow instead. Second, in the Mac's
+    /// dual-pane comparison the right half of the canvas *is* the edited ("Sau")
+    /// pane, so the top-right corner is over the picture the plot describes
+    /// rather than over the untouched original — the same reasoning that puts
+    /// ``afterPaneOverlay`` at the bottom-left of the edited pane.
+    ///
+    /// Hidden while the canvas is showing the untouched original full-frame: the
+    /// plot is of the *edited* texture, and leaving it up over the "Trước" image
+    /// would be a caption describing a different picture.
+    @ViewBuilder private var histogramOverlay: some View {
+        #if os(macOS)
+            if showsHistogram, histogram.hasReading, model.activeShot != nil,
+                !model.beforeAfter.showsOriginalFullFrame
+            {
+                HistogramOverlayView(histogram: histogram.histogram)
+                    .padding(12)
+                    .transition(.opacity)
+            }
+        #endif
+    }
+
+    /// What the `MTKView` calls after each graph run. `nil` on iOS and on any
+    /// canvas that did not ask for a histogram, so the sample is never even
+    /// encoded there.
+    private var histogramHook: ((any MTLTexture) -> Void)? {
+        #if os(macOS)
+            guard showsHistogram else { return nil }
+            return { texture in histogram.sample(texture) }
+        #else
+            return nil
+        #endif
     }
 
     // MARK: - The mask brush (docs/PLAN.md §6.1, docs/ADR-0019)
@@ -487,6 +543,17 @@ struct CanvasView: View {
             return
         }
         loadFailure = nil
+        #if os(macOS)
+            // The previous shot's reading describes the previous shot. Dropped
+            // before the new one is decoded, so the overlay disappears rather
+            // than briefly plotting the wrong picture.
+            if showsHistogram {
+                histogram.reset()
+                if let context = model.live?.renderer.context {
+                    histogram.prepare(context: context)
+                }
+            }
+        #endif
         do {
             // `request.original` — the "before" side and the geometry source is
             // always the untouched file.
