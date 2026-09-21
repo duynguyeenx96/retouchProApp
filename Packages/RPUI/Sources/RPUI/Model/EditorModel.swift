@@ -412,10 +412,12 @@ public final class EditorModel {
         // active one — and writing its document a moment before `removeShot`
         // deletes it is pointless — or it is not, and the active document is
         // untouched by the removal.
-        await mutate { project, store in
+        let removed = await mutate { project, store in
             try store.removeShot(id: shotID, from: &project)
         }
-        editedShotIDs.remove(shotID)
+        if removed {
+            editedShotIDs.remove(shotID)
+        }
         if selection.activeShotID != previousSelection {
             viewport = CanvasViewport()
             await loadActiveEditState()
@@ -550,9 +552,10 @@ public final class EditorModel {
     /// snapshot and the selection are re-synchronised. Errors become
     /// `lastErrorMessage` instead of a `try` at every call site, because a
     /// failed star rating must not tear down the editor.
+    @discardableResult
     private func mutate(
         _ body: @Sendable @escaping (inout Project, ProjectStore) throws -> Void
-    ) async {
+    ) async -> Bool {
         isWriting = true
         defer { isWriting = false }
         do {
@@ -560,9 +563,11 @@ public final class EditorModel {
                 try body(&project, store)
             }
             await refresh()
+            return true
         } catch {
             lastErrorMessage = String(describing: error)
             await refresh()
+            return false
         }
     }
 }
