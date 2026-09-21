@@ -37,6 +37,11 @@ struct CanvasView: View {
     var paneCornerRadius: CGFloat = 0
     /// Extra chrome for the *edited* pane, e.g. the Mac's face chips.
     var afterPaneOverlay: AnyView?
+    /// The shell's chrome, for the one thing the canvas needs from it: whether
+    /// "Cọ mask thủ công" is armed and what the brush is set to (docs/PLAN.md
+    /// §6.1). Optional because the smoke tests and SwiftUI previews build the
+    /// canvas on its own, and a canvas with no chrome simply never paints.
+    var chrome: EditorChrome?
 
     /// The decoded original: the "before" side, the geometry everything is laid
     /// out from, and the CPU fallback when there is no live preview.
@@ -44,6 +49,16 @@ struct CanvasView: View {
     @State private var loadFailure: String?
     /// Live pinch scale on iOS, applied on top of `viewport.zoom`.
     @State private var gestureZoomBaseline: CGFloat?
+    /// The stroke the finger is drawing, kept here because ``ManualMaskSession``
+    /// deliberately does not expose its in-flight stroke: this view is the one
+    /// that produced the points, so it already has them, and a second copy
+    /// inside the session would be a second thing to keep in step with undo.
+    /// It exists only to draw the overlay before the stroke is committed.
+    @State private var liveStroke: BrushStroke?
+    /// Main-thread milliseconds spent in `beginStroke`/`extendStroke` for the
+    /// stroke in flight — the brush's half of the measurement ADR-0019 asks for
+    /// before the flag goes on. Logged once per stroke, not per event.
+    @State private var strokePaintMilliseconds: Double = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -82,12 +97,19 @@ struct CanvasView: View {
                     holdOriginal: { isHolding in
                         guard model.activeShot != nil else { return }
                         model.beforeAfter.isHoldingOriginal = isHolding
+                    },
+                    isBrushing: isBrushing,
+                    brush: { phase, point in
+                        handleBrush(
+                            phase, at: point, paneSize: content,
+                            paneOriginX: paneOriginX(in: geometry.size))
                     }
                 )
             )
             // Everything below is applied **after** the input modifier, because
             // on macOS `CanvasEventCatcher` is an `NSView` overlay that would
             // otherwise swallow every click on a face outline or a chip.
+            .overlay { maskOverlay(size: geometry.size, paneSize: content) }
             .overlay { faceOutlines(size: geometry.size, paneSize: content) }
             .overlay(alignment: .bottomLeading) {
                 if let afterPaneOverlay, !model.beforeAfter.showsOriginalFullFrame {
@@ -205,6 +227,107 @@ struct CanvasView: View {
             .position(x: frame.midX, y: frame.midY)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .clipped()
+    }
+
+    // MARK: - The mask brush (docs/PLAN.md §6.1, docs/ADR-0019)
+
+    /// `true` when a drag on this canvas paints instead of panning.
+    ///
+    /// Four conditions, and each one removes a way for the brush to be armed
+    /// over something it cannot paint: the user asked for it, the flag is on and
+    /// a session exists for this shot, there is a picture, and the canvas is not
+    /// showing the untouched original (painting a mask onto the "Trước" side
+    /// would be painting onto a picture the mask does not change).
+    private var isBrushing: Bool {
+        guard chrome?.isBrushing == true, original != nil,
+            !model.beforeAfter.showsOriginalFullFrame
+        else { return false }
+        return model.live?.canPaintManualMask ?? false
+    }
+
+    /// x of the *edited* pane inside the canvas — half a canvas plus the gap in
+    /// the Mac's dual-pane comparison, 0 everywhere else. The same origin the
+    /// face outlines use, for the same reason.
+    private func paneOriginX(in size: CGSize) -> CGFloat {
+        isDualPane ? (size.width + RPTheme.Metrics.macCanvasGap) / 2 : 0
+    }
+
+    @ViewBuilder
+    private func maskOverlay(size: CGSize, paneSize: CGSize) -> some View {
+        if let original, let live = model.live, chrome?.isBrushing == true,
+            !model.beforeAfter.showsOriginalFullFrame
+        {
+            // `live.version` is read here so the overlay re-draws when the
+            // session's `generation` moves — every paint call bumps one after
+            // the other (`LivePreviewController.paint`). Nothing compares mask
+            // pixels to decide to redraw, which is what `generation` is for.
+            let _ = live.version
+            ManualMaskOverlay(
+                strokes: live.manualMaskStrokes,
+                liveStroke: liveStroke,
+                imageSize: original.pixelSize,
+                frame: model.viewport.imageFrame(
+                    imageSize: original.pixelSize, viewSize: paneSize),
+                paneOriginX: paneOriginX(in: size)
+            )
+            .frame(width: size.width, height: size.height)
+            .clipped()
+        }
+    }
+
+    /// One touch / pointer event of a stroke, translated into mask pixels and
+    /// handed to the session.
+    ///
+    /// The conversion is the UI's job and only the UI can do it: the session
+    /// takes points in **mask pixels** (ADR-0019 §1) and only this view knows the
+    /// zoom, the pan and which pane the picture is in.
+    private func handleBrush(
+        _ phase: CanvasBrushPhase, at viewPoint: CGPoint, paneSize: CGSize,
+        paneOriginX: CGFloat
+    ) {
+        guard let live = model.live, let settings = chrome?.brush, let original else { return }
+        if phase == .ended {
+            endStroke(live: live)
+            return
+        }
+        let frame = model.viewport.imageFrame(
+            imageSize: original.pixelSize, viewSize: paneSize)
+        guard
+            let point = ManualMaskBrushGeometry.maskPoint(
+                viewPoint: viewPoint, paneOriginX: paneOriginX,
+                imageSize: original.pixelSize, frame: frame)
+        else { return }
+
+        let start = CFAbsoluteTimeGetCurrent()
+        switch phase {
+        case .began:
+            live.beginManualMaskStroke(at: point, settings: settings)
+            var stroke = BrushStroke(
+                radius: settings.radiusInMaskPixels, hardness: settings.hardnessFraction,
+                flow: settings.flowFraction, mode: settings.mode)
+            stroke.points = [BrushPoint(location: point)]
+            liveStroke = stroke
+            strokePaintMilliseconds = 0
+        case .moved:
+            // A move with no stroke in flight is a drag that started somewhere
+            // the brush refused (the "Trước" pane): ignored rather than started
+            // half-way through.
+            guard liveStroke != nil else { return }
+            live.extendManualMaskStroke(to: point)
+            liveStroke?.points.append(BrushPoint(location: point))
+        case .ended:
+            return
+        }
+        strokePaintMilliseconds += (CFAbsoluteTimeGetCurrent() - start) * 1000
+    }
+
+    private func endStroke(live: LivePreviewController) {
+        guard let stroke = liveStroke else { return }
+        live.endManualMaskStroke()
+        live.logManualMaskStroke(
+            points: stroke.points.count, paintMilliseconds: strokePaintMilliseconds)
+        liveStroke = nil
+        strokePaintMilliseconds = 0
     }
 
     // MARK: - Face outlines
@@ -455,6 +578,16 @@ private struct CanvasInputModifier: ViewModifier {
     @Binding var viewport: CanvasViewport
     @Binding var gestureZoomBaseline: CGFloat?
     let holdOriginal: (Bool) -> Void
+    /// `true` while "Cọ mask thủ công" is armed: a drag paints instead of
+    /// panning, and the press-and-hold peek is off — a slow start to a stroke
+    /// must not flash the original.
+    ///
+    /// Zoom is deliberately **not** taken away: painting a mask at 100 % is the
+    /// normal way to use a brush, so pinch (and ⌥scroll on the Mac) keep
+    /// working while the brush is armed. What the user loses is one-finger pan,
+    /// which is the gesture the stroke needs.
+    var isBrushing = false
+    var brush: (CanvasBrushPhase, CGPoint) -> Void = { _, _ in }
 
     func body(content: Content) -> some View {
         #if os(macOS)
@@ -476,11 +609,48 @@ private struct CanvasInputModifier: ViewModifier {
                         }
                         viewport.clampOffset(imageSize: imageSize, viewSize: viewSize)
                     },
-                    onHoldOriginal: holdOriginal
+                    onHoldOriginal: holdOriginal,
+                    isBrushing: isBrushing,
+                    onBrush: brush
                 )
             }
         #else
-            content
+            if isBrushing {
+                content
+                    .gesture(
+                        SimultaneousGesture(
+                            // Zero distance: a tap is a dot, exactly as
+                            // `beginStroke` documents.
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if isPainting {
+                                        brush(.moved, value.location)
+                                    } else {
+                                        isPainting = true
+                                        brush(.began, value.location)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    isPainting = false
+                                    brush(.ended, .zero)
+                                },
+                            MagnifyGesture(minimumScaleDelta: 0.005)
+                                .onChanged { value in
+                                    let baseline = gestureZoomBaseline ?? viewport.zoom
+                                    if gestureZoomBaseline == nil {
+                                        gestureZoomBaseline = baseline
+                                    }
+                                    viewport.setZoom(
+                                        baseline * value.magnification,
+                                        anchor: value.startLocation, viewSize: viewSize)
+                                    viewport.clampOffset(
+                                        imageSize: imageSize, viewSize: viewSize)
+                                }
+                                .onEnded { _ in gestureZoomBaseline = nil }
+                        )
+                    )
+            } else {
+                content
                 // `simultaneousGesture`, not `gesture`: the pan below is
                 // attached further out and would otherwise win the arbitration
                 // and the hold would never fire. They do not fight — the hold
@@ -529,10 +699,22 @@ private struct CanvasInputModifier: ViewModifier {
                     }
                     viewport.clampOffset(imageSize: imageSize, viewSize: viewSize)
                 }
+            }
         #endif
     }
 
     #if !os(macOS)
         @State private var lastPan: CGSize = .zero
+        /// `true` between the first movement of a painting drag and its end.
+        /// `DragGesture` has no "began" callback — the first `onChanged` is it —
+        /// and the stroke has to know which of the two it is looking at.
+        @State private var isPainting = false
     #endif
+}
+
+/// Which end of a stroke an event is. The canvas's own vocabulary, so the two
+/// platform input paths (SwiftUI's `DragGesture`, AppKit's mouse events) hand
+/// the same three things to the same handler.
+enum CanvasBrushPhase: Sendable {
+    case began, moved, ended
 }

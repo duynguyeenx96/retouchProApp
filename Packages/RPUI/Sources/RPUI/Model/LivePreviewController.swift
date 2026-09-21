@@ -121,6 +121,25 @@ public final class LivePreviewController {
     @ObservationIgnored
     private var backgroundLockSource: BackgroundLockMaskSource?
 
+    /// The open shot's hand-painted mask — docs/PLAN.md §6.1 "Cọ mask thủ công",
+    /// docs/ADR-0019.
+    ///
+    /// One session per shot, built at the **decoded preview's** size so
+    /// `ManualMaskCoverage.maskToImage` is the identity and a brush point needs
+    /// no rescaling (the same property that lets ``faces`` and ``bodySkinMask``
+    /// go in unscaled). It is built once and kept alive across strokes because it
+    /// owns two `r8Unorm` textures and the undo history; rebuilding it per stroke
+    /// would throw both away.
+    ///
+    /// `nil` unless `RPEngineFeatureFlags.manualMask` is on — the producer-side
+    /// gate, enforced one level down as well (`ManualMaskSession.init` throws
+    /// while the flag is off), so with the flag off no `RenderRequest` can carry
+    /// a painted gate at all.
+    ///
+    /// The paint API lives in `LivePreviewController+ManualMask.swift`; this is
+    /// only the ownership.
+    public private(set) var manualMask: ManualMaskSession?
+
     /// Which quality level the subject mask is asked for.
     ///
     /// `.balanced`, and this is a measured choice rather than a middle one.
@@ -232,6 +251,10 @@ public final class LivePreviewController {
             sourceSize = .zero
             return
         }
+        // Synchronous and before the analyses: the brush is user input, so the
+        // canvas has to be paintable the moment the picture is on screen rather
+        // than after a 36 ms Core ML pass the brush does not depend on.
+        prepareManualMask(for: image)
         invalidate()
 
         let kinds = RenderMaskRequirements.forEnabledGroups()
@@ -412,7 +435,38 @@ public final class LivePreviewController {
         }
     }
 
+    /// Builds the shot's ``manualMask`` session — docs/ADR-0019.
+    ///
+    /// Cheap enough to be synchronous: two `r8Unorm` textures (5.6 MB at a
+    /// 2048 px preview) and a clear. There is no Vision request and no Core ML
+    /// behind a brush, which is the whole reason this feature needs no
+    /// detection-failure notice (`SliderSectionDescriptor.notifiesFromNodeNamed`
+    /// is `nil` for it: user input cannot fail to be detected).
+    ///
+    /// The previous shot's session is dropped first, so a painted mask never
+    /// leaks onto the next picture — masks are per shot (ADR-0019 §8:
+    /// `masks/<shot id>/<mask id>.png`).
+    private func prepareManualMask(for image: PreviewImage) {
+        manualMask = nil
+        guard RPEngineFeatureFlags.manualMask else { return }
+        let width = Int(image.pixelSize.width)
+        let height = Int(image.pixelSize.height)
+        guard width > 0, height > 0 else { return }
+        do {
+            manualMask = try ManualMaskSession(
+                context: renderer.context, width: width, height: height)
+            Self.log.log(
+                "manual mask session: \(width, privacy: .public)x\(height, privacy: .public)")
+        } catch {
+            // Not a canvas failure: every node keeps working, there is just
+            // nothing to paint with.
+            Self.log.error(
+                "manual mask session failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     private func clearShotMasks() {
+        manualMask = nil
         bodySkinMask = nil
         bodySkinCoverageFraction = nil
         bodySkinUsedSubjectMask = false
@@ -453,12 +507,23 @@ public final class LivePreviewController {
     /// off, or no subject in the frame, the array stays empty — which
     /// `RenderGateMask` defines as "the node renders exactly the pixels it
     /// rendered before Phase 6.1", not "select nothing".
+    /// The painted mask is appended the same way, and only when the user has
+    /// actually painted something (``ManualMaskSession/isEmpty``). That guard is
+    /// load-bearing rather than an optimisation: an untouched coverage texture is
+    /// all zeros, and `RenderGateMask` multiplies — handing an empty mask to the
+    /// graph would switch every mask-driven slider off in every shot the brush
+    /// was merely *armed* on. "No gate" means the pre-6.1 render; "a gate of
+    /// zeros" means nothing renders, and those are not the same sentence
+    /// (docs/ADR-0019 §5).
     public var renderRequest: RenderRequest {
         var request = RenderRequest(
             editState: editState, allFaces: faces, quality: renderer.quality)
         request.bodySkinMask = bodySkinMask
         request.gateMasks += BackgroundLock.gateMasks(
             for: editState, subjectGate: backgroundLockGate)
+        if let manualMask, !manualMask.isEmpty {
+            request.gateMasks.append(manualMask.coverage)
+        }
         return request
     }
 

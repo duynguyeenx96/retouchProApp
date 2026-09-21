@@ -41,6 +41,15 @@ struct RootView: View {
                 await BodySkinSelfTest.run(
                     target: target, renderer: container.previewRenderer, live: container.live)
             }
+            // The mask brush (docs/PLAN.md §6.1, docs/ADR-0019), off unless
+            // RP_BRUSH_SELFTEST is set. Its own hook for the same reason the two
+            // above have one: ADR-0019 requires a ms/frame on an A-series part
+            // before the flag goes on, and a package test bundle cannot run on a
+            // phone at all.
+            if let target = ManualMaskSelfTest.target() {
+                await ManualMaskSelfTest.run(
+                    target: target, renderer: container.previewRenderer, live: container.live)
+            }
             // Same idea for the export path, off unless RP_EXPORT_SELFTEST is
             // set: it runs `ExportController.exportActiveShot` — the Export
             // button's own action — against a shot already in the library, so

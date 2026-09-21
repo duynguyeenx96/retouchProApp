@@ -29,6 +29,13 @@
         /// Mac half of "đè chuột vào hình sẽ show hình gốc". There is no toolbar
         /// button for it: pressing the picture *is* the control.
         var onHoldOriginal: (Bool) -> Void = { _ in }
+        /// `true` while "Cọ mask thủ công" is armed (docs/PLAN.md §6.1). A
+        /// press-drag-release then paints a stroke instead of panning, and the
+        /// press-and-hold peek is off so a slow stroke cannot flash the
+        /// original. Scroll-wheel pan and ⌥scroll zoom are untouched — the
+        /// trackpad keeps navigating while the mouse button paints.
+        var isBrushing = false
+        var onBrush: (CanvasBrushPhase, CGPoint) -> Void = { _, _ in }
 
         func makeNSView(context: Context) -> EventView {
             let view = EventView()
@@ -45,6 +52,18 @@
             view.onZoom = onZoom
             view.onDoubleClick = onDoubleClick
             view.onHoldOriginal = onHoldOriginal
+            view.onBrush = onBrush
+            // Disarming mid-stroke (the user hit "Xong" with the button down)
+            // has to close the stroke, or the session keeps an in-flight stroke
+            // no event will ever finish.
+            //
+            // One runloop later, because this runs *inside* a SwiftUI update and
+            // the callback writes the canvas's `@State` — doing it synchronously
+            // is the "Modifying state during view update" warning.
+            if view.isBrushing && !isBrushing {
+                DispatchQueue.main.async { [weak view] in view?.finishBrushStroke() }
+            }
+            view.isBrushing = isBrushing
         }
 
         final class EventView: NSView {
@@ -52,6 +71,17 @@
             var onZoom: ((CGFloat, CGPoint) -> Void)?
             var onDoubleClick: ((CGPoint) -> Void)?
             var onHoldOriginal: ((Bool) -> Void)?
+            var onBrush: ((CanvasBrushPhase, CGPoint) -> Void)?
+            var isBrushing = false
+            private var isPainting = false
+
+            /// Ends a stroke that is still in flight. Safe to call when there is
+            /// none.
+            func finishBrushStroke() {
+                guard isPainting else { return }
+                isPainting = false
+                onBrush?(.ended, .zero)
+            }
 
             /// Seconds the button must be down, without moving, before the
             /// original appears. Long enough that a click-drag pan never flashes
@@ -87,6 +117,14 @@
             }
 
             override func mouseDown(with event: NSEvent) {
+                if isBrushing {
+                    // No double-click fit while painting: the second click of a
+                    // dab is a dab, not a zoom.
+                    cancelHold()
+                    isPainting = true
+                    onBrush?(.began, location(of: event))
+                    return
+                }
                 if event.clickCount == 2 {
                     cancelHold()
                     onDoubleClick?(location(of: event))
@@ -105,20 +143,29 @@
             }
 
             override func mouseDragged(with event: NSEvent) {
+                if isPainting {
+                    onBrush?(.moved, location(of: event))
+                    return
+                }
                 // Any movement means "pan", not "peek".
                 cancelHold()
                 onPan?(CGSize(width: event.deltaX, height: -event.deltaY))
             }
 
             override func mouseUp(with event: NSEvent) {
+                finishBrushStroke()
                 cancelHold()
             }
 
             /// Also on window deactivation / view teardown, so the canvas cannot
-            /// get stuck showing the original with no button down.
+            /// get stuck showing the original with no button down — or, now,
+            /// with a stroke still open.
             override func viewDidMoveToWindow() {
                 super.viewDidMoveToWindow()
-                if window == nil { cancelHold() }
+                if window == nil {
+                    finishBrushStroke()
+                    cancelHold()
+                }
             }
 
             private func cancelHold() {

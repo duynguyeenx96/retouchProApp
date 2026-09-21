@@ -35,7 +35,8 @@ import RPVision
 enum AppEngineSetup {
 
     /// User-defaults key holding a comma-separated list of groups to keep off:
-    /// `color`, `skin`, `warp`, `eyesTeeth`, `face` (face analysis).
+    /// `color`, `skin`, `warp`, `eyesTeeth`, `manualMask`, `face` (face
+    /// analysis).
     static let disableKey = "RPDisableGroups"
 
     static func disabledGroups(
@@ -67,6 +68,22 @@ enum AppEngineSetup {
         if !disabled.contains("eyesTeeth") {
             RPEngineFeatureFlags.enableEyesTeethRenderGraph()
             enabled.append("eyesTeeth")
+        }
+        // "Cọ mask thủ công" (docs/PLAN.md §6.1, docs/ADR-0019). Not a slider
+        // group — it is the hand-painted gate that narrows the ones above — but
+        // it is enabled here for the same reason and on the same terms: the
+        // algorithm is measured (bit-exact splat, 0 unpainted pixels changed,
+        // ADR-0019 §2/§6) and, since 2026-09-18, measured **on the device** as
+        // well, which is what that ADR made the condition for turning it on.
+        // See `Research/bench/p6-manual-mask-device.json`.
+        //
+        // It must be set **before** `LivePreviewController.standard()` builds
+        // the graph: `SkinRenderNode.prewarm` only compiles the brush's kernels
+        // when this bit is already on, and a first stroke that has to compile a
+        // pipeline is a first stroke that stutters.
+        if !disabled.contains("manualMask") {
+            RPEngineFeatureFlags.manualMask = true
+            enabled.append("manualMask")
         }
         return enabled
     }

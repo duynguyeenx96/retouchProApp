@@ -1,0 +1,51 @@
+{
+  "adr": "docs/ADR-0019-manual-mask-brush.md",
+  "build_configuration": "Debug",
+  "date": "2026-09-18",
+  "device": "IphoneDuy (iOS 27.0)",
+  "environment": "iOS device",
+  "is_real_device": true,
+  "feature_flag": "RPEngineFeatureFlags.manualMask",
+  "measured_by": "App/ManualMaskSelfTest.swift (RP_BRUSH_SELFTEST=first-shot), not RPEngineTests",
+  "why_not_the_test_bundle": "xcodebuild refuses tool-hosted testing on a device destination, so the package test bundles cannot run on a phone at all — the same wall App/BodySkinSelfTest.swift documents. The self-test drives the product objects: LivePreviewController.open, beginManualMaskStroke/extendManualMaskStroke/endManualMaskStroke, then LivePreviewRenderer.render(_:).",
+  "photo": "3.jpg",
+  "preview_pixels": [1151, 2048],
+  "faces_detected": 1,
+  "nodes_run": ["skin"],
+  "gates_in_request": 1,
+  "brush": {
+    "radius_mask_px": 64,
+    "hardness": 0.5,
+    "flow": 1.0,
+    "mode": "add",
+    "source": "ManualMaskBrushSettings() — the brush bar's shipping defaults"
+  },
+  "paint": {
+    "drag_points": 120,
+    "main_thread_ms_total": 10.12,
+    "main_thread_ms_per_point": 0.084,
+    "note": "beginStroke + 119 extendStroke calls on the main actor, exactly as CanvasView's drag handler issues them. The session does not wait on the GPU, by design."
+  },
+  "render": {
+    "iterations": 15,
+    "ungated_median_ms": 6.23,
+    "gated_median_ms": 6.33,
+    "gate_marginal_ms": 0.09,
+    "gated_fps": 158,
+    "control": "the same graph, same photo, same run, with gateMasks empty",
+    "second_run": {
+      "ungated_median_ms": 6.13,
+      "gated_median_ms": 6.10,
+      "gate_marginal_ms": -0.03,
+      "gated_fps": 164,
+      "note": "A second launch of the same build reproduces the paint and undo figures exactly (0.084 ms/point, 30.1 ms) and puts the gate's marginal cost at -0.03 ms — i.e. below this measurement's noise, which is the honest reading of both runs: one extra r8 dispatch is not visible next to a 6 ms skin composite."
+    }
+  },
+  "undo": {
+    "history_strokes": 1,
+    "replay_ms": 30.1,
+    "note": "One undo of a 120-point stroke at this preview size. The macOS run measures the deep case (19 strokes replayed, 426.9 ms) — see p6-manual-mask-macos.json; a replay is linear in stamps, so history depth is what costs, not the undo itself."
+  },
+  "verdict": "Closes ADR-0019's stated blocker ('a ms/frame on an A-series part is required before it is turned on'). Gated redraw 6.33 ms = 158 fps at the preview size, 0.09 ms of which is the gate; 0.084 ms of main thread per touch event. RPEngineFeatureFlags.manualMask was turned on in AppEngineSetup on the strength of these numbers.",
+  "raw_log_line": "2026-09-18T09:04:33Z brush selftest: 3.jpg 1151x2048 — paint 10.12 ms for 120 points (0.084 ms/point), render ungated 6.23 ms, gated 6.33 ms (marginal 0.09 ms, 158 fps), undo 30.1 ms, gates 1, strokes 1, nodes skin"
+}

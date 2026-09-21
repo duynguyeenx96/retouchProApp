@@ -14,13 +14,13 @@ import RPEngine
 /// The Turn 3 tool rail (docs/design/SPEC.md §"Turn 3 — expanded toolset rail",
 /// screens 3a-3f), **restructured into two levels on 2026-09-18**.
 ///
-/// What is checkable without a window: the eight top-level entries in the
+/// What is checkable without a window: the nine top-level entries in the
 /// shipped order, each parent's children in theirs, and SPEC's wiring table —
 /// which leaves open a real panel, which are locked, and that no item points at
 /// a section key the panel cannot resolve. The pill/dimming is looked at on a
 /// device.
 ///
-/// The membership is **not** the canvas's nineteen: two members out, one in, one
+/// The membership is **not** the canvas's nineteen: two members out, two in, one
 /// renamed.
 ///
 /// * out — "Xoá vật thể", cut from scope entirely on 2026-09-11
@@ -29,21 +29,27 @@ import RPEngine
 /// * out — "Bọng mắt", **deleted** on 2026-09-18: it was a second door into the
 ///   "Mắt" panel with the same `eye` glyph and nothing to tell the two apart,
 ///   which the user reported as wrong in itself;
-/// * in — "Khoá nền" (docs/PLAN.md §6.1, docs/ADR-0018), last and shipping
-///   **locked**: the engine behind it is finished but
-///   `RPEngineFeatureFlags.backgroundLock` stays off until someone measures
-///   `VNGeneratePersonSegmentationRequest` on a real iPhone;
+/// * in — "Khoá nền" (docs/PLAN.md §6.1, docs/ADR-0018), shipping **locked**:
+///   the engine behind it is finished but `RPEngineFeatureFlags.backgroundLock`
+///   stays off until someone measures `VNGeneratePersonSegmentationRequest` on a
+///   real iPhone;
+/// * in — "Cọ mask" (docs/PLAN.md §6.1, docs/ADR-0019), last, whose lock follows
+///   `RPEngineFeatureFlags.manualMask` rather than being fixed. Every assertion
+///   below that depends on that bit sets it explicitly and holds
+///   ``RPUIMaskFlagLock`` while it does — the flag store is process-global and
+///   `ManualMaskBrushWiringTests` drives the same bit;
 /// * renamed — the old top-level "Mặt" leaf is the child "Hình dáng mặt", so
 ///   that the parent and one of its children are not both called "Mặt". Its
 ///   panel and its fifteen sliders did not change.
 @Suite("Tool rail structure")
 struct RailLayoutTests {
 
-    /// The eight scrolling top-level entries. Màu is not here — it is pinned
+    /// The nine scrolling top-level entries. Màu is not here — it is pinned
     /// outside the scroll view, at the trailing end (see
     /// ``colorItemIsPinnedAndSeparate``).
     private static let expectedTopLevel = [
         "Mặt", "Da", "Mẫu", "Tự động", "Trang điểm", "Cơ thể", "Tóc", "Khoá nền",
+        "Cọ mask",
     ]
 
     /// The three parents and their children, in the shipped order.
@@ -86,17 +92,37 @@ struct RailLayoutTests {
         RailLayout.items.flatMap { [$0.label] + ($0.children?.map(\.label) ?? []) }
     }
 
-    @Test("Eight top-level entries, Mặt first and Khoá nền last")
+    /// Runs `body` with `RPEngineFeatureFlags.manualMask` pinned, holding the
+    /// same gate `ManualMaskBrushWiringTests` holds.
+    ///
+    /// "Cọ mask" is the first rail item whose lock is **not** a constant: it
+    /// follows a process-global bit the app sets at launch and another suite
+    /// flips around its own cases. Asserting a locked-item list without pinning
+    /// that bit is a test that passes or fails depending on which suite the
+    /// runner happened to schedule first — which is exactly the failure
+    /// `RPUIMaskFlagLock` was written for.
+    @MainActor
+    static func withManualMask(_ isOn: Bool, _ body: @escaping () -> Void) async throws {
+        try await RPUIMaskFlagLock.exclusive {
+            let previous = RPEngineFeatureFlags.manualMask
+            RPEngineFeatureFlags.manualMask = isOn
+            defer { RPEngineFeatureFlags.manualMask = previous }
+            body()
+        }
+    }
+
+    @Test("Nine top-level entries, Mặt first and Cọ mask last")
     func topLevelOrder() {
-        #expect(RailLayout.items.count == 8)
+        #expect(RailLayout.items.count == 9)
         #expect(RailLayout.items.map(\.label) == Self.expectedTopLevel)
         #expect(RailLayout.items.first?.label == "Mặt")
-        #expect(RailLayout.items.last?.label == "Khoá nền")
+        #expect(RailLayout.items.last?.label == "Cọ mask")
     }
 
     /// The hierarchy itself: exactly three parents, their children in order, and
     /// no third level (the canvas's per-tool grid is locked per SPEC — this is
-    /// body part → sub-feature, and stops there).
+    /// body part → sub-feature, and stops there). "Cọ mask" is not a body part's
+    /// sub-feature — it stays one of the top-level leaves.
     @Test("Mặt, Da and Cơ thể are the only parents, with the children the decision names")
     func hierarchy() {
         let parents = RailLayout.items.filter(\.isParent)
@@ -110,7 +136,7 @@ struct RailLayoutTests {
             // …and exactly one level deep.
             #expect(parent.children?.allSatisfy { !$0.isParent } == true)
         }
-        #expect(RailLayout.items.filter { !$0.isParent }.count == 5)
+        #expect(RailLayout.items.filter { !$0.isParent }.count == 6)
         #expect(!RailLayout.colorItem.isParent)
 
         // The correction itself, stated as a claim: the skin panels hang off
@@ -142,19 +168,20 @@ struct RailLayoutTests {
     /// The restructuring regrouped a known set: every canvas member is still
     /// somewhere in the tree except the two documented removals, with "Mặt"
     /// surviving as the parent label, its old panel now called "Hình dáng mặt",
-    /// and one label the canvas never had — the "Da" group header.
-    @Test("The tree is the canvas's membership, minus two, plus two, with one renamed")
+    /// and labels the canvas never had — the "Da" group header, "Khoá nền" and
+    /// "Cọ mask".
+    @Test("The tree is the canvas's membership, minus two, plus three, with one renamed")
     func membershipAgainstTheCanvas() {
         #expect(
             Set(Self.everyLabel)
                 == Set(Self.canvasLabels)
                 .subtracting(["Xoá vật thể", "Bọng mắt"])
-                .union(["Hình dáng mặt", "Da", "Khoá nền"]))
+                .union(["Hình dáng mặt", "Da", "Khoá nền", "Cọ mask"]))
         #expect(
             Set(RailLayout.leafItems.map(\.id)) == [
                 "face", "smooth", "shine", "eyes", "teeth", "head", "contour", "plump",
                 "acne", "templates", "auto", "makeup", "slim", "firm", "skinFix", "hair",
-                "backgroundLock", "color",
+                "backgroundLock", "manualMask", "color",
             ])
         #expect(
             Set(RailLayout.items.map(\.id)).isSuperset(of: ["faceGroup", "skinGroup", "body"]))
@@ -169,9 +196,9 @@ struct RailLayoutTests {
             #expect(!item.label.isEmpty)
             #expect(!item.systemImage.isEmpty, "\(item.id)")
         }
-        // 18 tappable leaves: 5 top-level ones, 7 under Mặt, 3 under Da, 2 under
+        // 19 tappable leaves: 6 top-level ones, 7 under Mặt, 3 under Da, 2 under
         // Cơ thể, and the pinned Màu chip.
-        #expect(RailLayout.leafItems.count == 18)
+        #expect(RailLayout.leafItems.count == 19)
         #expect(RailLayout.leafItems.last?.id == "color")
     }
 
@@ -193,8 +220,14 @@ struct RailLayoutTests {
     /// SPEC's wiring table, restated for the hierarchy: five working leaves —
     /// three under "Mặt", two under "Da" — each opening its own panel and
     /// nothing else's.
+    ///
+    /// Pinned off, so "the active items" is the list this table describes
+    /// rather than one that grows a nineteenth entry when another suite happens
+    /// to have the brush switched on.
+    @MainActor
     @Test("The five active leaves point at the panels the wiring table names")
-    func wiringTable() {
+    func wiringTable() async throws {
+        try await Self.withManualMask(false) {
         let byLabel = Dictionary(
             uniqueKeysWithValues: RailLayout.leafItems.map { ($0.label, $0) })
         #expect(byLabel["Hình dáng mặt"]?.sectionKey == EditState.SectionKey.face)
@@ -220,7 +253,7 @@ struct RailLayoutTests {
             #expect(!item.isLocked, "\(item.label) should open a working panel")
         }
         // The pinned Màu chip is an active item too, and comes last — it is
-        // drawn after the scrolling eight in both shells, because colour is the
+        // drawn after the scrolling nine in both shells, because colour is the
         // user's last step. "Mẫu" is active as well from Phase 3, but as a
         // screen rather than a section, so it carries no key.
         #expect(
@@ -228,24 +261,30 @@ struct RailLayoutTests {
                 Self.activeLabels.contains($0) || Self.screenLabels.contains($0)
             } + ["Màu"])
         #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Mẫu"])
+        }
     }
 
-    /// Eleven locked leaves, for three different reasons: nine with no section
-    /// at all, Trang điểm and Tóc whose sections exist but are themselves Phase
-    /// 5. ("Xoá vật thể" is not among these — it was cut from scope entirely,
-    /// not locked; "Mẫu" was unlocked in Phase 3; "Bọng mắt" was deleted.)
-    @Test("The other eleven leaves are locked, for the three different reasons")
-    func lockedItems() {
+    /// Twelve locked leaves with the brush switched off, for four different
+    /// reasons: nine with no section at all, Trang điểm and Tóc whose sections
+    /// exist but are themselves Phase 5, "Khoá nền", which has a finished
+    /// engine and is held back on purpose, and "Cọ mask", which is locked only
+    /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
+    /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
+    /// in Phase 3; "Bọng mắt" was deleted.)
+    @MainActor
+    @Test("The other twelve leaves are locked, for the four different reasons")
+    func lockedItems() async throws {
+        try await Self.withManualMask(false) {
         let locked = RailLayout.leafItems.filter(\.isLocked)
-        #expect(locked.count == 11)
+        #expect(locked.count == 12)
         #expect(
             locked.map(\.label) == [
                 "Đầu", "Tạo khối", "Căng mọng", "Mụn", "Sửa da", "Tự động",
-                "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền",
+                "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền", "Cọ mask",
             ])
 
         // No section behind it at all and no specific reason: eight of the
-        // eleven.
+        // twelve.
         let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
         #expect(unbacked.count == 8)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
@@ -256,6 +295,7 @@ struct RailLayoutTests {
             EditState.SectionKey.makeup, EditState.SectionKey.hair,
         ])
         for item in phaseFive { #expect(item.lockedHint == "Phase 5 · chưa khả dụng") }
+        }
     }
 
     /// A parent is locked only when every child is — one boolean derived from
@@ -420,20 +460,21 @@ struct RailLayoutTests {
         #expect(chrome.presetLibrary == nil)
     }
 
-    /// The override is scoped to the one item that needs it: every other locked
-    /// entry keeps the derived wording, so this did not quietly become a second
-    /// place where lock hints are written.
-    @Test("lockedReason is set on exactly one item")
+    /// The override is scoped to the two items that need it — a built feature
+    /// held back for a measurement, and a built feature a build can switch off —
+    /// so this did not quietly become a second place where lock hints are
+    /// written for everything else.
+    @Test("lockedReason is set on exactly the two items that have a specific reason")
     func lockedReasonIsScoped() {
         #expect(
             RailLayout.leafItems.filter { $0.lockedReason != nil }.map(\.id)
-                == ["backgroundLock"])
+                == ["backgroundLock", "manualMask"])
     }
 
     // MARK: - "Mẫu" — the one item that opens a screen
 
-    /// Phase 3 unlocked "Mẫu" as the preset library. It is the only item with a
-    /// ``RailPresentation``, and tapping it must open the library **without**
+    /// Phase 3 unlocked "Mẫu" as the preset library. Tapping it must open the
+    /// library **without**
     /// moving the slider panel: closing the library has to put the user back on
     /// the group they were editing.
     @MainActor
@@ -446,8 +487,11 @@ struct RailLayoutTests {
         #expect(templates.presentation == .presetLibrary(.templates))
         #expect(templates.sectionKey == nil)
         #expect(!templates.isLocked)
+        // Two presentations now: the library, and the brush mode (§6.1). They
+        // are the two rail entries that are not a slider group.
         #expect(
-            RailLayout.leafItems.filter { $0.presentation != nil }.map(\.id) == ["templates"])
+            RailLayout.leafItems.filter { $0.presentation != nil }.map(\.id)
+                == ["templates", "manualMask"])
 
         let chrome = EditorChrome()
         chrome.activeGroupKey = EditState.SectionKey.face
@@ -480,7 +524,7 @@ struct RailLayoutTests {
     /// commit the eighteen working Color sliders had **no** way in.
     /// `docs/design/SPEC.md` §"macOS panel (3f) structural note" asks for it as
     /// an always-visible top-level tab alongside the rail.
-    @Test("Màu is a pinned rail item, last, not one of the scrolling eight")
+    @Test("Màu is a pinned rail item, last, not one of the scrolling nine")
     func colorItemIsPinnedAndSeparate() throws {
         #expect(!RailLayout.items.contains { $0.opensPanel(EditState.SectionKey.color) })
         #expect(RailLayout.colorItem.sectionKey == EditState.SectionKey.color)

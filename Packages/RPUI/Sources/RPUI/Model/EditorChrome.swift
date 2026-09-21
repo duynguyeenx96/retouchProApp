@@ -103,7 +103,15 @@ public final class EditorChrome {
         }
     }
 
-    public var tab: Tab = .library
+    /// Leaving the editor puts the brush away: a mode that survived a trip to
+    /// the library would come back armed over a different photo, whose session
+    /// is a different object (``isBrushing``). One place rather than at every
+    /// call site that moves the tab.
+    public var tab: Tab = .library {
+        didSet {
+            if tab != .edit { isBrushing = false }
+        }
+    }
     /// Which slider group the sheet / panel / rail is showing.
     public var activeGroupKey: String = SliderPanelLayout.defaultSectionKey
     public var macTool: MacTool = .pan
@@ -118,6 +126,20 @@ public final class EditorChrome {
     /// chrome: the library writes through ``EditorModel``, and closing it
     /// changes nothing on disk.
     public var presetLibrary: PresetLibraryKind?
+
+    /// `true` while "Cọ mask thủ công" is armed (docs/PLAN.md §6.1,
+    /// docs/ADR-0019): the brush bar is on screen and a drag on the canvas
+    /// paints the mask instead of panning the picture.
+    ///
+    /// A *mode*, which is why it is a boolean here rather than a value in
+    /// ``activeGroupKey``: the user keeps whichever slider panel they were on,
+    /// because the point of painting a mask is to narrow what those sliders
+    /// touch. Leaving the editor turns it off (see ``tab``); moving between
+    /// slider groups does not.
+    public var isBrushing = false
+    /// Size / hardness / flow / add-or-erase. Chrome, not document —
+    /// ``ManualMaskBrushSettings`` says why at length.
+    public var brush = ManualMaskBrushSettings()
 
     public init() {}
 
@@ -143,17 +165,29 @@ public final class EditorChrome {
     ///
     /// An item that opens a screen ("Mẫu" → the preset library) **only** opens
     /// it: `activeGroupKey` stays where it was, so closing the library puts the
-    /// user back on the panel they were using.
+    /// user back on the panel they were using. The same holds for the brush,
+    /// which is a mode on top of whatever panel is open — see ``isBrushing``.
     ///
-    /// A **parent** ("Mặt", "Cơ thể") has no panel of its own, so it forwards to
-    /// ``RailItemDescriptor/defaultChild`` — the first child that works, or the
-    /// first child at all when the whole group is locked, in which case the
-    /// forward is inert for the same reason any locked item is.
+    /// A **locked** item does nothing at all, including a locked presentation:
+    /// with `RPEngineFeatureFlags.manualMask` off there is no session to paint
+    /// into, so arming the brush would put a bar on screen over a canvas that
+    /// cannot take a stroke (docs/design/SPEC.md: *"tap does nothing … must not
+    /// crash/switch"*). The views already disable the button; this is the same
+    /// rule stated where it can be tested.
+    ///
+    /// A **parent** ("Mặt", "Cơ thể") has no panel of its own, so — once past the
+    /// lock guard above — it forwards to ``RailItemDescriptor/defaultChild``, the
+    /// first child that works.
     public func selectRailItem(_ item: RailItemDescriptor) {
+        guard !item.isLocked else { return }
         if let child = item.defaultChild { return selectRailItem(child) }
         switch item.presentation {
         case .presetLibrary(let kind):
             presetLibrary = kind
+        case .manualMaskBrush:
+            // A second tap puts the brush away, the same "tap it again to undo
+            // it" rule the face chips and the filmstrip's ratings follow.
+            isBrushing.toggle()
         case nil:
             if let key = item.sectionKey { selectGroup(key) }
         }
@@ -168,6 +202,25 @@ public final class EditorChrome {
     public var activeRailParent: RailItemDescriptor? {
         RailLayout.parent(ofPanelKey: activeGroupKey)
     }
+
+    /// `true` when the rail should draw `item` as the current one.
+    ///
+    /// Not simply `item.sectionKey == activeGroupKey` any more: a parent has no
+    /// section of its own (it is active when any of its children's panels are
+    /// open, via ``RailItemDescriptor/opensPanel(_:)``) and the brush is a mode
+    /// with no section at all, so the rail has to ask the mode directly. Both
+    /// shells call this rather than each working it out, so the phone row and
+    /// the Mac rail cannot disagree about what is active.
+    public func isRailItemActive(_ item: RailItemDescriptor) -> Bool {
+        if case .manualMaskBrush = item.presentation { return isBrushing }
+        return item.opensPanel(activeGroupKey)
+    }
+
+    /// Puts the brush away. Called when the editor closes or another screen
+    /// takes over the canvas, so a mode cannot outlive the picture it was armed
+    /// on.
+    public func disarmBrush() { isBrushing = false }
+
 
     public func cycleSubject() { subject = subject.next }
 }

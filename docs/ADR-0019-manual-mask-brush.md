@@ -1,10 +1,17 @@
 # ADR-0019 — "Cọ mask thủ công": the hand-painted mask, its storage, and the shared gate slot
 
-Status: accepted — 2026-09-13
+Status: accepted — 2026-09-13; **UI landed and flag turned on — 2026-09-18**
+(see §UI, 2026-09-18, at the end of this file).
 Scope: Phase 6 §6.1, shared infrastructure. **Engine + storage this round**: the
 brush, its rasteriser, the PNG-in-the-bundle storage and one gated node
 (`SkinRenderNode`). There is no UI yet — nothing in RPUI captures a touch, and
 `RPEngineFeatureFlags.manualMask` ships **off**.
+
+> **2026-09-18.** The paragraph above describes the state this ADR was written
+> in and is left as written. Both of its claims have since changed: RPUI captures
+> the touch (`CanvasView` / `CanvasEventCatcher`), and the flag is on in the app
+> because the measurement this ADR made the condition for turning it on now
+> exists. The addendum at the end says what was built and what it measured.
 
 ## Context
 
@@ -236,3 +243,171 @@ byte-exact in `ManualMaskTests.pngRoundTripIsExact`.
   device. The flag being off is what makes that acceptable for now; a ms/frame
   on an A-series part is required before it is turned on, the same rule every
   other node followed.
+
+---
+
+## UI, and the device measurement that turned the flag on — 2026-09-18
+
+Everything in this section is an addendum. Nothing above it was rewritten.
+
+### 1. The rail entry is a **mode**, not a screen and not a slider group
+
+`RailLayout` gained a twentieth item, "Cọ mask" (`id: "manualMask"`), appended
+after "Khoá nền" so the design canvas's own members keep their relative order.
+It carries a `RailPresentation` — the second case, `.manualMaskBrush` — rather
+than a `sectionKey`, because there is no `EditState` namespace behind it and
+there must not be one: a brush radius in `EditState` would be a brush radius in
+every `Preset`, and "64 px" is meaningless on another image. Tapping it toggles
+`EditorChrome.isBrushing`; tapping it again puts the brush away, and **the slider
+panel stays where the user left it**, which is the whole point — a painted mask
+is only useful with some group turned up.
+
+`RailPresentation` grew `isAvailable`, so a presentation can be locked the way a
+section can: with `RPEngineFeatureFlags.manualMask` off the item is dimmed and
+inert and says *"Phase 6.1 · cọ mask đang tắt trong bản dựng này"* instead of the
+generic "chưa khả dụng". That is the second `lockedReason` in the rail, after
+"Khoá nền"'s.
+
+The label is shortened from the plan's "Cọ mask thủ công" to fit a 58 pt chip;
+the full name is the brush bar's title, where there is room for it.
+
+### 2. The brush bar borrows the panel's slot
+
+`ManualMaskBrushBar` (add / erase, three ordinary 0–100 rows, undo · làm lại ·
+xoá mask) stands **in place of** the slider list in both shells — the phone's
+tool sheet and the Mac's right-hand panel — rather than floating over the
+picture. A palette would sit on exactly the region being painted, and the user
+moves between the brush and the sliders constantly, so sharing one slot keeps
+that one tap. It reuses `RPSliderRow` unchanged, which is why
+`ManualMaskBrushSettings` is 0–100 and converts to the engine's mask pixels and
+0…1 in one place.
+
+**No detection notice**, and that is not an omission:
+`SliderPanelLayout`'s `notifiesFromNodeNamed` has no entry for this feature
+because a brush detects nothing. What the bar *does* say is when there is no
+picture or no GPU preview — a fact about the canvas, not about a detector.
+
+### 3. The overlay draws the strokes, not the coverage texture
+
+`ManualMaskOverlay` re-draws the geometry the session was given
+(`BrushStroke.points`, scaled from mask pixels into view points), with
+`.destinationOut` for erase strokes so they cut in stroke order. It does **not**
+read the coverage texture back: §4 above is explicit that a CPU read-back per
+frame of a drag is the thing this design exists to avoid.
+
+So the overlay is an *indication of where the stroke went*, not a rendering of
+the mask — a flat translucent band rather than the splat kernel's smoothstep
+falloff, and overlapping strokes do not darken. The truth of what is selected
+remains the gated node's own output: turn a Da slider up and the effect appears
+inside the painted region, which is the check the device run makes. If a future
+phase needs a pixel-accurate mask overlay (a "show mask" toggle), the honest way
+is a read-back **on stroke end only**, not per frame.
+
+### 4. Where the session lives, and the one rule that keeps it safe
+
+`LivePreviewController` owns one `ManualMaskSession` per shot, built in `open`
+at the decoded preview's size — which is what keeps `maskToImage` the identity
+and means a brush point needs no rescaling, the same property `faces` and
+`bodySkinMask` already rely on. It is dropped in `close` and whenever another
+shot opens, because masks are per shot (§8).
+
+The load-bearing rule is in `renderRequest`:
+
+```swift
+if let manualMask, !manualMask.isEmpty {
+    request.gateMasks.append(manualMask.coverage)
+}
+```
+
+An armed-but-unpainted session must **not** reach `gateMasks`. A gate
+multiplies, so an all-zero coverage would switch every mask-driven slider off in
+every shot the brush was merely armed on — the same trap §5 records for an empty
+*array*, one level down. `ManualMaskBrushWiringTests` asserts it directly.
+
+The paint API (`beginManualMaskStroke` / `extendManualMaskStroke` /
+`endManualMaskStroke` / undo / redo / clear) lives in
+`LivePreviewController+ManualMask.swift` and compares the session's `generation`
+around each call, bumping the controller's `version` only when the pixels
+actually moved — `generation` is the redraw signal this ADR already defined, and
+nothing else was invented to replace it.
+
+### 5. Gesture capture: what the brush takes and what it leaves
+
+| input | not brushing | brushing |
+|---|---|---|
+| one-finger drag / mouse drag | pan | **paints** |
+| pinch, ⌥scroll, two-finger scroll | zoom / pan | unchanged |
+| press and hold | show the original | off (a slow stroke must not flash the original) |
+| double click / double tap | fit ⇄ 100 % | off on the Mac (the second click of a dab is a dab) |
+
+The Mac's Trước | Sau comparison is where a stroke would land half a frame out,
+so the edited pane's origin is a parameter (`ManualMaskBrushGeometry.maskPoint`)
+rather than an assumption, and a point in the untouched "Trước" pane is refused
+rather than mapped.
+
+### 6. The measurement this ADR asked for, on the phone
+
+The blocker above was explicit: *"a ms/frame on an A-series part is required
+before it is turned on"*. Two things were built to answer it, because one was not
+enough:
+
+* `ManualMaskBenchTests` + `Scripts/bench-manual-mask.sh` — paint ms/touch-event,
+  gated vs **ungated** SkinRenderNode ms/frame (the control), and an undo replay,
+  at a 2048 px preview. Files `Research/bench/p6-manual-mask-{macos,ios-simulator}.json`.
+* `App/ManualMaskSelfTest.swift` (`RP_BRUSH_SELFTEST`) — the same three
+  measurements **inside the app on the device**, driving the product objects.
+  It exists because `xcodebuild` refuses tool-hosted testing on a device
+  destination, so a package test bundle cannot run on a phone at all — the wall
+  `App/BodySkinSelfTest.swift` already documents.
+
+| | macOS (M1 Pro, Release) | iOS Simulator (Release) | **iPhone (IphoneDuy, iOS 27, Debug)** |
+|---|---|---|---|
+| main thread per touch event | 0.166 ms | 0.354 ms | **0.084 ms** |
+| SkinRenderNode, no gate (control) | 4.69 ms | 6.47 ms | **6.23 ms** |
+| SkinRenderNode, one painted gate | 4.76 ms | 7.79 ms | **6.33 ms** |
+| the gate's marginal cost | 0.07 ms | 1.32 ms | **0.09 ms** |
+| gated redraw | 210 fps | 128 fps | **158 fps** |
+
+The device figures are at a 1151×2048 preview of a real photo with one detected
+face, with the skin node actually running (`nodes skin`, `gates 1` in the log
+line filed in `Research/bench/p6-manual-mask-device.json`). A second launch
+reproduces the paint and undo figures to the digit and puts the gate's marginal
+cost at −0.03 ms, which is the honest reading of both runs: **one extra r8
+dispatch is below the noise of a 6 ms skin composite.**
+
+**On that evidence `RPEngineFeatureFlags.manualMask` is on in the app**, set in
+`AppEngineSetup.enableRenderGraph` alongside the four slider groups and
+switchable off per launch with `RPDisableGroups=manualMask`. The library default
+is unchanged: the flag is still `false` in `RPEngineFeatureFlags`, so every
+flag-gating test still means what it meant.
+
+### 7. One honest cost this measurement found: deep undo
+
+The undo replay is **linear in stamps**, and the macOS bench's deep case makes
+that visible: nineteen full-frame strokes replayed cost **426.9 ms** (Simulator
+400.6 ms), against 30.1 ms for the device's single-stroke case. §3's reasoning
+still holds — a snapshot per stroke costs 2.8 MB of GPU memory per step and undo
+is not a per-frame operation — but "single-digit milliseconds", written when the
+replay was measured at a 160×120 test size, is not true at a 2048 px preview
+with a deep history.
+
+It is recorded rather than fixed because the fix is a real change with its own
+measurement: dispatch each stamp batch over the **bounding box of its stamps**
+instead of the whole texture, which is where essentially all of that time goes
+(every thread of a 2.8 M-pixel grid currently walks up to 64 stamps, most of them
+far away). That belongs in its own change, behind its own number.
+
+### 8. Still not done
+
+* **The UI does not write `masks/<shot id>/<mask id>.png`.** The storage half of
+  this ADR (§8) is built and tested in RPCore, and `EditState.perImage` carries
+  the reference, but nothing in RPUI saves or loads yet: a painted mask lives for
+  as long as the shot is open and is gone when the user moves to the next frame.
+  That is the next piece of work on this feature, and it is a document-format
+  path (save on stroke end, load on open, size-mismatch handling) rather than a
+  gesture one.
+* **No brush cursor.** There is no ring showing the brush's footprint before the
+  finger lands; the size row shows the radius in pixels instead.
+* **No pressure.** `BrushPoint.pressure` is 1 for every point a `DragGesture` or
+  an `NSEvent` delivers here. The stroke model supports it (§1) and a stylus
+  would fill it in.

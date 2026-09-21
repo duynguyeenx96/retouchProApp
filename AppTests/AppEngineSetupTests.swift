@@ -18,8 +18,9 @@ import Testing
 @Suite("App engine setup", .serialized)
 struct AppEngineSetupTests {
 
-    /// Saves and restores the four RPEngine group flags plus the two kernel
-    /// flags, so this suite cannot switch another suite's feature off.
+    /// Saves and restores the four RPEngine group flags, the two kernel flags
+    /// and the brush's own bit, so this suite cannot switch another suite's
+    /// feature off.
     private func withRestoredFlags(_ body: () throws -> Void) rethrows {
         let color = RPEngineFeatureFlags.colorSliders
         let skin = RPEngineFeatureFlags.skinSliders
@@ -27,7 +28,9 @@ struct AppEngineSetupTests {
         let eyes = RPEngineFeatureFlags.eyesTeethSliders
         let guided = RPEngineFeatureFlags.guidedFilter
         let mls = RPEngineFeatureFlags.mlsMeshWarp
+        let brush = RPEngineFeatureFlags.manualMask
         defer {
+            RPEngineFeatureFlags.manualMask = brush
             RPEngineFeatureFlags.colorSliders = color
             RPEngineFeatureFlags.skinSliders = skin
             RPEngineFeatureFlags.warpSliders = warp
@@ -38,11 +41,16 @@ struct AppEngineSetupTests {
         try body()
     }
 
-    @Test("The app turns on all four measured slider groups")
+    @Test("The app turns on all four measured slider groups, and the mask brush")
     func enablesEveryGroup() {
         withRestoredFlags {
             let enabled = AppEngineSetup.enableRenderGraph(disabled: [])
-            #expect(enabled == ["color", "skin", "warp", "eyesTeeth"])
+            // "manualMask" is not a fifth slider group — it is the hand-painted
+            // gate that narrows the other four (docs/PLAN.md §6.1,
+            // docs/ADR-0019) — but it is turned on in the same place and on the
+            // same terms, so it is in the same list.
+            #expect(enabled == ["color", "skin", "warp", "eyesTeeth", "manualMask"])
+            #expect(RPEngineFeatureFlags.manualMask)
             #expect(RPEngineFeatureFlags.colorSliders)
             #expect(RPEngineFeatureFlags.skinSliders)
             #expect(RPEngineFeatureFlags.warpSliders)
@@ -64,8 +72,13 @@ struct AppEngineSetupTests {
             RPEngineFeatureFlags.skinSliders = false
             RPEngineFeatureFlags.warpSliders = false
             RPEngineFeatureFlags.eyesTeethSliders = false
-            let enabled = AppEngineSetup.enableRenderGraph(disabled: ["warp", "skin"])
+            RPEngineFeatureFlags.manualMask = false
+            let enabled = AppEngineSetup.enableRenderGraph(
+                disabled: ["warp", "skin", "manualMask"])
             #expect(enabled == ["color", "eyesTeeth"])
+            // The brush answers to the same list, and switching it off leaves
+            // the groups it would have narrowed exactly as they were.
+            #expect(RPEngineFeatureFlags.manualMask == false)
             #expect(RPEngineFeatureFlags.skinSliders == false)
             #expect(RPEngineFeatureFlags.warpSliders == false)
             #expect(RPEngineFeatureFlags.colorSliders)

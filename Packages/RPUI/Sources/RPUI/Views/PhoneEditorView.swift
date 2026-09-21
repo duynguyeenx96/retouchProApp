@@ -127,7 +127,7 @@ struct PhoneEditorView: View {
     // MARK: - Canvas
 
     private var canvas: some View {
-        CanvasView(model: model, cache: cache)
+        CanvasView(model: model, cache: cache, chrome: chrome)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .topLeading) {
                 FaceChipsView(model: model)
@@ -219,11 +219,27 @@ struct PhoneEditorView: View {
             }
 
             ScrollView {
-                GroupSliderList(
-                    model: model, section: chrome.activeSection,
-                    thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                // The brush takes the sheet's slider slot while it is armed
+                // (docs/PLAN.md §6.1): it is a mode over whichever group the
+                // user was in, so it borrows the space rather than adding a
+                // second panel on a 390 pt screen. "Xong" gives it back.
+                if chrome.isBrushing {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ManualMaskBrushHeader(model: model, chrome: chrome)
+                            .padding(.top, 10)
+                        ManualMaskBrushBar(
+                            model: model, chrome: chrome,
+                            thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                    }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 10)
+                } else {
+                    GroupSliderList(
+                        model: model, section: chrome.activeSection,
+                        thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 10)
+                }
             }
             .frame(height: RPTheme.Metrics.phoneSheetSliderHeight)
             .scrollIndicators(.hidden)

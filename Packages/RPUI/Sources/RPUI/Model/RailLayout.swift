@@ -1,5 +1,6 @@
 import Foundation
 import RPCore
+import RPEngine
 
 /// One entry of the tool rail — the phone's bottom scroll row and the Mac's
 /// far-right vertical rail (docs/design/SPEC.md §"Turn 3 — expanded toolset
@@ -19,7 +20,8 @@ import RPCore
 ///   pairwise patch: **body part (parent) → sub-feature (child)**. So "Mặt" and
 ///   "Cơ thể" are now parents with ``children``, everything under them is a leaf
 ///   with its own panel, and the duplicate "Bọng mắt" entry is gone outright —
-///   one door per thing.
+///   one door per thing. "Cọ mask thủ công" (below) arrived after the hierarchy
+///   did and is not a body part's sub-feature at all — it stays a top-level leaf.
 /// * **Most entries have nothing behind them.** ``sectionKey`` is `nil` for the
 ///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc, Sửa da,
 ///   Căng mọng, Mụn, Đầu, Tạo khối, Khoá nền — deferred to Phase 5/6, see
@@ -56,12 +58,15 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// another panel (2026-09-18 splits). The panel may itself still be locked
     /// (Trang điểm / Tóc are Phase 5), so ``isLocked`` checks both.
     public let sectionKey: String?
-    /// The screen this item opens instead of a slider group.
+    /// The screen — or the mode — this item opens instead of a slider group.
     ///
-    /// Only "Mẫu" has one (Phase 3, docs/PLAN.md §Phase 3 *"dùng lại UI rail
-    /// 'Mẫu' đã khoá … làm màn preset"*): it is a **library**, not a set of
-    /// sliders, so it has no `EditState` namespace and cannot be expressed as a
-    /// ``sectionKey``. An item with a presentation is not locked.
+    /// Two items have one, and neither can be expressed as a ``sectionKey``
+    /// because neither is a set of sliders: "Mẫu" is a **library** (Phase 3,
+    /// docs/PLAN.md §Phase 3 *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset"*)
+    /// and "Cọ mask" is a **mode** that changes what a drag on the canvas does
+    /// (docs/PLAN.md §6.1). An item with a presentation is unlocked as long as
+    /// the thing behind it is switched on in this build
+    /// (``RailPresentation/isAvailable``).
     public let presentation: RailPresentation?
     /// Overrides the generic ``lockedHint`` for an item whose lock has a
     /// *specific* reason worth telling the user.
@@ -73,6 +78,12 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// (docs/ADR-0018 — *"Both flags stay off and no default `qualityLevel` is
     /// declared anywhere"*). Saying so is the difference between "we forgot" and
     /// "we are not shipping a number we have not measured".
+    ///
+    /// "Cọ mask" is the second, and its reason is conditional: the brush is a
+    /// finished feature *and* a build can still be run with
+    /// `RPEngineFeatureFlags.manualMask` off (`RPDisableGroups`), in which case
+    /// the item has to say that rather than the meaningless "chưa khả dụng".
+    /// It is only ever read while ``isLocked``.
     ///
     /// `nil` on every other item, which keeps the derived wording below.
     public let lockedReason: String?
@@ -104,13 +115,15 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     public var isParent: Bool { children != nil }
 
     /// `true` when tapping this item can do nothing: no section *and* no screen
-    /// behind it, or the section behind it is one of the Phase 5 groups — and,
-    /// for a parent, when *every* child is locked. A parent is not a second
-    /// concept of "locked": it is the same question asked of its children, so a
-    /// group unlocks itself the moment any one tool inside it does.
+    /// behind it, the section behind it is one of the Phase 5 groups, the screen
+    /// behind it is switched off in this build (``RailPresentation/isAvailable``)
+    /// — and, for a parent, when *every* child is locked. A parent is not a
+    /// second concept of "locked": it is the same question asked of its
+    /// children, so a group unlocks itself the moment any one tool inside it
+    /// does.
     public var isLocked: Bool {
         if let children { return children.allSatisfy(\.isLocked) }
-        if presentation != nil { return false }
+        if let presentation { return !presentation.isAvailable }
         guard let sectionKey else { return true }
         return SliderPanelLayout.section(forKey: sectionKey)?.isLocked ?? true
     }
@@ -152,7 +165,7 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
             guard isLocked else { return "" }
             return children.first?.lockedHint ?? "chưa khả dụng"
         }
-        if presentation != nil { return "" }
+        if !isLocked { return "" }
         if let lockedReason { return lockedReason }
         guard let sectionKey,
             let section = SliderPanelLayout.section(forKey: sectionKey)
@@ -161,20 +174,42 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A rail item that opens a **screen** rather than selecting a slider group.
+/// A rail item that opens a **screen or a mode** rather than selecting a slider
+/// group.
 ///
-/// One case today, and it is deliberately an enum anyway: the two other rail
-/// items that will eventually open something rather than select something ("Tự
-/// động" is a one-tap formula, Phase 6.5) should land here instead of growing a
-/// second boolean on ``RailItemDescriptor``.
+/// Two cases, and the enum was written for exactly this: the rail items that
+/// *do* something rather than *select* something land here instead of growing a
+/// second boolean on ``RailItemDescriptor`` ("Tự động", a one-tap formula, is
+/// the next one, Phase 6.5).
 public enum RailPresentation: Hashable, Sendable {
     /// The preset library (docs/PLAN.md §Phase 3). The associated value is which
     /// half of it opens — the full template gallery, or the colour-only Looks
     /// picker.
     case presetLibrary(PresetLibraryKind)
+    /// "Cọ mask thủ công" (docs/PLAN.md §6.1, docs/ADR-0019): arms the brush and
+    /// puts the brush bar on screen. It is a **mode**, not a screen and not a
+    /// slider group — while it is on, a drag on the canvas paints a mask instead
+    /// of panning the picture — so it has no `EditState.SectionKey` to point at,
+    /// exactly like "Khoá nền" and for the same reason: it narrows what the
+    /// other tools do rather than adding a tool of its own.
+    case manualMaskBrush
+
+    /// `false` when the feature behind this presentation is switched off in this
+    /// build, which makes the item **locked** (dimmed and inert) rather than a
+    /// control that opens something that then does nothing.
+    ///
+    /// Read at call time, not captured: `RPEngineFeatureFlags` is a process
+    /// global the app sets at launch (`AppEngineSetup`) and a test flips around
+    /// a case, so an item's lock has to answer the question *now*.
+    public var isAvailable: Bool {
+        switch self {
+        case .presetLibrary: true
+        case .manualMaskBrush: RPEngineFeatureFlags.manualMask
+        }
+    }
 }
 
-/// The tool rail: **eight top-level entries plus the pinned "Màu" chip**, two
+/// The tool rail: **nine top-level entries plus the pinned "Màu" chip**, two
 /// levels deep, in the user's workflow order.
 ///
 /// It is data, not view code, for the same reason ``SliderPanelLayout`` is: the
@@ -192,7 +227,8 @@ public enum RailPresentation: Hashable, Sendable {
 /// * **Da** → Mịn da · Kiềm dầu · Sửa da
 /// * **Cơ thể** → Thu gọn · Săn chắc
 /// * everything else stays a top-level leaf, in the relative order it already
-///   had: Mẫu, Tự động, Trang điểm, Tóc, Khoá nền.
+///   had: Mẫu, Tự động, Trang điểm, Tóc, Khoá nền — plus "Cọ mask thủ công",
+///   added after the hierarchy landed (docs/PLAN.md §6.1, docs/ADR-0019).
 ///
 /// **"Da" is its own parent, not a sub-feature of "Mặt"** (user's correction,
 /// 2026-09-18): skin smoothing is a *whole-body* concept even though today's
@@ -208,16 +244,22 @@ public enum RailPresentation: Hashable, Sendable {
 /// exactly what the restructuring exists to stop.
 ///
 /// **The membership is not the canvas's `RAIL` const**: one member was cut, one
-/// added and one deleted, all on the record.
+/// deleted, and two added, all on the record.
 ///
 /// * **Cut — "Xoá vật thể"**, entirely out of scope on 2026-09-11, not locked;
 ///   see `docs/design/SPEC.md` §Turn 3 "Cut from scope" for why (no
 ///   face/landmark pipeline reuse for free-form object selection, unlike every
 ///   other locked item here).
-/// * **Added — "Khoá nền"** (docs/PLAN.md §6.1), which the canvas never drew
-///   because it is a scope switch rather than a tool. It is last and ships
-///   locked; the descriptor below says why at length.
 /// * **Deleted — "Bọng mắt"** (2026-09-18), as above.
+/// * **Added — "Khoá nền"** (docs/PLAN.md §6.1), which the canvas never drew
+///   because it is a scope switch rather than a tool. It ships locked; the
+///   descriptor below says why at length.
+/// * **Added — "Cọ mask"** (docs/PLAN.md §6.1, docs/ADR-0019), the hand-painted
+///   mask brush. Also a scope switch rather than a tool — it narrows what the
+///   other tools do instead of being one of them — so it sits right after
+///   "Khoá nền" at the end of the top-level list, ships locked when
+///   `RPEngineFeatureFlags.manualMask` is off, and usable when the build turns
+///   the flag on (``RailPresentation/isAvailable``).
 ///
 /// **The order is not the canvas's either.** The canvas order buried the tools
 /// the user actually opens first behind locked placeholders; the user's real
@@ -361,6 +403,30 @@ public enum RailLayout {
             id: "backgroundLock", label: "Khoá nền",
             systemImage: "person.and.background.dotted",
             lockedReason: "Phase 6.1 · cần đo trên iPhone thật trước"),
+
+        // **Also not from the design canvas** — the twentieth entry, appended
+        // after "Khoá nền" for the same reason that one was appended after the
+        // canvas's own eighteen: the canvas drew tools, and this is not a tool.
+        //
+        // "Cọ mask thủ công" (docs/PLAN.md §6.1, docs/ADR-0019) is a **mode**:
+        // while it is armed, a drag on the canvas paints the whole-frame mask
+        // that narrows every gated node instead of panning the picture. So it
+        // carries a ``RailPresentation`` rather than a ``sectionKey`` — there is
+        // no slider group behind it and inventing one would put a brush radius
+        // into `EditState` and therefore into every preset.
+        //
+        // Its label is shortened from the plan's "Cọ mask thủ công" to fit a
+        // 58 pt rail chip next to "Bọng mắt" and "Trang điểm"; the full name is
+        // the brush bar's own title, which is where there is room for it.
+        //
+        // Unlike "Khoá nền" it ships **usable** when the build turns
+        // `RPEngineFeatureFlags.manualMask` on, and locked when it does not —
+        // see ``RailPresentation/isAvailable``. The flag, not this table, is
+        // where that decision is recorded.
+        RailItemDescriptor(
+            id: "manualMask", label: "Cọ mask", systemImage: "paintbrush",
+            presentation: .manualMaskBrush,
+            lockedReason: "Phase 6.1 · cọ mask đang tắt trong bản dựng này"),
     ]
 
     /// The one tool that is **not** in the canvas's rail and still has to be
@@ -376,7 +442,7 @@ public enum RailLayout {
     /// than dropping it."*
     ///
     /// So it is **pinned outside the scroll view** in both shells — visibly not
-    /// one of the eight, and impossible to scroll off. Label and icon are
+    /// one of the nine, and impossible to scroll off. Label and icon are
     /// read from the section itself, so the affordance cannot drift from the
     /// panel it opens; the literals are only the unreachable fallback for a
     /// missing section, which would make the item locked and inert anyway.
@@ -396,11 +462,11 @@ public enum RailLayout {
     }()
 
     /// Everything the rail draws at the top level, in the order it is drawn: the
-    /// scrolling eight, then the pinned Màu chip. **Not** the children — those
+    /// scrolling nine, then the pinned Màu chip. **Not** the children — those
     /// are drawn one level in, by the panel's own strip.
     public static var allItems: [RailItemDescriptor] { items + [colorItem] }
 
-    /// Every item a tap can land on: the top-level eight, each parent's children
+    /// Every item a tap can land on: the top-level nine, each parent's children
     /// spliced in after it, then the pinned Màu chip. Use this — not
     /// ``allItems`` — to ask "can the user get anywhere from here".
     public static var leafItems: [RailItemDescriptor] {

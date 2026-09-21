@@ -88,7 +88,8 @@ struct MacEditorView: View {
                 model: model, cache: cache,
                 showsPaneBadges: true,
                 paneCornerRadius: 4,
-                afterPaneOverlay: AnyView(FaceChipsView(model: model))
+                afterPaneOverlay: AnyView(FaceChipsView(model: model)),
+                chrome: chrome
             )
             .padding(RPTheme.Metrics.macCanvasPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

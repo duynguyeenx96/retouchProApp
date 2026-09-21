@@ -19,7 +19,18 @@ struct SliderPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            // The brush is a **mode**, not a seventh group, so it borrows the
+            // panel rather than adding one: the user keeps the slider group they
+            // were on underneath and "Xong" puts them straight back on it
+            // (docs/PLAN.md §6.1, docs/ADR-0019).
+            if chrome.isBrushing {
+                ManualMaskBrushHeader(model: model, chrome: chrome)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 12)
+            } else {
+                header
+            }
             Divider().overlay(RPTheme.hairline)
             // The second level (2026-09-18): the sub-features of the body part
             // the open panel belongs to, between the panel header and its
@@ -32,12 +43,18 @@ struct SliderPanelView: View {
                 Divider().overlay(RPTheme.hairline)
             }
             ScrollView {
-                GroupSliderList(
-                    model: model, section: section,
-                    thumbSize: RPTheme.Metrics.macSliderThumb, showsCaption: true
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                if chrome.isBrushing {
+                    ManualMaskBrushBar(model: model, chrome: chrome)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                } else {
+                    GroupSliderList(
+                        model: model, section: section,
+                        thumbSize: RPTheme.Metrics.macSliderThumb, showsCaption: true
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                }
             }
             .scrollIndicators(.visible)
             Divider().overlay(RPTheme.hairline)

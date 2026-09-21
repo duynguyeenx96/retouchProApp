@@ -163,7 +163,7 @@ struct GroupTabRow: View {
     /// the two cannot end up looking different.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
-        let isActive = item.opensPanel(chrome.activeGroupKey)
+        let isActive = chrome.isRailItemActive(item)
         Button {
             chrome.selectRailItem(item)
         } label: {
@@ -321,7 +321,7 @@ struct GroupIconRail: View {
     /// scrolling ones.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
-        let isActive = item.opensPanel(chrome.activeGroupKey)
+        let isActive = chrome.isRailItemActive(item)
         Button {
             chrome.selectRailItem(item)
         } label: {
