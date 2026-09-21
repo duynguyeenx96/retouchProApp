@@ -20,6 +20,10 @@ struct FilmstripView: View {
     var importFromFiles: (() -> Void)?
     var importFromPhotos: (() -> Void)?
 
+    /// Shot the user asked to remove, waiting for the confirmation in
+    /// ``ShotRemovalConfirmation``. `nil` means no alert is up.
+    @State private var shotPendingRemoval: Shot?
+
     var body: some View {
         HStack(spacing: 14) {
             ScrollViewReader { proxy in
@@ -43,6 +47,7 @@ struct FilmstripView: View {
         .overlay {
             if model.shots.isEmpty { emptyLabel }
         }
+        .shotRemovalConfirmation($shotPendingRemoval, model: model)
     }
 
     @ViewBuilder private var strip: some View {
@@ -69,7 +74,11 @@ struct FilmstripView: View {
             .buttonStyle(.plain)
             .id(shot.id)
             .help(shot.originalFileName)
-            .contextMenu { ratingMenu(for: shot) }
+            .contextMenu {
+                ratingMenu(for: shot)
+                Divider()
+                ShotRemovalMenuItem(shot: shot, pending: $shotPendingRemoval)
+            }
             .accessibilityLabel(
                 "\(shot.originalFileName), \(shot.rating) sao")
             .accessibilityAddTraits(

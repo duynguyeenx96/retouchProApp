@@ -91,6 +91,9 @@ struct PhoneLibraryView: View {
 
     @State private var isSearching = false
     @State private var search = ""
+    /// Long-pressed shot waiting for the removal confirmation. The phone has no
+    /// filmstrip, so this grid is where "Xoá ảnh khỏi dự án" lives on iOS.
+    @State private var shotPendingRemoval: Shot?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
 
@@ -221,6 +224,9 @@ struct PhoneLibraryView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        ShotRemovalMenuItem(shot: shot, pending: $shotPendingRemoval)
+                    }
                     .accessibilityLabel("\(shot.originalFileName), \(shot.rating) sao")
                 }
             }
@@ -228,6 +234,7 @@ struct PhoneLibraryView: View {
             .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
+        .shotRemovalConfirmation($shotPendingRemoval, model: model)
         .frame(maxHeight: .infinity)
         .overlay {
             if shots.isEmpty {

@@ -386,6 +386,42 @@ public final class EditorModel {
         await setFlag(current == flag ? .unflagged : flag, for: shotID)
     }
 
+    // MARK: - Removing a shot
+
+    /// Takes `shotID` out of the project — the filmstrip's "Xoá ảnh khỏi dự án".
+    ///
+    /// The work itself is `ProjectStore.removeShot`, which drops the shot from
+    /// the manifest, deletes its `edits/<id>.json` and its cached preview, and
+    /// records a tombstone so the next `load()` does not re-adopt the file. The
+    /// imported file under `originals/` is deliberately **left alone**: reclaiming
+    /// it is a separate, explicit call (`deleteOriginalFile`) that nothing in the
+    /// UI makes, so a mis-click in the filmstrip can never destroy a RAW. The
+    /// confirmation text says exactly that.
+    ///
+    /// Selection is not decided here: ``refresh()`` runs
+    /// `FilmstripSelection.synchronize`, which keeps the active shot when it
+    /// survived and otherwise lands on whatever now sits at the removed shot's
+    /// index — i.e. the **next** frame, or the new last one when the removed shot
+    /// was at the end, or nothing at all when the project is now empty. When that
+    /// moves the selection this reloads the new shot's `EditState` and resets the
+    /// viewport, the same two things ``select(shotID:)`` does, so the canvas never
+    /// keeps drawing the removed shot's document.
+    public func removeShot(_ shotID: ShotID) async {
+        let previousSelection = selection.activeShotID
+        // No `commitEditState()` first: either the shot being removed is the
+        // active one — and writing its document a moment before `removeShot`
+        // deletes it is pointless — or it is not, and the active document is
+        // untouched by the removal.
+        await mutate { project, store in
+            try store.removeShot(id: shotID, from: &project)
+        }
+        editedShotIDs.remove(shotID)
+        if selection.activeShotID != previousSelection {
+            viewport = CanvasViewport()
+            await loadActiveEditState()
+        }
+    }
+
     // MARK: - Presets (read-only in Phase 1)
 
     /// Lists `presets/`. Applying a preset is Phase 3 — nothing in RPUI writes

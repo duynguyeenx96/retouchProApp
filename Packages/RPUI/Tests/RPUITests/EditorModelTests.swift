@@ -131,6 +131,105 @@ struct EditorModelTests {
         #expect(try temp.reloadedProject().shot(id: target)?.flag == .unflagged)
     }
 
+    // MARK: Removing a shot
+
+    @Test("Removing a shot the user is not looking at leaves the selection alone")
+    func removeNonSelectedShot() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let removed = temp.project.shots[2]
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        #expect(model.activeShot?.id == temp.project.shots[0].id)
+
+        await model.removeShot(removed.id)
+
+        #expect(model.shots.map(\.id) == temp.project.shots.prefix(2).map(\.id))
+        #expect(model.activeShot?.id == temp.project.shots[0].id)
+        #expect(model.lastErrorMessage == nil)
+
+        let reloaded = try temp.reloadedProject()
+        #expect(reloaded.shots.count == 2, "gone from the manifest and not re-adopted on load")
+        // `removeShot` is not a file delete — the import survives (ADR-0002).
+        #expect(
+            FileManager.default.fileExists(atPath: temp.store.originalURL(for: removed).path))
+    }
+
+    @Test("Removing the selected shot lands on the next frame and reads its EditState")
+    func removeSelectedShot() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+
+        var edited = EditState()
+        edited.setSlider("smooth", in: EditState.SectionKey.skin, to: 42)
+        try temp.store.saveEditState(edited, for: temp.project.shots[0].id)
+        try temp.store.saveEditState(edited, for: temp.project.shots[1].id)
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        await model.refreshEditedIndex()
+        let first = temp.project.shots[0].id
+        #expect(model.activeShot?.id == first)
+        #expect(model.editedShotIDs.contains(first))
+
+        await model.removeShot(first)
+
+        #expect(model.activeShot?.id == temp.project.shots[1].id, "the next frame, not the top")
+        #expect(model.activeEditState.slider("smooth", in: EditState.SectionKey.skin) == 42)
+        #expect(model.shots.count == 2)
+        #expect(
+            !FileManager.default.fileExists(atPath: temp.store.editsURL(for: first).path),
+            "the removed shot's document goes with it")
+        #expect(!model.editedShotIDs.contains(first), "and so does its 'Đã chỉnh' index entry")
+    }
+
+    @Test("Removing the selected *last* frame falls back to the previous one")
+    func removeSelectedLastShot() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let last = temp.project.shots[2].id
+        await model.select(shotID: last)
+        #expect(model.activeShot?.id == last)
+
+        await model.removeShot(last)
+        #expect(model.activeShot?.id == temp.project.shots[1].id)
+    }
+
+    @Test("Removing the only shot leaves an empty editor, not a dangling one")
+    func removeLastRemainingShot() async throws {
+        let temp = try TempProject(shots: 1)
+        defer { temp.cleanUp() }
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let only = temp.project.shots[0].id
+        #expect(model.activeShot?.id == only)
+
+        await model.removeShot(only)
+
+        #expect(model.shots.isEmpty)
+        #expect(model.selection.activeShotID == nil)
+        #expect(model.activeShot == nil)
+        #expect(model.activeEditState.isDefault)
+        // What the canvas asks for when it has nothing to draw — the empty state
+        // `CanvasView` already shows for a project with no shots.
+        #expect(model.previewRequest(maxPixelSize: 512) == nil)
+        #expect(try temp.reloadedProject().shots.isEmpty)
+    }
+
+    @Test("Removing a shot that is already gone is reported, not crashed on")
+    func removeUnknownShot() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        await model.removeShot(ShotID("ghost")!)
+
+        #expect(model.shots.count == 3)
+        #expect(model.activeShot?.id == temp.project.shots[0].id)
+        #expect(model.lastErrorMessage != nil)
+    }
+
     @Test("A write for a shot that is gone is reported, not crashed on")
     func unknownShotIsHarmless() async throws {
         let temp = try TempProject()
