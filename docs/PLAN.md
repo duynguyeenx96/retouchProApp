@@ -572,6 +572,40 @@ calibration sensor nào để neo Kelvin tuyệt đối — đúng tình huống
 −100…+100 cho JPEG/TIFF. Giới hạn ghi rõ: dưới khoảng −70 kênh đỏ của pixel trung tính **kẹp về 0** (gain trắng
 ở −100 là (−0.373, 0.858, 6.451) — gamut sRGB, Lightroom ở Temp 2000 cũng vậy); **±x không còn round-trip** (cố
 ý); neutral vẫn là 6500 K cho mọi ảnh; **vẫn chưa ai nhìn render**.
+
+**Cập nhật 2026-09-21 — bấm vào số để gõ giá trị, double-click thanh trượt để reset về 0** (cùng ngày, sau đợt
+Kelvin ở trên, `RPSliderRow`/`RPSliderTrack` dùng chung cho **mọi** slider trong app): số hiển thị giờ bấm được,
+gõ số rồi Enter/mất focus để commit, qua đúng 1 clamp + làm tròn `RPSliderTrack.value(atFraction:)` đã dùng cho
+kéo (không có giá trị nào field gõ ra mà kéo không tạo được); input không phải số thì revert, không ghi đĩa.
+Riêng "Nhiệt độ" nhận **Kelvin thật** (gõ "3200" → viết amount −46, đúng hàm nghịch đảo mới
+`WhiteBalance.amount(declaringKelvin:neutralKelvin:)`, sai số tối đa 3.3e-16 qua 201 bước × 3 neutral) — gõ số
+thô −100…100 sẽ trả lại đúng cái vô nghĩa mà đợt hiện Kelvin ở trên vừa sửa. Double-click **không** thêm gesture
+recogniser mới (tránh phá tranh chấp cuộn-vs-kéo vốn đã mong manh trên iOS) — nhận diện "cú click thứ 2" hậu kỳ
+từ chính `onEnded` hai gesture cũ đang có (≤0.35s, ≤16pt, một cú kéo thật luôn xoá trạng thái chờ). **Bắt được 1
+bug thật khi viết test**: commit hiện-Kelvin trước đó (đợt trên) quên chia /100 nên **mọi** giá trị khác 0 hiện
+sai (kẹp luôn về 2000K/50000K); render thì luôn đúng (node đã chia /100 sẵn), chỉ nhãn hiển thị sai — đã sửa +
+có test chốt lại. Còn treo, chưa ai xác nhận: bàn phím số trên iPhone có thể che khay slider ~250pt (không có
+code né bàn phím) — cần xem trên máy thật.
+
+**Cập nhật 2026-09-21 — biểu đồ màu histogram, nổi góc trên-phải canvas, chỉ trên macOS** (yêu cầu mới của
+user, không nằm trong phạm vi Phase 6 gốc; `docs/ADR-0024`): đếm 256 bin R/G/B (+ luma) trên **ảnh đã render
+xong** (giá trị sRGB đã encode, đúng cái mắt nhìn thấy, không phải linear light), bằng atomic trong Metal —
+mỗi threadgroup 16×16 gom vào 1024 counter threadgroup-memory trước khi merge 1 lần vào buffer chính, đọc lại
+qua `.storageModeShared` + `addCompletedHandler`, **không có `waitUntilCompleted` nào trên đường tương tác**.
+Không debounce theo thời gian: 1 lần đọc chạy tại 1 thời điểm, có ảnh mới trong lúc đọc thì đánh dấu để đọc lại
+đúng 1 lần sau — tự nương theo tốc độ GPU thay vì đoán số ms. Đo trên M1 Pro: chi phí biên **+0.599 ms/lần vẽ
+lại** (tổng 1.548 ms = **646 fps**, so với ngưỡng 30 fps của kế hoạch), so với đường đọc stall cũ
+(`readOutputPixels`, chỉ dùng cho test) là **7423×** chậm hơn nếu dùng nhầm. Không thêm `RPEngineFeatureFlags`
+— lý do: đây là 1 lượt đọc ảnh đã xong, không đụng `RenderRequest`/pixel path nào, nên không rơi vào đúng 2 lý
+do các cờ khác trong Phase 6 tồn tại (thuật toán chưa đo trên iPhone thật, hoặc kernel dùng chung nhiều nhóm);
+`showsHistogram: true` ở 1 điểm gọi (`MacEditorView`) đã là công tắc tắt-mở tương đương. Bắt được 2 bug thật lúc
+viết test: (1) kernel Metal ban đầu **không compile được** (sai kiểu thuộc tính `[[threads_per_threadgroup]]`),
+khiến `MetalContext.shared` về `nil` và cả 10 test **tự pass rỗng** vì guard `else { return }` — sửa bằng 1 hàm
+`requireContext()` mới ném lỗi thay vì bỏ qua lặng lẽ; (2) đường đọc đồng bộ (test/bench) từng dùng chung ring
+buffer với đường đọc bất đồng bộ (tương tác), có thể đọc trúng buffer đang bị ghi dở — tách hẳn 1 buffer thứ 4
+riêng cho đường đồng bộ. Đã review độc lập, xác nhận cả 2 bug trên là thật và đã sửa đúng, chạy cả macOS lẫn
+iOS Simulator xanh (tính năng chỉ bật trên macOS, iOS chỉ cần không bị ảnh hưởng). **Còn treo, chưa ai nhìn**:
+chưa có ai chụp màn hình xem 3 kênh màu chồng lên nhau có đọc được không ở kích thước 164×88pt đã ship.
 - `RenderGraph` slider (Màu −100…100 cho 16/18 key, các nhóm còn lại 0–100 — `docs/ADR-0016`):
   - **Da**: Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn.
   - **Mặt**: Bóp mặt, Gò má, Hàm, Cằm, Trán, Thái dương, Mũi (thu nhỏ/sống/đầu), Mắt (to/khoảng cách/nghiêng), Miệng (to/cười), Môi đầy.
