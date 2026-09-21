@@ -97,6 +97,51 @@ struct SliderPanelLayoutTests {
         #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Kiềm dầu"])
     }
 
+    /// The third panel over `EditState.SectionKey.face` (2026-09-21,
+    /// docs/ADR-0020) — a second *tool* sharing a namespace, not a split of the
+    /// reshape panel. The keys are the engine's, the labels are the plan's, the
+    /// range is RPCore's, and the two panels count only their own sliders so
+    /// "Đặt lại" on one cannot clear the other's.
+    @Test("Tạo khối is a third panel over the face namespace, with the three engine keys")
+    func contourIsItsOwnPanelOverTheFaceNamespace() throws {
+        let contour = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.contour))
+        let face = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.face))
+
+        #expect(contour.title == "Tạo khối")
+        #expect(contour.parameters.map(\.key) == ContourSliders.Key.all)
+        #expect(contour.parameters.map(\.label) == ["Gò má", "Sống mũi", "Hàm"])
+        for parameter in contour.parameters {
+            #expect(parameter.range == 0...100, "\(parameter.key)")
+            #expect(!parameter.direction.isEmpty, "\(parameter.key)")
+        }
+        #expect(contour.systemImage != face.systemImage)
+
+        // UI-only, exactly like the two 2026-09-18 splits: the three keys were
+        // already in the `face` namespace (ADR-0020 §5) and nothing on disk moved.
+        #expect(contour.storageKey == EditState.SectionKey.face)
+        #expect(SliderPanelLayout.sections(forStorageKey: EditState.SectionKey.face)
+            .map(\.key) == [EditState.SectionKey.face, SliderPanelLayout.PanelKey.contour])
+
+        // …and the reshape panel is untouched: fifteen keys, none of them a
+        // contour one, so `FaceSliders` still sees an identity after a contour
+        // slider moves.
+        #expect(face.parameters.map(\.key) == FaceSliders.Key.all)
+        #expect(!face.parameters.contains { ContourSliders.Key.all.contains($0.key) })
+
+        var state = EditState()
+        state.setSlider(ContourSliders.Key.cheek, in: EditState.SectionKey.face, to: 40)
+        #expect(contour.activeParameterCount(in: state) == 1)
+        #expect(face.activeParameterCount(in: state) == 0)
+        #expect(face.isNeutral(in: state))
+        #expect(!contour.isNeutral(in: state))
+        #expect(FaceSliders(state).isIdentity)
+        #expect(ContourSliders(state).cheek == 40)
+        // A preset carrying only a contour amount summarises as "Tạo khối", not
+        // as "Mặt" — the reason `sections(touchedBy:)` filters by parameter.
+        #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Tạo khối"])
+    }
+
     /// The two panels together are still exactly the engine's key list, in the
     /// engine's order — a ninth `SkinSliders` key would land in "Mịn da"
     /// (everything that is not `shine`) rather than fall out of the UI.

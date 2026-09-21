@@ -6,6 +6,12 @@ lobe builder, one extra branch inside the colour composite, and the numbers.
 There is no UI — nothing in RPUI exposes the three keys, `RailLayout.swift` is
 untouched — and `RPEngineFeatureFlags.contourSliders` ships **off**.
 
+> **Addendum 2026-09-21 — the UI exists now; the flag does not move.** The two
+> sentences above about "no UI" were true of the engine round and are superseded
+> by the "UI (2026-09-21)" section at the end of this file. Everything else here
+> — every decision, constant and measured number — is unchanged, because the
+> wiring added no engine code at all.
+
 ## Context
 
 docs/PLAN.md §6.2 files "Tạo khối" as the cheap item of Phase 6 (~0.5 tuần) and
@@ -327,7 +333,9 @@ on macOS and in the Simulator. The only field that moved in `p2-color-*.json` is
 * **Cost is linear in lobes × pixels.** Eleven lobes per face, every pixel, no
   bounding-box early-out. At the 128-lobe cap that is ~12× the measured marginal
   cost; the cap is what keeps it bounded, not a spatial structure.
-* **No UI.** Three keys exist in `EditState` that no panel writes yet.
+* ~~**No UI.** Three keys exist in `EditState` that no panel writes yet.~~
+  **Closed 2026-09-21** — see "UI (2026-09-21)" below. The limitation that
+  remains is the one above it: no iPhone number, so the flag is still off.
 
 ## Alternatives rejected
 
@@ -342,3 +350,52 @@ on macOS and in the Simulator. The only field that moved in `p2-color-*.json` is
 * **Passing the three amounts to the kernel as scalars.** Decision 6: a lobe
   belongs to exactly one region, so the amount is already in its `strength`, and
   three more floats in `ColorParams` would have pushed the pinned stride.
+
+## UI (2026-09-21) — a wired panel in front of a flag that is still off
+
+No engine file changed for this: it is `SliderPanelLayout` + one rail entry.
+
+### A panel of its own, the third over `EditState.SectionKey.face`
+
+`SliderPanelLayout.PanelKey.contour` — "Tạo khối", three rows: **Gò má**
+(`contourCheek`), **Sống mũi** (`contourNose`), **Hàm** (`contourJaw`), keys read
+from `ContourSliders.Key.all` and ranges from `RPCore.Slider`, exactly as every
+other panel builds itself.
+
+Not three more rows at the bottom of "Hình dáng mặt", even though decision 5 put
+the keys in that namespace: they share the namespace because both tools are
+per-face and measured in `faceWidth` (which is what makes them preset-transferable),
+but *shading* a cheekbone and *narrowing* one are different tools, and a panel
+that answers one question with another tool's controls is the 2026-09-18
+"Răng opens an eye panel" bug. `storageKey` already existed for exactly this —
+the split is UI-only, nothing on disk moved, and `sections(touchedBy:)` filters
+by parameter so a preset carrying only `contourCheek` summarises as "Tạo khối".
+
+### The flag is reported, not obeyed by locking
+
+`SliderSectionDescriptor.gatedBy` (new, one case: `PanelFeatureGate.contourSliders`)
+is read per render by `GroupAvailability.blockedReason`, **before** the "no face"
+check — a build with the effect off cannot be fixed by importing another photo.
+The rail item is therefore *not* locked: it opens the panel, the three rows draw
+with their real keys, and the group is disabled under one line —
+"Tạo khối đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+
+The two alternatives were both already in the codebase and both are wrong here:
+
+* **Lock the rail item**, as "Cọ mask" does via `RailPresentation.isAvailable`.
+  That is for an item with *nothing* behind it; here it would hide a working
+  panel and trip `RailLayoutTests.noWorkingSectionIsOrphaned`, which exists to
+  catch precisely a working panel with no affordance.
+* **Mark the panel locked**, as Trang điểm / Tóc are. That says "these sliders do
+  not exist", which is false — they exist, they are measured, and the honest
+  sentence is about this build rather than about the phase.
+
+`contourSliders` is **not** flipped by this round. Turning it on is still a
+product decision waiting on an iPhone number (see "Known limitations"), and it is
+now a one-bit change with no UI work behind it.
+
+### No detection notice
+
+`notifiesFromNodeNamed` stays `nil`. Contour is landmark geometry: there is
+nothing it can fail to detect beyond the face itself, which the panel already
+reports through `needsFace`.

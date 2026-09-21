@@ -24,7 +24,7 @@ import RPEngine
 ///   did and is not a body part's sub-feature at all — it stays a top-level leaf.
 /// * **Most entries have nothing behind them.** ``sectionKey`` is `nil` for the
 ///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc, Sửa da,
-///   Căng mọng, Mụn, Đầu, Tạo khối, Khoá nền — deferred to Phase 5/6, see
+///   Căng mọng, Mụn, Đầu, Khoá nền — deferred to Phase 5/6, see
 ///   `docs/PLAN.md` §Phase 2 "Turn 3 canvas"). They are drawn dimmed and inert
 ///   rather than hidden, the same rule the locked slider groups already follow
 ///   (docs/design/SPEC.md cross-cutting rule 4). A **parent** is locked only when
@@ -53,10 +53,13 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// `nil` = no working section behind this item yet (locked), **or** this item
     /// is a parent and its ``children`` carry the panels. Non-nil points at a
     /// `SliderSectionDescriptor.key` — a **panel**, which is an
-    /// `EditState.SectionKey` for four of the eight and a UI-only
-    /// `SliderPanelLayout.PanelKey` for the four that share a namespace with
-    /// another panel (2026-09-18 splits). The panel may itself still be locked
-    /// (Trang điểm / Tóc are Phase 5), so ``isLocked`` checks both.
+    /// `EditState.SectionKey` for four of the nine and a UI-only
+    /// `SliderPanelLayout.PanelKey` for the five that share a namespace with
+    /// another panel (the 2026-09-18 splits, plus "Tạo khối" over `face`). The
+    /// panel may itself still be locked (Trang điểm / Tóc are Phase 5), so
+    /// ``isLocked`` checks both — but a panel whose *engine flag* is off is not
+    /// locked, it opens and explains itself
+    /// (``SliderSectionDescriptor/gatedBy``).
     public let sectionKey: String?
     /// The screen — or the mode — this item opens instead of a slider group.
     ///
@@ -266,7 +269,9 @@ public enum RailPresentation: Hashable, Sendable {
 /// sequence is **Mặt → Da first**, everything else after them in the canvas's
 /// relative order, and **Màu last** (``colorItem``, pinned at the trailing end).
 /// Inside each parent the children run in workflow order — reshape, eyes, teeth,
-/// then the locked ones.
+/// then the rest in the canvas's own order ("Tạo khối" keeps its slot after
+/// "Đầu" now that it opens a panel, rather than being promoted past a locked
+/// sibling).
 public enum RailLayout {
     /// The seven sub-features of the face, in workflow order. Written out here
     /// rather than inline so the parent below reads as one line.
@@ -296,10 +301,20 @@ public enum RailLayout {
         // Locked, unchanged by the restructuring: head reshape has an engine
         // (`HeadReshape`) but no slider section wired to the UI yet.
         RailItemDescriptor(id: "head", label: "Đầu", systemImage: "person.crop.circle"),
-        // Locked, unchanged: Phase 6.2 shipped the contour *render* behind
-        // `RPEngineFeatureFlags.contourSliders` (default off, docs/ADR-0020), so
-        // there is still no panel to open.
-        RailItemDescriptor(id: "contour", label: "Tạo khối", systemImage: "circle.lefthalf.filled"),
+        // Three contour amounts, wired 2026-09-21 (docs/ADR-0020 shipped the
+        // render in Phase 6.2 with no panel at all). Its own panel rather than
+        // three more rows under "Hình dáng mặt": they share the `face` namespace
+        // but shading a cheekbone and narrowing one are different tools.
+        //
+        // **Not locked, and inert anyway**: `RPEngineFeatureFlags.contourSliders`
+        // is off by default, so the panel opens, draws its three real sliders and
+        // says why they are disabled (`PanelFeatureGate.contourSliders`). The
+        // lock is not the right instrument here — "Cọ mask" is locked because
+        // there is nothing behind it to open, whereas this panel is exactly what
+        // a later flag flip has to light up.
+        RailItemDescriptor(
+            id: "contour", label: "Tạo khối", systemImage: "circle.lefthalf.filled",
+            sectionKey: SliderPanelLayout.PanelKey.contour),
         // Lip plumping — a face feature, not a body one (user's call,
         // 2026-09-18), so it sits here rather than under "Cơ thể". The label is
         // still the canvas's literal (cross-cutting rule 6); it is locked.

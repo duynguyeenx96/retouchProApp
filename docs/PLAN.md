@@ -597,6 +597,9 @@ không thêm `EditState.SectionKey`, không migrate gì trên đĩa**:
 - Trạng thái khoá của từng tool **không đổi** trong đợt này: Tạo khối vẫn khoá (node có nhưng
   `RPEngineFeatureFlags.contourSliders` mặc định tắt), Đầu/Căng mọng/Mụn/Thu gọn/Săn chắc/Sửa da/Tự động/
   Khoá nền vẫn khoá.
+  *(Cập nhật 2026-09-21: **Tạo khối đã được nối UI** và không còn khoá — nó mở panel riêng 3 slider, cờ engine
+  vẫn tắt nên nhóm bị disable kèm lý do thay vì khoá cả rail item. Xem "Trạng thái 6.2 — Tạo khối" ở §Phase 6.
+  Mười mục còn lại trong danh sách trên vẫn khoá.)*
 
 **Cập nhật kế hoạch (2026-09-11), Phase 6 chi tiết + Share Extension:** Input: `docs/HANDOFF-remaining-features-2026-09-10.md` (13 mục rail khoá + yêu cầu Share Extension), 3 research pass
 song song (mask/segmentation, body/head/contour, object-removal+preset+Share Extension — không phải spike đo số,
@@ -751,6 +754,22 @@ trên vài ảnh thật. Pass: warp không tạo méo/blob ở vùng giữa hai 
 | Tạo khối (Contour) | Tô sáng/tối theo khối mặt (gò má, sống mũi, hàm) theo mesh, không toàn khung | Xác nhận đúng hướng đã đoán ở HANDOFF: `ColorRenderNode` hiện tại của Auto D&B **đã global, chưa mask** (đọc code xác nhận). Chỉ cần thêm: vài mask ellipse/radial mềm neo tại index landmark 478 điểm sẵn có (tam giác gò má dưới mắt, đường sống mũi qua `tNasion`/`tNoseTip` `FaceReshape` đã tính, dải hàm theo oval mặt), rồi nhân mask đó vào đúng công thức dodge/burn LUT đã có. Không landmark mới, không model mới, không kernel Metal họ mới. | ~0.5 tuần |
 | Đầu (Head reshape) | Warp cả khung đầu/viền tóc, không chỉ landmark mặt | Vision không có API viền đầu/tóc riêng, nhưng RPVision **đã có** — `FaceParsingClass.hair`/`FaceParsingGroup.hair` từ BiSeNet (ADR-0006/S2). Dò biên ngoài của mask tóc (`VNContoursRequest` hoặc trace CPU/Metal) làm control point MLS thêm, kết hợp mở rộng vòng oval mặt (478 điểm) ra ngoài theo tỉ lệ neo vào biên tóc đó — cùng họ với `FaceReshape` (identity handle + vùng trọng số) hơn là một bài toán model mới. Cần vòng đo mới kiểu ADR-0010 (chưa có ground-truth viền tóc trên ảnh a6300 thật). | ~1.5 tuần |
 | **Sửa da — đồng bộ da toàn thân** (nghĩa chốt 2026-09-11) | **Không phải bộ slider mới.** Mở rộng đúng 8 slider Da hiện có (Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn) từ mask-chỉ-trong-mặt ra một mask da-toàn-thân, dùng **cùng giá trị** người dùng đã chỉnh cho mặt — để da cổ/vai/tay lộ trong khung không bị lệch tông/độ mịn so với mặt vừa beauty. | Mask da hiện có (BiSeNet, ADR-0006) chỉ chạy trên **crop quanh mặt**, không phủ toàn khung — cần một mask "da" full-frame mới, khác nguồn. Rẻ nhất, không cần model mới: **skin-color classification cổ điển** (ngưỡng theo không gian màu YCbCr/HSV, kỹ thuật CV kinh điển, không phải deep learning) chạy toàn ảnh; đo IoU trên bộ ảnh test nhiều tông da khác nhau trước khi ship, đúng "measure before ship" (giống phương pháp đo của S2). Có thể **cộng thêm** (không bắt buộc) `VNGeneratePersonSegmentationRequest` (Khoá nền, 6.1) để loại false-positive nền màu da (gỗ, cát, tường be) — v1 ship được chỉ với ngưỡng màu, v2 cộng segmentation khi 6.1 xong. Mask da-toàn-thân và mask da-mặt (BiSeNet) phải **hợp nhất mượt** (feather ở cổ) để không lộ đường biên hai mask ráp lại. Wrinkle kiến trúc đáng ghi chú: `SkinRenderNode` hôm nay chỉ nhận mask **theo từng mặt** (`FaceRenderInput`/seam `faces`), còn mask da-toàn-thân là **whole-frame, không theo mặt** — cần mở seam để node nhận thêm 1 mask phụ whole-frame, hợp nhất trước khi dispatch (không phải viết kernel mới, `SkinRenderNode`'s kernel đã đo 79 dB, chỉ đổi input mask). UI: một toggle (không phải panel slider riêng) — chi tiết UI chốt lúc build. | ~1-1.5 tuần, không phụ thuộc 6.1 (Khoá nền là nâng cấp tuỳ chọn, không chặn) |
+
+**Trạng thái 6.2 — Tạo khối (cập nhật 2026-09-21): engine xong + đã có UI, cờ vẫn tắt.**
+- **Engine (đã merge, `docs/ADR-0020-contour-sliders.md`)**: 3 slider `contourCheek`/`contourNose`/`contourJaw`
+  (0–100, mặc định 0, nằm trong `EditState.SectionKey.face` nên **transfer qua preset**), 11 lobe ellipse mềm
+  neo theo mesh 478 điểm, nhân thẳng vào bước dodge/burn LUT sẵn có trong `ColorRenderNode` — không node mới,
+  không kernel họ mới. Số đã đo: golden GPU-vs-CPU **162.98 dB**, vùng không thuộc slider đổi **đúng 0**, phủ
+  **10.4%** khung (không toàn khung), chi phí biên **0.75 ms** ở preview 2048 px / **3.94 ms** ở 24 MP (Mac M1 Pro).
+- **UI (2026-09-21, đợt này)**: rail item "Tạo khối" (con của "Mặt") nay trỏ vào panel riêng
+  `SliderPanelLayout.PanelKey.contour` — panel **thứ ba** trên namespace `face`, cạnh "Hình dáng mặt" (15 slider
+  warp), với 3 nhãn "Gò má" · "Sống mũi" · "Hàm". UI-only: `EditState`/`Slider`/`FaceSliders`/render node không đổi.
+- **`RPEngineFeatureFlags.contourSliders` vẫn mặc định tắt** (thiếu số đo trên iPhone thật, đúng luật
+  measure-before-ship). Trong bản dựng cờ tắt: rail item **không khoá**, panel mở được và vẽ đủ 3 slider, nhưng
+  nhóm bị disable kèm một câu lý do (`PanelFeatureGate.contourSliders` → `GroupAvailability.blockedReason`) —
+  đúng cách panel đã báo "không nhận diện được khuôn mặt", không phải lock kiểu Phase 5. Bật cờ sau này là một
+  dòng, không phải một đợt UI. Không có "detection notice" riêng cho Tạo khối: nó là hình học landmark thuần,
+  không có gì để *nhận diện hỏng* ngoài chính khuôn mặt.
 
 **6.3 — Phụ thuộc 6.1**
 

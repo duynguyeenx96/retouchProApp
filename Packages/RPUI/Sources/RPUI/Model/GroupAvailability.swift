@@ -13,6 +13,11 @@ import Foundation
 /// > **A detection-dependent feature that cannot detect what it needs says so.**
 /// > It never silently does nothing.
 ///
+/// Since 2026-09-21 it carries one more case of the same rule, where the thing
+/// missing is not a detection but a switch: a group whose engine flag is off in
+/// this build (``SliderSectionDescriptor/gatedBy``, "Tạo khối" today) says that,
+/// instead of offering three live-looking sliders whose values no kernel reads.
+///
 /// ## The shape of the message, which is not negotiable per group
 /// One sentence, Vietnamese, **live-computed on every render** — not one-shot,
 /// not dismissible, not a toast. It is a standing fact about the group ("this
@@ -54,6 +59,15 @@ enum GroupAvailability {
         notices: [String: String]
     ) -> String? {
         if section.isLocked { return "\(section.phase) · chưa khả dụng" }
+
+        // 0. The build, before anything about *this photo*. A group whose engine
+        //    flag is off cannot work on any picture, so asking about the face
+        //    first would answer a question the user cannot act on ("import
+        //    another photo") for a problem that is not about the photo.
+        //    `RPEngineFeatureFlags` is read here, at render time, for the reason
+        //    `PanelFeatureGate` gives: the flags are a process global the app
+        //    sets at launch.
+        if let gate = section.gatedBy, !gate.isOn { return gate.offReason }
 
         // 1. The face, first and unchanged. It stays ahead of the node notices
         //    because it is the more fundamental answer: with no face there is

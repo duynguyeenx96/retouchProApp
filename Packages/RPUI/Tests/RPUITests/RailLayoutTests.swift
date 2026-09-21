@@ -77,8 +77,13 @@ struct RailLayoutTests {
     ]
 
     /// The leaves with a working section behind them, per SPEC's wiring table.
+    ///
+    /// "Tạo khối" joined on 2026-09-21 (docs/ADR-0020). It is **active** even
+    /// though `RPEngineFeatureFlags.contourSliders` is off: the flag disables the
+    /// three rows inside the panel with a reason (`PanelFeatureGate`), it does
+    /// not lock the rail item — see ``contourOpensAPanelThatSaysTheFlagIsOff``.
     private static let activeLabels: Set<String> = [
-        "Hình dáng mặt", "Mịn da", "Kiềm dầu", "Mắt", "Răng",
+        "Hình dáng mặt", "Mịn da", "Kiềm dầu", "Mắt", "Răng", "Tạo khối",
     ]
 
     /// The one item that opens a **screen** instead of a slider group: "Mẫu" was
@@ -217,15 +222,15 @@ struct RailLayoutTests {
         }
     }
 
-    /// SPEC's wiring table, restated for the hierarchy: five working leaves —
-    /// three under "Mặt", two under "Da" — each opening its own panel and
+    /// SPEC's wiring table, restated for the hierarchy: six working leaves —
+    /// four under "Mặt", two under "Da" — each opening its own panel and
     /// nothing else's.
     ///
     /// Pinned off, so "the active items" is the list this table describes
     /// rather than one that grows a nineteenth entry when another suite happens
     /// to have the brush switched on.
     @MainActor
-    @Test("The five active leaves point at the panels the wiring table names")
+    @Test("The six active leaves point at the panels the wiring table names")
     func wiringTable() async throws {
         try await Self.withManualMask(false) {
         let byLabel = Dictionary(
@@ -235,6 +240,7 @@ struct RailLayoutTests {
         #expect(byLabel["Kiềm dầu"]?.sectionKey == SliderPanelLayout.PanelKey.shine)
         #expect(byLabel["Mắt"]?.sectionKey == SliderPanelLayout.PanelKey.eyes)
         #expect(byLabel["Răng"]?.sectionKey == SliderPanelLayout.PanelKey.teeth)
+        #expect(byLabel["Tạo khối"]?.sectionKey == SliderPanelLayout.PanelKey.contour)
 
         // The user-visible half of the same fact: one slider under "Răng" and
         // one under "Kiềm dầu", three under "Mắt", seven under "Mịn da" — and
@@ -246,6 +252,7 @@ struct RailLayoutTests {
         #expect(panel("Kiềm dầu")?.parameters.map(\.label) == ["Khử bóng dầu"])
         #expect(panel("Mắt")?.parameters.count == 3)
         #expect(panel("Mịn da")?.parameters.count == 7)
+        #expect(panel("Tạo khối")?.parameters.map(\.label) == ["Gò má", "Sống mũi", "Hàm"])
         #expect(byLabel["Răng"]?.systemImage != byLabel["Mắt"]?.systemImage)
         #expect(byLabel["Kiềm dầu"]?.systemImage != byLabel["Mịn da"]?.systemImage)
 
@@ -264,29 +271,31 @@ struct RailLayoutTests {
         }
     }
 
-    /// Twelve locked leaves with the brush switched off, for four different
-    /// reasons: nine with no section at all, Trang điểm and Tóc whose sections
+    /// Eleven locked leaves with the brush switched off, for four different
+    /// reasons: eight with no section at all, Trang điểm and Tóc whose sections
     /// exist but are themselves Phase 5, "Khoá nền", which has a finished
     /// engine and is held back on purpose, and "Cọ mask", which is locked only
     /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
     /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
-    /// in Phase 3; "Bọng mắt" was deleted.)
+    /// in Phase 3; "Bọng mắt" was deleted; **"Tạo khối" left this list on
+    /// 2026-09-21** when it got a panel — its own flag being off disables the
+    /// three rows inside that panel instead of locking the item.)
     @MainActor
-    @Test("The other twelve leaves are locked, for the four different reasons")
+    @Test("The other eleven leaves are locked, for the four different reasons")
     func lockedItems() async throws {
         try await Self.withManualMask(false) {
         let locked = RailLayout.leafItems.filter(\.isLocked)
-        #expect(locked.count == 12)
+        #expect(locked.count == 11)
         #expect(
             locked.map(\.label) == [
-                "Đầu", "Tạo khối", "Căng mọng", "Mụn", "Sửa da", "Tự động",
+                "Đầu", "Căng mọng", "Mụn", "Sửa da", "Tự động",
                 "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền", "Cọ mask",
             ])
 
-        // No section behind it at all and no specific reason: eight of the
-        // twelve.
+        // No section behind it at all and no specific reason: seven of the
+        // eleven.
         let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
-        #expect(unbacked.count == 8)
+        #expect(unbacked.count == 7)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
         // The two Phase 5 groups keep the panel's own wording.
@@ -460,6 +469,81 @@ struct RailLayoutTests {
         #expect(chrome.presetLibrary == nil)
     }
 
+    // MARK: - "Tạo khối" — a wired panel behind a flag that is still off
+
+    /// docs/ADR-0020 / docs/PLAN.md §6.2, wired 2026-09-21. The engine shipped
+    /// with "no UI — nothing in RPUI exposes the three keys"; this is that UI,
+    /// and the question it has to answer is what a rail item does when the
+    /// panel behind it is real but `RPEngineFeatureFlags.contourSliders` is off.
+    ///
+    /// The answer, and the three claims in the order they would break: the item
+    /// opens the panel (it is **not** locked — a locked item with a three-slider
+    /// panel behind it is the orphan `noWorkingSectionIsOrphaned` forbids), the
+    /// panel carries the ADR's three keys under the plan's Vietnamese labels,
+    /// and while the flag is off the group is disabled with a sentence that says
+    /// so rather than three controls that write JSON no kernel reads.
+    @MainActor
+    @Test("Tạo khối opens a real panel that says the flag is off")
+    func contourOpensAPanelThatSaysTheFlagIsOff() throws {
+        let item = try #require(RailLayout.leafItems.first { $0.id == "contour" })
+        #expect(item.label == "Tạo khối")
+        #expect(item.sectionKey == SliderPanelLayout.PanelKey.contour)
+        #expect(!item.isLocked)
+        #expect(item.lockedReason == nil)
+        #expect(RailLayout.activeItems.contains { $0.id == item.id })
+
+        let panel = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.contour))
+        #expect(item.systemImage == panel.systemImage)
+        #expect(panel.parameters.map(\.key) == ContourSliders.Key.all)
+        #expect(panel.parameters.map(\.label) == ["Gò má", "Sống mũi", "Hàm"])
+        #expect(panel.storageKey == EditState.SectionKey.face)
+        #expect(panel.gatedBy == .contourSliders)
+        // No notice node: contour is pure landmark geometry, so there is nothing
+        // it can fail to *detect* (docs/PLAN.md §6.2 / the Phase 6 plan's item 2).
+        #expect(panel.notifiesFromNodeNamed == nil)
+
+        // Tapping it really moves the panel, with the child strip of "Mặt".
+        let chrome = EditorChrome()
+        chrome.activeGroupKey = SliderPanelLayout.PanelKey.smooth
+        chrome.selectRailItem(item)
+        #expect(chrome.activeGroupKey == SliderPanelLayout.PanelKey.contour)
+        #expect(chrome.activeSection.parameters.count == 3)
+        #expect(chrome.activeRailParent?.id == "faceGroup")
+
+        // The flag, both ways. With it off the group is blocked by the build —
+        // ahead of the "no face" answer, because no photo would help; with it on
+        // the only thing left in the way is the ordinary face check.
+        let previous = RPEngineFeatureFlags.contourSliders
+        defer { RPEngineFeatureFlags.contourSliders = previous }
+
+        RPEngineFeatureFlags.contourSliders = false
+        let blocked = GroupAvailability.blockedReason(
+            section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+            notices: [:])
+        #expect(blocked == PanelFeatureGate.contourSliders.offReason)
+        #expect(blocked?.contains("Tạo khối") == true)
+        #expect(blocked != "chưa khả dụng")
+
+        RPEngineFeatureFlags.contourSliders = true
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: [:]) == nil)
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 0, preview: .ready(faceAnalysisRan: true),
+                notices: [:]) == "Không nhận diện được khuôn mặt trong ảnh này.")
+    }
+
+    /// The gate is scoped to the one panel that needs it, so it did not become a
+    /// second, quieter way of marking a group unavailable.
+    @Test("gatedBy is set on exactly the one panel whose engine flag is off")
+    func panelGateIsScoped() {
+        #expect(
+            SliderPanelLayout.sections.filter { $0.gatedBy != nil }.map(\.key)
+                == [SliderPanelLayout.PanelKey.contour])
+    }
+
     /// The override is scoped to the two items that need it — a built feature
     /// held back for a measurement, and a built feature a build can switch off —
     /// so this did not quietly become a second place where lock hints are
@@ -567,12 +651,17 @@ struct RailLayoutTests {
 
     /// The general form of the same rule: no working slider panel may be
     /// orphaned by the rail. Today that is Mịn da / Kiềm dầu / Hình dáng mặt /
-    /// Mắt / Răng from the tree and Màu from the pinned chip; a seventh working
-    /// panel added in a later phase fails here until it gets an affordance.
+    /// Tạo khối / Mắt / Răng from the tree and Màu from the pinned chip; an
+    /// eighth working panel added in a later phase fails here until it gets an
+    /// affordance.
+    ///
+    /// This is the rule that decides how a flag-gated panel ships: locking the
+    /// "Tạo khối" rail item while its panel carries three real sliders would
+    /// leave exactly the orphan this test exists to catch.
     @Test("Every unlocked slider panel is reachable from the rail")
     func noWorkingSectionIsOrphaned() {
         let working = Set(SliderPanelLayout.sections.filter { !$0.isLocked }.map(\.key))
-        #expect(working.count == 6)
+        #expect(working.count == 7)
         #expect(RailLayout.reachableSectionKeys == working)
     }
 

@@ -41,13 +41,16 @@ struct LivePreviewWiringTests {
                 $0 != EyesTeethSliders.Key.teethWhiten
             },
             SliderPanelLayout.PanelKey.teeth: [EyesTeethSliders.Key.teethWhiten],
+            // The `face` namespace carries two tools since 2026-09-21: the
+            // fifteen reshape keys above and these three (docs/ADR-0020 §5).
+            SliderPanelLayout.PanelKey.contour: ContourSliders.Key.all,
             EditState.SectionKey.color: ColorSliders.Key.all,
         ]
         for (key, keys) in expected {
             let section = try #require(SliderPanelLayout.section(forKey: key))
             #expect(section.parameters.map(\.key) == keys, "\(key)")
         }
-        #expect(SliderPanelLayout.workingParameterCount == 8 + 15 + 4 + 18)
+        #expect(SliderPanelLayout.workingParameterCount == 8 + 15 + 3 + 4 + 18)
     }
 
     @Test("Every working slider has a label and a stated direction")
@@ -77,7 +80,7 @@ struct LivePreviewWiringTests {
         #expect(SliderPanelLayout.section(forKey: EditState.SectionKey.color)?.needsFace == false)
         for key in [
             SliderPanelLayout.PanelKey.smooth, SliderPanelLayout.PanelKey.shine,
-            EditState.SectionKey.face,
+            EditState.SectionKey.face, SliderPanelLayout.PanelKey.contour,
             SliderPanelLayout.PanelKey.eyes, SliderPanelLayout.PanelKey.teeth,
         ] {
             #expect(SliderPanelLayout.section(forKey: key)?.needsFace == true, "\(key)")

@@ -29,11 +29,15 @@ struct DesignShellTests {
     /// as "Mịn da" (7) and "Kiềm dầu" (1) — both after a shared panel was
     /// reported as a functional error. The `eyesTeeth` and `skin` namespaces
     /// behind them are unchanged.
+    ///
+    /// **Nine since 2026-09-21**: "Tạo khối" (docs/ADR-0020), next to "Mặt"
+    /// because it is the second panel over the `face` namespace.
     @Test("The group tabs carry the design's Vietnamese labels, in order")
     func groupTabs() {
         #expect(
             SliderPanelLayout.sections.map(\.title) == [
-                "Mịn da", "Kiềm dầu", "Mặt", "Mắt", "Răng", "Màu", "Trang điểm", "Tóc",
+                "Mịn da", "Kiềm dầu", "Mặt", "Tạo khối", "Mắt", "Răng", "Màu",
+                "Trang điểm", "Tóc",
             ])
         #expect(!SliderPanelLayout.sections.map(\.title).contains("Mắt & Răng"))
         #expect(!SliderPanelLayout.sections.map(\.title).contains("Da"))

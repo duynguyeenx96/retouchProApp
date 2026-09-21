@@ -60,7 +60,7 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// what a rail item's `sectionKey` points at, and what
     /// ``SliderPanelLayout/section(forKey:)`` looks up.
     ///
-    /// Usually the same string as ``storageKey``, and for four of the eight
+    /// Usually the same string as ``storageKey``, and for four of the nine
     /// panels it is. It is a separate concept because a panel is a *UI* grouping
     /// and the namespace is a *storage* one, and since 2026-09-18 they are no
     /// longer 1:1 — see ``storageKey``.
@@ -74,6 +74,11 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// `EditState.SectionKey.eyesTeeth`, `EyesTeethSliders` and
     /// `EyesTeethRenderNode` are untouched, so nothing on disk moved and every
     /// preset written before the split still applies unchanged.
+    ///
+    /// "Hình dáng mặt" and "Tạo khối" are two panels over `face` for a different
+    /// reason (2026-09-21, docs/ADR-0020): not a split, but a second tool whose
+    /// three keys were put in the *face* namespace so a preset carries them
+    /// (§5 of that ADR). `EditState`, `Slider` and `FaceSliders` are untouched.
     ///
     /// "Mịn da" and "Kiềm dầu" are the same arrangement over `skin`, split later
     /// the same day for the same reason: the two rail entries carried the *same*
@@ -124,6 +129,25 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// landmark geometry, so neither has anything to detect.
     public let notifiesFromNodeNamed: String?
 
+    /// The build-time feature flag this group's sliders need, or `nil` for a
+    /// group that works in every build — which is every group that shipped
+    /// before "Tạo khối".
+    ///
+    /// A gated group is **wired and visible, not locked**: its keys, labels and
+    /// ranges are real, the rail opens it, and the panel says in one sentence
+    /// that this build has the effect switched off (``PanelFeatureGate/offReason``)
+    /// while the rows are disabled. That is the same treatment
+    /// ``GroupAvailability`` already gives "no face detected" — a standing fact
+    /// about why the group cannot do anything *right now* — rather than the
+    /// Phase 5 lock, which means "these sliders do not exist".
+    ///
+    /// The alternative, locking the rail item the way "Cọ mask" does
+    /// (`RailPresentation.isAvailable`), is for an item with no panel behind it
+    /// at all. Here there is a panel, so hiding it behind a dimmed icon would
+    /// orphan a working panel that a flag flip is supposed to light up with no
+    /// further wiring.
+    public let gatedBy: PanelFeatureGate?
+
     public var id: String { key }
 
     /// `true` for the Phase 5 groups. They are drawn dimmed and inert rather
@@ -171,9 +195,11 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
         parameters: [SliderParameter] = [],
         plannedParameters: [String] = [],
         needsFace: Bool = false,
-        notifiesFromNodeNamed: String? = nil
+        notifiesFromNodeNamed: String? = nil,
+        gatedBy: PanelFeatureGate? = nil
     ) {
         self.notifiesFromNodeNamed = notifiesFromNodeNamed
+        self.gatedBy = gatedBy
         self.key = key
         self.storageKey = storageKey ?? key
         self.title = title
@@ -187,7 +213,44 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     }
 }
 
-/// The slider taxonomy: **eight panels over six `EditState` namespaces**, six
+/// A `RPEngineFeatureFlags` bit a slider group's effect depends on.
+///
+/// The mirror of ``RailPresentation/isAvailable`` for panels: the rail already
+/// had one item ("Cọ mask") whose usability follows a process-global flag, and
+/// this is the same idea for a group that *does* have sliders behind it. Read at
+/// call time, never captured — the app sets the flags at launch
+/// (`AppEngineSetup`) and a test flips them around a case, so the panel has to
+/// answer the question *now*.
+///
+/// One case today. It is an enum rather than a `KeyPath` so that the reason the
+/// flag is off travels with it: "chưa khả dụng" would be a lie about a feature
+/// whose engine, kernel and numbers all shipped (docs/ADR-0020).
+public enum PanelFeatureGate: Hashable, Sendable {
+    /// "Tạo khối" — docs/ADR-0020. The lobes, the kernel branch and the golden /
+    /// selectivity / speed numbers are all merged and measured on a Mac; the
+    /// flag stays off until there is an iPhone figure, which is the same bar
+    /// "Khoá nền" is held to (docs/ADR-0018).
+    case contourSliders
+
+    /// Whether this build has the effect switched on.
+    public var isOn: Bool {
+        switch self {
+        case .contourSliders: RPEngineFeatureFlags.contourSliders
+        }
+    }
+
+    /// The sentence the panel shows while ``isOn`` is `false` — same shape as
+    /// every other ``GroupAvailability`` reason: one Vietnamese line stating a
+    /// standing fact, no phase placeholder, nothing dismissible.
+    public var offReason: String {
+        switch self {
+        case .contourSliders:
+            "Tạo khối đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+        }
+    }
+}
+
+/// The slider taxonomy: **nine panels over six `EditState` namespaces**, seven
 /// of the panels working.
 ///
 /// It is data, not view code, for two reasons: the order and grouping is the
@@ -211,6 +274,14 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
 /// Both splits are **UI-only**: the namespaces, `SkinSliders` /
 /// `EyesTeethSliders` and their render nodes all still handle their keys
 /// together, so nothing on disk changed and no preset migrated.
+///
+/// **Nine since 2026-09-21**, for a different reason: "Tạo khối" is a third
+/// panel over `EditState.SectionKey.face`, not a split of the second. Contour
+/// and reshape are separate tools that happen to share a namespace because both
+/// are per-face and measured in `faceWidth` (docs/ADR-0020 §5), and putting
+/// three dodge/burn amounts at the bottom of the fifteen reshape sliders is the
+/// same mistake "Răng opens an eye panel" was. It is the one panel with a
+/// ``SliderSectionDescriptor/gatedBy`` flag.
 public enum SliderPanelLayout {
     /// Panel identities that are **not** an `EditState.SectionKey`, because two
     /// panels share one namespace. Every other panel's ``SliderSectionDescriptor/key``
@@ -224,6 +295,11 @@ public enum SliderPanelLayout {
         public static let smooth = "smooth"
         /// "Kiềm dầu" — the one `SkinSliders.Key.shine` slider of that namespace.
         public static let shine = "shine"
+        /// "Tạo khối" — the three `ContourSliders.Key` amounts of
+        /// `EditState.SectionKey.face` (docs/ADR-0020). The other panel over
+        /// that namespace is "Hình dáng mặt", the fifteen reshape sliders, whose
+        /// panel key is still the namespace itself.
+        public static let contour = "contour"
     }
 
     /// Which of `EyesTeethSliders.Key.all` belong to the "Răng" panel. Everything
@@ -314,6 +390,45 @@ public enum SliderPanelLayout {
                     FaceSliders.Key.lipFullness: ("Môi đầy", "môi dày hơn"),
                 ]),
             needsFace: true
+        ),
+        // The third panel over `face` (2026-09-21, docs/ADR-0020): three
+        // dodge/burn amounts, not three more reshape sliders. They share the
+        // namespace because contour is per-face and every length it draws is a
+        // fraction of `faceWidth` — the property that makes "Mặt" transferable
+        // through a preset — but they are a different tool, so they get their
+        // own panel rather than a fourth block at the bottom of the fifteen.
+        //
+        // The labels are the ADR's own names for the three regions. "Gò má" and
+        // "Hàm" repeat the reshape panel's labels on purpose: the reshape
+        // sliders *narrow* the cheekbone and the jaw, these two *shade* them, and
+        // the two panels are what tells them apart (each panel header says which
+        // one you are in). The direction lines say which of the two it is.
+        //
+        // `gatedBy` is what makes this panel honest while
+        // `RPEngineFeatureFlags.contourSliders` is off: the rail opens it, the
+        // three rows draw with their real keys and ranges, and the panel says
+        // the build has the effect switched off instead of offering three
+        // sliders that would write JSON no kernel reads.
+        SliderSectionDescriptor(
+            key: PanelKey.contour,
+            storageKey: EditState.SectionKey.face,
+            title: "Tạo khối",
+            panelTitle: "Tạo khối",
+            sectionCaption: "Khối sáng / tối theo mesh",
+            systemImage: "circle.lefthalf.filled",
+            phase: "Phase 6",
+            parameters: Self.parameters(
+                in: EditState.SectionKey.face,
+                keys: ContourSliders.Key.all,
+                labels: [
+                    ContourSliders.Key.cheek: (
+                        "Gò má", "sáng trên gò má, tối ở hõm má (không bóp mặt)"
+                    ),
+                    ContourSliders.Key.nose: ("Sống mũi", "sáng dọc sống mũi"),
+                    ContourSliders.Key.jaw: ("Hàm", "tối dọc viền hàm"),
+                ]),
+            needsFace: true,
+            gatedBy: .contourSliders
         ),
         // Two panels, one namespace (2026-09-18). "Mắt" keeps the three eye
         // sliders; "Răng" is the single Trắng răng. Both write into
