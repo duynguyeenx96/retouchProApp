@@ -99,6 +99,12 @@ public final class MetalContext: @unchecked Sendable {
         // appended **last** for that reason — adding it anywhere else would move
         // every later file's line numbers in the concatenated source.
         ("RenderShaderSources", "BodySkinShaders"),
+        // Phase 6: the canvas histogram (HistogramShaders.metal, docs/ADR-0024).
+        // It reads SkinShaders' `kRPLuma` and shares nothing else, and is
+        // appended **last** for the same reason every file above it was: adding
+        // it anywhere else would move every later file's line numbers in the
+        // concatenated source.
+        ("RenderShaderSources", "HistogramShaders"),
     ]
 
     public init(device: (any MTLDevice)? = nil) throws {
