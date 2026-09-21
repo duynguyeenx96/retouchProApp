@@ -46,6 +46,23 @@ public final class EditorModel {
     /// Last thing that went wrong, for a banner. Cleared by ``dismissError()``.
     public private(set) var lastErrorMessage: String?
 
+    /// The **settings clipboard** — "sao chép thiết lập" from one shot, "dán"
+    /// onto the batch selection (`EditorModel+CopySettings.swift`).
+    ///
+    /// In memory only and deliberately not a `Preset` in the library: the user
+    /// asked to copy one photo's look onto a few others, not to name and keep it,
+    /// so nothing here ever reaches `presets/`. Lives on the class rather than in
+    /// the extension because an extension cannot store; `internal(set)` so that
+    /// the one file that owns the feature is the only writer.
+    public internal(set) var copiedSettings: CopiedSettings?
+    /// True while a paste is writing. Unlike ``isWriting`` this **is** a guard:
+    /// a second paste started mid-batch would interleave writes to the same
+    /// `edits/<id>.json` files, so ``pasteCopiedSettings(to:)`` refuses.
+    public internal(set) var isPastingSettings = false
+    /// Result of the last copy or paste, for the filmstrip's status line.
+    /// Cleared by ``dismissSettingsMessage()``.
+    public internal(set) var lastSettingsMessage: String?
+
     /// True while an import is running, for a progress indicator and to keep the
     /// import controls from being tapped twice.
     public private(set) var isImporting = false

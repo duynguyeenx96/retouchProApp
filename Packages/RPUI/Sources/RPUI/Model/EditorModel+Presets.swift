@@ -4,9 +4,12 @@ import RPCore
 /// Where a preset lands (docs/PLAN.md §Phase 3: *"áp cho ảnh chọn / cả project,
 /// auto-apply mọi ảnh mới vào project"*).
 ///
-/// There is no "the selected photos" case because the filmstrip has exactly one
-/// selection (`FilmstripSelection.activeShotID`); multi-select is not a thing
-/// this app has, so offering a control for it would be a lie.
+/// There is no "the selected photos" case even though the filmstrip *does* now
+/// have a batch selection (`FilmstripSelection.selectedShotIDs`). The preset
+/// library is a modal screen with no filmstrip on it, so a third scope there
+/// would point at a selection the user cannot see while choosing. Applying a
+/// look to a hand-picked set is the copy/paste-settings path instead
+/// (`EditorModel+CopySettings.swift`), which is driven from the strip itself.
 public enum PresetApplyScope: String, CaseIterable, Hashable, Sendable, Identifiable {
     /// The photo on the canvas.
     case activeShot

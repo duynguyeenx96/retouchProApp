@@ -94,6 +94,12 @@ struct PhoneLibraryView: View {
     /// Long-pressed shot waiting for the removal confirmation. The phone has no
     /// filmstrip, so this grid is where "Xoá ảnh khỏi dự án" lives on iOS.
     @State private var shotPendingRemoval: Shot?
+    /// The phone's answer to ⌘-click. iOS has no modifier keys, so multi-select
+    /// is an explicit mode — the Photos app pattern: tap "Chọn", then tapping a
+    /// thumbnail toggles it instead of opening it. Simulating a modifier click
+    /// with a long-press would collide with the context menu that is already
+    /// there.
+    @State private var isSelectingMany = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
 
@@ -108,7 +114,11 @@ struct PhoneLibraryView: View {
             filterRow
             if isSearching { searchField }
             grid
-            importCard
+            if isSelectingMany {
+                selectionBar
+            } else {
+                importCard
+            }
         }
         .background(RPTheme.canvas)
         .task { await model.refreshEditedIndex() }
@@ -137,6 +147,21 @@ struct PhoneLibraryView: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
+                Button {
+                    isSelectingMany.toggle()
+                    if !isSelectingMany { Task { await model.collapseSelection() } }
+                } label: {
+                    Text(isSelectingMany ? "Xong" : "Chọn")
+                        .font(RPTheme.text(12.5, weight: isSelectingMany ? .semibold : .regular))
+                        .foregroundStyle(isSelectingMany ? RPTheme.accent : RPTheme.textPrimary)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(RPTheme.fillNeutral, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.shots.isEmpty)
+                .accessibilityLabel(isSelectingMany ? "Xong chọn nhiều ảnh" : "Chọn nhiều ảnh")
+
                 Button {
                     isSearching.toggle()
                     if !isSearching { search = "" }
@@ -206,7 +231,13 @@ struct PhoneLibraryView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(shots) { shot in
-                    Button { open(shot) } label: {
+                    Button {
+                        if isSelectingMany {
+                            Task { await model.toggleSelection(shotID: shot.id) }
+                        } else {
+                            open(shot)
+                        }
+                    } label: {
                         RPThumbnail(
                             request: PreviewRequest(
                                 originalURL: model.thumbnailURL(for: shot),
@@ -222,12 +253,18 @@ struct PhoneLibraryView: View {
                                 name: shot.originalFileName, rating: shot.rating,
                                 fontSize: 8.5, hasBackground: true)
                         }
+                        .overlay { selectionOverlay(for: shot) }
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
+                        SettingsClipboardMenuItems(model: model, shot: shot)
+                        Divider()
                         ShotRemovalMenuItem(shot: shot, pending: $shotPendingRemoval)
                     }
-                    .accessibilityLabel("\(shot.originalFileName), \(shot.rating) sao")
+                    .accessibilityLabel(
+                        "\(shot.originalFileName), \(shot.rating) sao"
+                            + (isSelectingMany && model.selection.isSelected(shot.id)
+                                ? ", đã chọn" : ""))
                 }
             }
             .padding(.horizontal, 18)
@@ -247,6 +284,86 @@ struct PhoneLibraryView: View {
                 .foregroundStyle(RPTheme.textTertiary)
             }
         }
+    }
+
+    /// The tick on a thumbnail while "Chọn" mode is on. Only drawn in that mode:
+    /// outside it the batch selection is always just the open photo, and a
+    /// permanent tick on it would say something the mint border already says.
+    @ViewBuilder
+    private func selectionOverlay(for shot: Shot) -> some View {
+        if isSelectingMany {
+            let isSelected = model.selection.isSelected(shot.id)
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(
+                    isSelected ? RPTheme.accent : Color.clear,
+                    lineWidth: 2)
+                .overlay(alignment: .topTrailing) {
+                    Image(
+                        systemName: isSelected ? "checkmark.circle.fill" : "circle"
+                    )
+                    .font(.system(size: 16))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(
+                        isSelected ? RPTheme.onAccent : Color.white.opacity(0.85),
+                        isSelected ? RPTheme.accent : Color.black.opacity(0.35)
+                    )
+                    .padding(5)
+                }
+        }
+    }
+
+    /// The bottom bar of "Chọn" mode: how many are selected, and the two batch
+    /// actions. It **replaces** the import card while the mode is on — the phone
+    /// has one 390 pt column and stacking both would push the grid off screen.
+    private var selectionBar: some View {
+        let count = model.selection.selectedShotIDs.count
+        return VStack(spacing: 8) {
+            HStack {
+                Text("\(count) ảnh đang chọn")
+                    .font(RPTheme.text(12.5, weight: .semibold))
+                    .foregroundStyle(RPTheme.textPrimary)
+                Spacer(minLength: 8)
+                Button("Chọn tất cả") { Task { await model.selectAllShots() } }
+                    .buttonStyle(.plain)
+                    .font(RPTheme.text(12.5))
+                    .foregroundStyle(RPTheme.accent)
+            }
+            if let message = model.lastSettingsMessage {
+                Text(message)
+                    .font(RPTheme.text(11.5))
+                    .foregroundStyle(RPTheme.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 8) {
+                // Copy takes exactly one source photo, so it is the open one —
+                // the same photo the editor would show. Pasting is what the
+                // multi-selection is for.
+                RPSecondaryButton(
+                    title: "Sao chép thiết lập", horizontalPadding: 12, verticalPadding: 9,
+                    isEnabled: model.activeShot != nil
+                ) {
+                    Task { await model.copySettingsFromActiveShot() }
+                }
+                Button {
+                    Task { await model.pasteSettingsIntoSelection() }
+                } label: {
+                    Text("Dán vào \(count) ảnh")
+                        .font(RPTheme.text(12.5, weight: .semibold))
+                        .foregroundStyle(RPTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(RPTheme.accent, in: RoundedRectangle(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canPasteSettingsIntoSelection)
+                .opacity(model.canPasteSettingsIntoSelection ? 1 : 0.4)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(RPTheme.chrome, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 18)
+        .padding(.bottom, 10)
     }
 
     private var importCard: some View {

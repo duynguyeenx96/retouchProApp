@@ -729,6 +729,24 @@ việc giao task cho coder — mục "Cần quyết định" ở cuối §Phase 
   `Preset.init(from:limitedTo:)` (hàm đã có). Cá nhân hoá thật cho tab này — không làm ở v1, xem "Tự động v2"
   (§Phase 6.6) cho hướng cá nhân hoá thật sự user muốn (theo khuôn mặt nhận diện, không phải theo gu-chung).
 
+**Cập nhật (2026-09-21) — "áp cho ảnh chọn" nay là thật: multi-select + sao chép/dán thiết lập kiểu Lightroom.**
+Gạch đầu dòng "áp cho ảnh chọn / cả project" ở trên trước nay chỉ có nửa sau (`PresetApplyScope.allShots`), vì
+filmstrip chưa hề có khái niệm chọn nhiều ảnh. User (thợ chụp) yêu cầu đúng workflow Lightroom: chỉnh 1 tấm →
+chuột phải → copy metadata chỉnh sửa → dán cho loạt ảnh đã chọn sẵn. Đã ship, UI-only + 1 kiểu giá trị mới
+trong RPUI (không đổi format đĩa, không thêm node render):
+- `FilmstripSelection` có thêm `selectedShotIDs` (batch) bên cạnh `activeShotID` (ảnh đang mở). Bất biến: ảnh
+  đang mở **luôn** nằm trong batch, nên mọi call site cũ chỉ biết `activeShotID` không phải sửa gì.
+- macOS: ⌘-click bật/tắt 1 ảnh, ⇧-click lấy dải từ anchor — đúng quy ước Finder/Lightroom. Không làm
+  marquee/rubber-band: filmstrip là `ScrollView` 1 hàng, kéo ngang đã là cử chỉ cuộn.
+- iOS: `PhoneLibraryView` (iPhone không có filmstrip) thêm nút "Chọn" kiểu app Photos — vào mode thì chạm để
+  bật/tắt, kèm thanh hành động dưới lưới.
+- Clipboard là **trong bộ nhớ**, không đụng `presets/<id>.json`: `CopiedSettings` gói đúng một `Preset`
+  (`Preset.init(from:)` đã bỏ `perImage`, nên không mang theo face index/crop). Dán = `applying(_:mode:.replace)`
+  + `saveEditState` cho từng ảnh — cùng đường ghi với áp preset, nên dán preset rỗng = reset đúng như "Gốc".
+- Sao chép **cả cụm** (full copy), chưa có bảng tick chọn nhóm như dialog "Copy Settings" của Lightroom.
+  Machinery đã sẵn (`Preset.init(from:limitedTo:)` + `applying(_:replacingSections:)`), chỉ còn thiếu UI ⇒ ghi
+  lại làm **follow-up**, không nửa vời.
+
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 
 Hướng kỹ thuật và UX đích **đã chốt với user** (`docs/HANDOFF-remaining-features-2026-09-10.md` §4.1) — phần dưới

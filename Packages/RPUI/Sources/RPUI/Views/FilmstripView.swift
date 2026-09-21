@@ -2,6 +2,10 @@ import RPCore
 import RPEngine
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 /// **Screen 1b's filmstrip** — the 104 pt strip under the macOS canvas: 68×76
 /// thumbnails with a 2 px mint border on the selected one, and a right-aligned
 /// status cluster (`N ảnh · M chọn` · the selected shot's stars · the zoom).
@@ -9,6 +13,12 @@ import SwiftUI
 /// Shows every shot in `Project.shots` order — the array order *is* the display
 /// order (ADR-0002 §1) — and writes the rating back through ``EditorModel``,
 /// which goes through `ProjectSession` (ADR-0003 §12).
+///
+/// It is also where **multi-select** lives (⌘-click, ⇧-click) and therefore
+/// where copy/paste settings is driven from: the strip is the one place on the
+/// macOS editor screen that shows several photos at once, so "the photos this
+/// batch action is about" can be pointed at directly. The selected-but-not-open
+/// cells get a dimmer mint border than the open one.
 struct FilmstripView: View {
     @Bindable var model: EditorModel
     let cache: PreviewImageCache
@@ -53,7 +63,7 @@ struct FilmstripView: View {
     @ViewBuilder private var strip: some View {
         let cells = ForEach(model.shots) { shot in
             Button {
-                Task { await model.select(shotID: shot.id) }
+                click(shot)
             } label: {
                 RPThumbnail(
                     request: PreviewRequest(
@@ -70,25 +80,66 @@ struct FilmstripView: View {
                 .frame(
                     width: RPTheme.Metrics.macFilmstripThumbnail.width,
                     height: RPTheme.Metrics.macFilmstripThumbnail.height)
+                .overlay { batchSelectionBorder(for: shot) }
             }
             .buttonStyle(.plain)
             .id(shot.id)
             .help(shot.originalFileName)
             .contextMenu {
+                SettingsClipboardMenuItems(model: model, shot: shot)
+                Divider()
                 ratingMenu(for: shot)
                 Divider()
                 ShotRemovalMenuItem(shot: shot, pending: $shotPendingRemoval)
             }
             .accessibilityLabel(
-                "\(shot.originalFileName), \(shot.rating) sao")
+                "\(shot.originalFileName), \(shot.rating) sao"
+                    + (model.selection.isSelected(shot.id) ? ", đã chọn" : ""))
             .accessibilityAddTraits(
-                shot.id == model.selection.activeShotID ? [.isButton, .isSelected] : .isButton)
+                model.selection.isSelected(shot.id) ? [.isButton, .isSelected] : .isButton)
         }
 
         if axis == .vertical {
             LazyVStack(spacing: 8) { cells }.padding(.vertical, 8)
         } else {
             LazyHStack(spacing: 8) { cells }.padding(.vertical, 14)
+        }
+    }
+
+    /// A click on a cell. Plain click opens the photo and collapses the batch
+    /// selection; **⌘-click** toggles one cell in or out of it and **⇧-click**
+    /// takes the range from the anchor — the Finder/Lightroom conventions.
+    ///
+    /// The modifiers are read from `NSEvent.modifierFlags` inside the button's
+    /// action rather than declared as `TapGesture().modifiers(.command)`
+    /// simultaneous gestures: those fire *in addition to* the button, so a
+    /// ⌘-click would both open the photo and toggle it. One handler, one
+    /// outcome. (No marquee drag-select: the strip is a one-row `ScrollView`
+    /// where a horizontal drag is already the scroll gesture, so rubber-banding
+    /// would fight it for every event. ⌘/⇧-click is the whole MVP, which is what
+    /// a filmstrip — as opposed to a 2-D grid — gets in Lightroom too.)
+    private func click(_ shot: Shot) {
+        #if os(macOS)
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.command) {
+                Task { await model.toggleSelection(shotID: shot.id) }
+                return
+            }
+            if flags.contains(.shift) {
+                Task { await model.extendSelection(toShotID: shot.id) }
+                return
+            }
+        #endif
+        Task { await model.select(shotID: shot.id) }
+    }
+
+    /// The dimmer border on cells that are in the batch selection but are not
+    /// the open photo — Lightroom's "most selected cell is brighter".
+    @ViewBuilder
+    private func batchSelectionBorder(for shot: Shot) -> some View {
+        if shot.id != model.selection.activeShotID, model.selection.isSelected(shot.id) {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(RPTheme.accent.opacity(0.45), lineWidth: 2)
         }
     }
 
@@ -114,10 +165,10 @@ struct FilmstripView: View {
     /// interactive, which is the only rating control on screen 1b.
     private var statusCluster: some View {
         HStack(spacing: 10) {
-            Text("\(model.shots.count) ảnh · \(model.activeShot == nil ? 0 : 1) chọn")
+            Text("\(model.shots.count) ảnh · \(model.selection.selectedShotIDs.count) chọn")
                 .font(RPTheme.mono(12))
                 .foregroundStyle(RPTheme.textSecondary)
-            divider
+            settingsClipboardCluster
             RPStarRating(
                 rating: model.activeShot?.rating ?? 0, size: 15,
                 isEnabled: model.activeShot != nil
@@ -135,6 +186,51 @@ struct FilmstripView: View {
             .foregroundStyle(RPTheme.textSecondary)
         }
         .fixedSize()
+    }
+
+    /// "Sao chép" / "Dán · N" — the **visible** half of copy-settings.
+    ///
+    /// The context menu alone would be the Lightroom-faithful answer and a
+    /// discoverability trap: a photographer who never right-clicks a thumbnail
+    /// would never find the feature. So the buttons appear in the strip's own
+    /// status row as soon as the feature is usable — "Sao chép" whenever a photo
+    /// is open, "Dán" once something has been copied — and say how many photos
+    /// they are about to write.
+    @ViewBuilder private var settingsClipboardCluster: some View {
+        if model.activeShot != nil {
+            divider
+            HStack(spacing: 6) {
+                RPSecondaryButton(
+                    title: "Sao chép", horizontalPadding: 10, verticalPadding: 4, fontSize: 11.5
+                ) {
+                    Task { await model.copySettingsFromActiveShot() }
+                }
+                .help("Sao chép thiết lập chỉnh sửa của ảnh đang mở")
+
+                if let copied = model.copiedSettings {
+                    RPSecondaryButton(
+                        title: "Dán · \(model.pasteTargetIDs.count)",
+                        horizontalPadding: 10, verticalPadding: 4, fontSize: 11.5,
+                        isEnabled: model.canPasteSettingsIntoSelection
+                    ) {
+                        Task { await model.pasteSettingsIntoSelection() }
+                    }
+                    .help(
+                        "Dán thiết lập của \(copied.sourceFileName) cho \(model.pasteTargetIDs.count) ảnh đang chọn (⌘-click / ⇧-click để chọn nhiều)"
+                    )
+                }
+            }
+            if let message = model.lastSettingsMessage {
+                Text(message)
+                    .font(RPTheme.text(11))
+                    .foregroundStyle(RPTheme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 260, alignment: .leading)
+                    .help(message)
+                    .accessibilityLabel(message)
+            }
+        }
     }
 
     private var divider: some View {
