@@ -16,6 +16,10 @@ public struct ProjectsView: View {
 
     @State private var isNamingProject = false
     @State private var newProjectName = ""
+    /// The row whose delete confirmation is up. Holding the whole entry (not an
+    /// index) means the dialog can name the project and count its photos, and a
+    /// reload underneath cannot make it point at a different row.
+    @State private var pendingDeletion: ProjectEntry?
 
     public init(cache: PreviewImageCache, open: @escaping (URL) -> Void) {
         self.cache = cache
@@ -40,6 +44,19 @@ public struct ProjectsView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("project-\(entry.name)")
+                            // A context menu rather than swipe-to-delete: this
+                            // is a `LazyVGrid` of cards, not a `List`, and the
+                            // same gesture works on both platforms (right-click
+                            // on the Mac, long-press on the phone) — the same
+                            // pattern the filmstrip already uses for its
+                            // per-shot menu.
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    pendingDeletion = entry
+                                } label: {
+                                    Label("Xoá dự án…", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .padding(16)
@@ -66,6 +83,23 @@ public struct ProjectsView: View {
         } message: {
             Text("Một dự án là một buổi chụp: ảnh đã nhập, các chỉnh sửa và preset của nó.")
         }
+        .confirmationDialog(
+            Text(pendingDeletion.map { "Xoá “\($0.name)”?" } ?? "Xoá dự án?"),
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDeletion
+        ) { entry in
+            Button("Xoá dự án", role: .destructive) {
+                pendingDeletion = nil
+                Task { await model.deleteProject(entry) }
+            }
+            Button("Huỷ", role: .cancel) { pendingDeletion = nil }
+        } message: { entry in
+            Text(deletionWarning(for: entry))
+        }
         .alert(
             "Có lỗi xảy ra",
             isPresented: Binding(
@@ -77,6 +111,23 @@ public struct ProjectsView: View {
         } message: {
             Text(model.lastErrorMessage ?? "")
         }
+    }
+
+    /// Says out loud what the delete destroys. Every imported photo is a *copy*
+    /// inside the bundle, so deleting the project deletes those copies — and it
+    /// is worth saying in the same breath that the file the user imported *from*
+    /// is not touched, because that is the difference between "I lost a folder"
+    /// and "I lost my photos".
+    ///
+    /// A project whose manifest could not be read has no trustworthy count, so
+    /// it gets the un-numbered sentence rather than a confident "0 ảnh".
+    private func deletionWarning(for entry: ProjectEntry) -> String {
+        let contents =
+            (entry.problem == nil && entry.shotCount > 0)
+            ? "\(entry.shotCount) ảnh đã nhập, các chỉnh sửa và preset bên trong"
+            : "toàn bộ ảnh, chỉnh sửa và preset bên trong"
+        return "Xoá vĩnh viễn dự án này cùng \(contents). Không thể hoàn tác.\n"
+            + "Ảnh gốc bạn đã nhập từ Photos hoặc Files vẫn còn nguyên."
     }
 
     private var header: some View {

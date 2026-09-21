@@ -144,6 +144,38 @@ public struct ProjectLibrary: Sendable {
         throw ProjectStoreError.invalidName(name)
     }
 
+    /// Deletes `<root>/<name>.rpproj` and everything inside it — the manifest,
+    /// the edits, the presets, and every imported original, which are full
+    /// copies rather than references (`ProjectStore.addShot(copyingOriginalAt:)`).
+    ///
+    /// Only bundles that this library actually lists can be deleted: the URL has
+    /// to be a `.rpproj` sitting directly in `rootURL`. Anything else throws
+    /// ``ProjectStoreError/bundleNotFound(path:)`` instead of being removed,
+    /// which is also what a second delete of the same project gets, so a stale
+    /// row in the UI fails cleanly rather than taking a neighbour with it.
+    public func deleteProject(
+        at bundleURL: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        let url = bundleURL.standardizedFileURL
+        // Compared as paths, not as URLs: `deletingLastPathComponent()` always
+        // returns a directory URL (trailing slash) while a `rootURL` built from
+        // a plain path string may not have one, and `URL ==` would call those
+        // two different folders.
+        guard url.deletingLastPathComponent().standardizedFileURL.path == rootURL.path else {
+            throw ProjectStoreError.bundleNotFound(path: url.path)
+        }
+        try ProjectStore(bundleURL: url).deleteBundle(fileManager: fileManager)
+    }
+
+    /// Convenience over ``deleteProject(at:fileManager:)`` for a listed row.
+    public func deleteProject(
+        _ entry: ProjectEntry,
+        fileManager: FileManager = .default
+    ) throws {
+        try deleteProject(at: entry.bundleURL, fileManager: fileManager)
+    }
+
     /// A default name for the "New project" button: the date, as a shoot is
     /// usually a day (docs/PLAN.md: "Project cho mỗi buổi chụp").
     public static func suggestedProjectName(date: Date = Date()) -> String {

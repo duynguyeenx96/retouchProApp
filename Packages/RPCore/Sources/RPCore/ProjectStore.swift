@@ -12,6 +12,11 @@ import Foundation
 /// - Nothing under `originals/` is ever written, moved or deleted after import.
 ///   Removing a shot leaves the file and records a tombstone.
 /// - Every JSON write goes through ``AtomicFileWriter``.
+/// - The one exception to the first invariant is ``deleteBundle(fileManager:)``,
+///   which removes the whole project at once. There is nothing partial to get
+///   wrong there — the bundle stops existing — so it is allowed to take the
+///   originals with it, and the caller is expected to have confirmed with the
+///   user first.
 public struct ProjectStore: Sendable {
     public let bundleURL: URL
     public var writer: AtomicFileWriter
@@ -124,6 +129,34 @@ public struct ProjectStore: Sendable {
         }
         if result.hasPrefix(".") { result = "_" + result.dropFirst() }
         return String(result.prefix(180))
+    }
+
+    // MARK: - Delete
+
+    /// Deletes the whole bundle directory: manifest, `edits/`, `presets/`,
+    /// `previews/` and **every copied file in `originals/`**.
+    ///
+    /// Unlike ``removeShot(id:from:fileManager:)``, which is deliberately
+    /// conservative because the project lives on around the removed shot, this
+    /// is all-or-nothing: afterwards there is no project left to be inconsistent
+    /// with. It matters that it really does take `originals/` with it — every
+    /// import is a full copy (see ``addShot(copyingOriginalAt:into:id:capture:contentHash:editState:fileManager:)``),
+    /// so a project that could not be deleted would be unreclaimable disk space
+    /// on a phone.
+    ///
+    /// Refuses a path that is not a `.rpproj` directory, so a mistyped or stale
+    /// URL cannot turn into `removeItem` on something else.
+    public func deleteBundle(fileManager: FileManager = .default) throws {
+        guard bundleURL.pathExtension.lowercased() == ProjectBundle.pathExtension else {
+            throw ProjectStoreError.bundleNotFound(path: bundleURL.path)
+        }
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: bundleURL.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        else {
+            throw ProjectStoreError.bundleNotFound(path: bundleURL.path)
+        }
+        try fileManager.removeItem(at: bundleURL)
     }
 
     // MARK: - Load
