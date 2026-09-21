@@ -31,12 +31,14 @@ struct DesignShellTests {
     /// behind them are unchanged.
     ///
     /// **Nine since 2026-09-21**: "Tạo khối" (docs/ADR-0020), next to "Mặt"
-    /// because it is the second panel over the `face` namespace.
+    /// because it is the second panel over the `face` namespace. **Ten the same
+    /// day**: "Sửa da" (docs/ADR-0021 §UI), after the two other "Da" panels
+    /// because it is the scope switch for both of them.
     @Test("The group tabs carry the design's Vietnamese labels, in order")
     func groupTabs() {
         #expect(
             SliderPanelLayout.sections.map(\.title) == [
-                "Mịn da", "Kiềm dầu", "Mặt", "Tạo khối", "Mắt", "Răng", "Màu",
+                "Mịn da", "Kiềm dầu", "Sửa da", "Mặt", "Tạo khối", "Mắt", "Răng", "Màu",
                 "Trang điểm", "Tóc",
             ])
         #expect(!SliderPanelLayout.sections.map(\.title).contains("Mắt & Răng"))

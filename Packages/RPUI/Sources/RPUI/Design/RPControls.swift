@@ -10,6 +10,77 @@ import SwiftUI
 /// iOS shadowed capsule, and the same shape on both platforms. `SwiftUI.Slider`
 /// draws a different control per platform and gives no way to reach that.
 
+// MARK: - Toggle
+
+/// One switch row: label + a line of explanation on the left, a switch on the
+/// right. The panel's second kind of control (2026-09-21, "Sửa da",
+/// docs/ADR-0021 §UI).
+///
+/// Hand-drawn like every other control in this file, and for the reason stated
+/// at the top of it: `SwiftUI.Toggle` draws a different switch per platform, and
+/// its `Binding` setter is `@isolated(any) @Sendable` while every call site here
+/// reaches into the main-actor-bound `EditorModel` — which is a data-race
+/// warning at best. A `Button` around a mint capsule is the same two states, on
+/// both platforms, with the row's whole width as the hit target.
+///
+/// ``detail`` is **drawn**, not a tooltip, which is the opposite of a slider's
+/// `direction` line: a slider's direction is visible in its track, and what a
+/// scope switch changes is not visible anywhere.
+struct RPToggleRow: View {
+    let label: String
+    let detail: String
+    let isOn: Bool
+    var isEnabled: Bool = true
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        Button {
+            onChange(!isOn)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label)
+                        .font(RPTheme.text(12.5))
+                        .foregroundStyle(RPTheme.textLabel)
+                    Text(detail)
+                        .font(RPTheme.text(11))
+                        .foregroundStyle(RPTheme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                switchShape
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? "Bật" : "Tắt")
+        .accessibilityHint(detail)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        #if os(macOS)
+            .help(detail)
+        #endif
+    }
+
+    private var switchShape: some View {
+        Capsule()
+            .fill(isOn ? RPTheme.accent : RPTheme.fillNeutralSoft)
+            .frame(width: 34, height: 20)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 16, height: 16)
+                    .padding(.horizontal, 2)
+            }
+            .animation(.easeOut(duration: 0.12), value: isOn)
+    }
+}
+
 // MARK: - Slider
 
 /// One slider row: label + mono value on top, custom track below.

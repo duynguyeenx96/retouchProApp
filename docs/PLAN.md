@@ -587,8 +587,9 @@ không thêm `EditState.SectionKey`, không migrate gì trên đĩa**:
 - Con của **Mặt**: Hình dáng mặt · Mắt · Răng · Đầu · Tạo khối · Căng mọng · Mụn.
   Con của **Da**: Mịn da · Kiềm dầu · Sửa da. Con của **Cơ thể**: Thu gọn · Săn chắc.
 - **"Da" là nhóm cha riêng, không nằm trong "Mặt"** (user chỉnh lại ngay trong ngày): mịn da là khái niệm
-  **toàn thân**, engine hôm nay mới chỉ áp qua mask mặt và chính "Sửa da" (`bodySkinSync`, còn khoá) là cái
+  **toàn thân**, engine hôm nay mới chỉ áp qua mask mặt và chính "Sửa da" (`bodySkinSync`) là cái
   mở rộng nó ra cổ/tay/ngực — nên "Sửa da" là **con của "Da"** chứ không đứng lẻ ở top level.
+  *(2026-09-21: "Sửa da" hết khoá, mở panel 1 toggle của riêng nó — xem "Trạng thái 6.2 — Sửa da".)*
 - **"Bọng mắt" bị xoá hẳn** (không phải trỏ lại), "Mặt" cũ (15 slider warp) thành con **"Hình dáng mặt"**.
 - Hai namespace tách panel: `eyesTeeth` → "Mắt" (3) / "Răng" (1), `skin` → "Mịn da" (7) / "Kiềm dầu" (1) —
   qua `SliderSectionDescriptor.storageKey`, engine `SkinSliders`/`EyesTeethSliders` và node giữ nguyên.
@@ -599,7 +600,9 @@ không thêm `EditState.SectionKey`, không migrate gì trên đĩa**:
   Khoá nền vẫn khoá.
   *(Cập nhật 2026-09-21: **Tạo khối đã được nối UI** và không còn khoá — nó mở panel riêng 3 slider, cờ engine
   vẫn tắt nên nhóm bị disable kèm lý do thay vì khoá cả rail item. Xem "Trạng thái 6.2 — Tạo khối" ở §Phase 6.
-  Mười mục còn lại trong danh sách trên vẫn khoá.)*
+  Cùng ngày, **"Sửa da" cũng đã được nối UI** theo đúng cách đó — panel riêng chỉ có **1 toggle**, cờ
+  `bodySkinSync` vẫn tắt; xem "Trạng thái 6.2 — Sửa da" ở §Phase 6. Chín mục còn lại trong danh sách trên vẫn
+  khoá.)*
 
 **Cập nhật kế hoạch (2026-09-11), Phase 6 chi tiết + Share Extension:** Input: `docs/HANDOFF-remaining-features-2026-09-10.md` (13 mục rail khoá + yêu cầu Share Extension), 3 research pass
 song song (mask/segmentation, body/head/contour, object-removal+preset+Share Extension — không phải spike đo số,
@@ -770,6 +773,43 @@ trên vài ảnh thật. Pass: warp không tạo méo/blob ở vùng giữa hai 
   đúng cách panel đã báo "không nhận diện được khuôn mặt", không phải lock kiểu Phase 5. Bật cờ sau này là một
   dòng, không phải một đợt UI. Không có "detection notice" riêng cho Tạo khối: nó là hình học landmark thuần,
   không có gì để *nhận diện hỏng* ngoài chính khuôn mặt.
+
+**Trạng thái 6.2 — Sửa da (cập nhật 2026-09-21): engine xong + đã có UI toggle, cờ vẫn tắt, và lỗ hổng tông da
+đậm **vẫn còn** nhưng nay **hiện ra cho người dùng thấy**.**
+- **Engine (đã merge, `docs/ADR-0021-whole-body-skin-sync.md`)**: `SkinCore` (port nguyên `skincore.js`, pin
+  byte-for-byte bằng fixture chạy Node), `BodySkinMask` (grid 320 px), kernel `rp_body_skin_union` (union mask
+  mặt + mask toàn khung, feather 0.150×faceWidth ở cổ, rồi mới tới gates), v2 nhân thêm subject mask từ
+  `VNGeneratePersonSegmentationRequest`. Số đã đo (ladder 6 tông, tổng hợp `Research/bench/p6-skin-sync-*.json`):
+  khung sạch IoU 0.97–0.99 cho tông I–V; khung lộn xộn v1→v2 0.53–0.61 → **0.87–0.99** (hết leak gỗ/mây);
+  chi phí ~17.8 ms classifier ở preview 2048 px + ~17 ms segmentation, **một lần mỗi ảnh**, +0.43 ms/frame cho
+  union.
+- **Hai tông vẫn 0.000 IoU và không sửa được từ phía này**: tông VI (91,60,17) bị luật Kovac `R <= 95` của
+  `SkinCore.skinScore` loại **trước** mọi bước sau (nhân subject mask là phép nhân, không thể cộng lại pixel đã
+  bị chấm 0); tông IV trên khung lộn xộn thì gỗ "cướp" calibration ở bước back-projection. Cả hai là giới hạn
+  thượng nguồn, ADR-0021 §v2 ghi rõ, **đợt này không đụng tới và không tuyên bố đã sửa**.
+- **Vì sao vẫn ship được toggle**: phán quyết review cũ là *"đừng ship thứ hỏng âm thầm với một số người dùng"*.
+  Cái đã đổi là **thất bại không còn âm thầm**: `SkinRenderNode.detectionNotice(for:)` (2026-09-16) trả
+  "Không phát hiện được da." khi coverage < 0.001, và panel hiển thị đúng câu đó qua
+  `SliderSectionDescriptor.notifiesFromNodeNamed` → `RenderReport.notices` → `GroupAvailability`. Có test chạy
+  thật trên khung tông VI (không phải mask zero dựng tay) + đối chứng tông III:
+  `BodySkinSyncTests.deepToneFramePublishesTheNotice`.
+- **UI (2026-09-21, đợt này)**: rail item "Sửa da" (con của "Da") trỏ vào panel riêng
+  `SliderPanelLayout.PanelKey.skinFix` — panel **duy nhất không có slider nào**, chỉ 1 toggle
+  "Đồng bộ da toàn thân". Không nhét dòng toggle vào panel "Mịn da"/"Kiềm dầu" vì notice sẽ disable luôn 7
+  slider mịn da vốn **vẫn chạy đúng trên mặt** khi chỉ mask thân hỏng.
+- **Giá trị toggle là của tài liệu, không phải của bản dựng**: `RPEngine.BodySkinSync` →
+  `EditState.sections["mask"]["bodySkinSync"]` (vắng = tắt), cùng namespace với "Khoá nền", **transfer qua
+  preset**. Cờ build trả lời "bản dựng này có hiệu ứng không", toggle trả lời "ảnh này người dùng có muốn
+  không" — cần cả hai, gặp nhau ở `BodySkinSync.mask(for:bodySkinMask:)` lúc dựng `RenderRequest` (giống
+  `BackgroundLock.gateMasks`), nên `SkinRenderNode` và 79.0 dB của nó không đổi một dòng.
+- **`RPEngineFeatureFlags.bodySkinSync` vẫn mặc định tắt**: chưa có số trên iPhone thật, và ở đây rào cao hơn
+  Tạo khối — Simulator **không chạy được** `VNGeneratePersonSegmentationRequest`, nên ~35 ms/ảnh chưa từng đo
+  trên chip A. Bản dựng cờ tắt: rail không khoá, panel mở được, toggle bị vô hiệu kèm câu
+  "Sửa da đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật." Thứ tự trả lời trong panel là
+  **build → mặt → node**.
+- **Toggle vẫn bấm được khi notice đang hiện** (`GroupAvailability.togglesEnabled`): slider bị disable vì kéo
+  nó sẽ ghi giá trị không ai đọc, còn toggle là **ý định** của người dùng — phải luôn tắt lại được, kể cả trên
+  đúng tấm ảnh mà nó không chạy nổi. Ngoại lệ duy nhất là cờ build tắt.
 
 **6.3 — Phụ thuộc 6.1**
 

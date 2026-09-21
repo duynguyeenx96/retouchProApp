@@ -182,7 +182,11 @@ struct BackgroundLockWiringTests {
             let controller = LivePreviewController(
                 renderer: try LivePreviewRenderer(context: context), subjectProvider: provider)
 
-            await controller.open(decoded, contentHash: "both", editState: Self.lockedOn())
+            // Both document switches on: they share the `mask` namespace and
+            // must not read each other (docs/ADR-0021 §UI).
+            var document = Self.lockedOn()
+            BodySkinSync(isOn: true).write(into: &document)
+            await controller.open(decoded, contentHash: "both", editState: document)
             #expect(provider.calls == 1)
             #expect(controller.subjectMask != nil)
             #expect(controller.bodySkinUsedSubjectMask)

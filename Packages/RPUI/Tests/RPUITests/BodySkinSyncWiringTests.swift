@@ -117,7 +117,13 @@ struct BodySkinSyncWiringTests {
             let (decoded, url) = try Self.decodedFixture()
             defer { try? FileManager.default.removeItem(at: url) }
 
-            await controller.open(decoded, contentHash: "flag-on", editState: EditState())
+            // The document's own switch, on (docs/ADR-0021 §UI). Since
+            // 2026-09-21 the flag alone is not enough to put the mask in the
+            // request: `BodySkinSync.mask(for:bodySkinMask:)` wants both.
+            var syncOn = EditState()
+            BodySkinSync(isOn: true).write(into: &syncOn)
+
+            await controller.open(decoded, contentHash: "flag-on", editState: syncOn)
             #expect(provider.calls == 1)
             #expect(provider.qualities == [LivePreviewController.subjectMaskQuality])
             #expect(controller.bodySkinUsedSubjectMask)
@@ -127,6 +133,17 @@ struct BodySkinSyncWiringTests {
             #expect(mask.width == min(320, Int(decoded.pixelSize.width)))
             #expect(controller.renderRequest.bodySkinMask?.values == mask.values)
             #expect(controller.bodySkinCoverageFraction != nil)
+
+            // …and the switch really is what gates it. The mask stays computed —
+            // flipping the toggle must not cost a re-classification — but the
+            // request stops carrying it, which is the state `SkinRenderNode` has
+            // always rendered as "bind the per-face coverage, byte for byte".
+            controller.update(editState: EditState())
+            #expect(controller.renderRequest.bodySkinMask == nil)
+            #expect(controller.bodySkinMask != nil)
+            #expect(provider.calls == 1, "flipping the switch must not re-segment")
+            controller.update(editState: syncOn)
+            #expect(controller.renderRequest.bodySkinMask?.values == mask.values)
 
             for step in 0..<100 {
                 var state = EditState()

@@ -1,7 +1,15 @@
 # ADR-0021 — "Sửa da": whole-body skin sync, and why it widens *before* the gates narrow
 
 Status: accepted — 2026-09-15; amended 2026-09-16 (see "v2 — the
-person-segmentation intersection")
+person-segmentation intersection"); UI wired 2026-09-21 (see "UI (2026-09-21)")
+
+> **Addendum 2026-09-21 — there is a UI now; the flag still does not move, and
+> neither does the deep-tone gap.** The "there is no UI" sentence below was true
+> of the engine rounds and is superseded by the "UI (2026-09-21)" section at the
+> end of this file. Every decision, constant and measured number above it is
+> unchanged: the wiring added no engine math, and **tone VI is still 0.000 IoU**.
+> What changed is that the failure is now spoken out loud in the panel instead of
+> looking exactly like a success.
 Scope: Phase 6 §6.2, "Sửa da — đồng bộ da toàn thân". **Engine only this round**:
 a port of the UXP panel's skin classifier, one new Metal kernel that merges its
 whole-frame coverage with the per-face BiSeNet coverage, and the numbers. There
@@ -368,9 +376,10 @@ exists so that is one command when the profile is fixed.
    a quiet edit. **v2 did not touch this** — see §v2.
 3. ~~**Subject intersection.**~~ Done — see the v2 section above. What it left
    behind is item 5.
-4. **A UI notice for the silent cases.** A frame whose body-skin mask comes back
-   empty (deep tone, or a calibration collapse) currently looks identical to one
-   where the feature worked. That is the missing piece before any toggle.
+4. ~~**A UI notice for the silent cases.**~~ Done — `RenderNode.detectionNotice(for:)`
+   landed 2026-09-16 and the panel that shows it landed 2026-09-21; see "UI
+   (2026-09-21)" below. The *cause* is untouched: a deep tone still produces no
+   coverage, it is now simply reported.
 5. **The `subj` prior inside the classifier.** The step-3 multiply
    `skincore.js` already has, which is what would fix tone IV on a cluttered
    frame. Deliberately not done here, because it edits the file this project
@@ -378,3 +387,114 @@ exists so that is one command when the profile is fixed.
 6. **"Khoá nền" itself.** `BackgroundLockMaskSource` still has no node reading
    its texture and no UI; it can now share
    `PersonSegmenterSubjectMaskProvider` when it is wired.
+
+## UI (2026-09-21) — a switch that can say it found nothing
+
+No engine math changed for this round: it is `SliderPanelLayout` + one rail entry
++ one new document value (`RPEngine.BodySkinSync`) + the one line of request
+assembly that reads it. `SkinCore`, `BodySkinMask`, `rp_body_skin_union` and
+`SkinRenderNode`'s kernel are untouched, so every number in §5 and §v2 still
+describes what ships.
+
+### Why it could ship now, when the reviewer had blocked it
+
+The earlier ruling was *"don't ship silently-broken-for-some-users"*, and it was
+right: §v2 leaves two of six tones at 0.000 IoU (tone VI always, tone IV on a
+cluttered frame) and neither is fixable from this feature's side — the Kovac
+`R <= 95` reject and the calibration theft both happen upstream of anything this
+ADR multiplies. **None of that is fixed here and this section does not claim
+otherwise.**
+
+What changed is the *shape* of the failure, structurally:
+`SkinRenderNode.detectionNotice(for:)` (2026-09-16) returns
+"Không phát hiện được da." whenever the body coverage is below
+`minimumBodySkinCoverage` (0.001 — a floor just above exact zero, not a tuned
+operating point), and `SliderSectionDescriptor.notifiesFromNodeNamed` now carries
+that sentence into the panel. So the deep-tone case is no longer *silent*: the
+user is told the classifier found nothing on this photo, in the same one-line
+`info.circle` treatment the panel already uses for "no face detected", live per
+render. A feature that fails visibly and says so is a different product decision
+from one that fails invisibly, and it is that difference — not a fix — that lets
+the toggle exist.
+
+`BodySkinSyncTests.deepToneFramePublishesTheNotice` asserts this end to end on a
+real classification of a (91,60,17) frame, with a tone-III frame as the control,
+rather than on a hand-made zero mask.
+
+### The toggle is a **document** value, not a flipped build flag
+
+`RPEngine.BodySkinSync` — `EditState.sections["mask"]["bodySkinSync"] = true`,
+absent means off — modelled on `BackgroundLock` one key over, in the namespace
+RPCore already documents as *"where an effect is allowed to act … not a set of
+sliders"*. It is a section rather than `perImage` because it transfers: "also fix
+the neck and arms" says nothing about which photo it was said on, so a preset
+carries it.
+
+A build-time flag alone could not be this. The flag answers *"does this build
+ship the effect"*; the switch answers *"does the user want it on this picture"*,
+and there is no toggle without the second. Both are required, and
+`BodySkinSync.mask(for:bodySkinMask:)` is where they meet — at request assembly,
+the mirror of `BackgroundLock.gateMasks(for:subjectGate:)`, deliberately **not**
+inside `SkinRenderNode`: the node's union, its kernel and ADR-0009's 79.0 dB stay
+exactly as measured, and "no body mask" is a state it has always rendered as
+"bind the per-face coverage, byte for byte".
+
+`RPEngineFeatureFlags.bodySkinSync` is **not** flipped. The iPhone bar from §"What
+could not be verified" is unchanged and is sharper here than for ADR-0018/0020:
+`VNGeneratePersonSegmentationRequest` has no Simulator implementation at all, so
+the ~35 ms/shot this path spends has never been measured on an A-series chip. The
+panel therefore opens and says so —
+"Sửa da đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật." —
+the same `PanelFeatureGate` treatment ADR-0020 §UI introduced.
+
+### A panel of its own, and why not a row inside "Mịn da"
+
+`SliderPanelLayout.PanelKey.skinFix` — "Sửa da", one switch labelled
+**"Đồng bộ da toàn thân"**, the first panel in the app with no slider in it and
+the first over `EditState.SectionKey.mask`. The rail's "Sửa da" leaf (a child of
+"Da" since the rail was written, described there as this group's scope switch)
+points at it instead of being locked.
+
+The row could have gone inside "Mịn da" / "Kiềm dầu", the two panels it widens.
+It did not, for a reason that is not layout: `notifiesFromNodeNamed` **disables
+the group it is attached to**, and "Không phát hiện được da." must not disable the
+seven face-smoothing sliders — those still work perfectly on the face when only
+the *body* classifier came back empty. The notice belongs on the control it is
+about. `DetectionNoticeWiringTests.theShippedTableNamesOnlySkinFix` pins that
+scoping.
+
+Consequences of the toggle-only panel, all small and all tested:
+`SliderSectionDescriptor.isLocked` became "no control of **either** kind" rather
+than "no sliders"; `activeParameterCount`, `isNeutral` and `sections(touchedBy:)`
+count switches too, by key, so "Sửa da" never claims "Khoá nền"'s boolean in the
+same namespace; and `SliderPanelLayout.storageKeys` now carries one namespace more
+than `EditState.SectionKey.all`, which is why the coverage test asserts the slider
+namespaces rather than the whole list.
+
+### The switch stays usable while the notice shows
+
+`GroupAvailability.blockedReason` disables a group's **sliders**; it does not
+disable its **switches** (`GroupAvailability.togglesEnabled`). A slider whose
+group cannot work is disabled because dragging it would write a value nothing
+reads. A switch is the user's stated intent, and turning an intent back off has
+to stay possible on the very photo where it could not be carried out — otherwise
+a user who switches "Sửa da" on and then opens a deep-tone photo is stuck with it
+on. The one exception is the build gate: with `bodySkinSync` off the value has
+nothing to mean in this build, so the row is inert like the gated sliders in
+"Tạo khối".
+
+Answer order inside the panel is build → face → node, and it is deliberate: a
+build with the effect off cannot be fixed by importing another photo, and with no
+face at all there is no skin group to widen.
+
+### What this round did **not** do
+
+* It did not improve deep-tone detection. Tone VI is 0.000 IoU, before and after.
+* It did not touch `SkinCore` — open item 5 (the step-3 `subj` prior, the thing
+  that would fix tone IV on a cluttered frame) is still open and still needs its
+  own decision, fixture case and measurement pass.
+* It did not turn the feature on: both the engine flag and the document switch
+  default to off, so a shipping build renders exactly what it rendered
+  yesterday.
+* It was verified on macOS only (`Scripts/test.sh macos`). The iPhone gap above
+  is unchanged, and it is the reason the flag is still off.

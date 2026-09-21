@@ -54,6 +54,43 @@ public struct SliderParameter: Identifiable, Hashable, Sendable {
     public var isBidirectional: Bool { range.lowerBound < Slider.defaultValue }
 }
 
+/// One on/off row in a panel — a switch, not an amount.
+///
+/// The second kind of control the panel can draw (2026-09-21, "Sửa da",
+/// docs/ADR-0021), and it exists because the first kind cannot express what
+/// §6.2 settled: *"Không phải bộ slider mới … UI: một toggle"*. A 0–100 amount
+/// whose 0 is neutral (`RPCore.Slider`) is the right shape for "how much"; this
+/// is the shape for "where", which is either the face or the whole body and has
+/// no middle.
+///
+/// ## Storage, which is the same rule as a slider's
+/// ``key`` is the JSON key inside the panel's `storageKey` namespace, and
+/// **absent means off** — the rule `EditSection.setSlider`, `RPEngine.FaceSelection`
+/// and `RPEngine.BackgroundLock` all already follow, so an untouched document
+/// stays empty and `EditState.isDefault` keeps meaning "untouched". The key is
+/// read from the engine's own type (`BodySkinSync.key`) rather than written
+/// here, for the same reason ``SliderParameter/key`` is: a value renamed in
+/// RPEngine must not leave a dead control writing JSON nothing reads.
+public struct PanelToggleDescriptor: Identifiable, Hashable, Sendable {
+    /// Parameter name inside the section, i.e. the JSON key in `edits/<id>.json`.
+    public let key: String
+    /// What the user reads on the row.
+    public let label: String
+    /// One line under the label saying what turning it on does — the toggle's
+    /// counterpart to ``SliderParameter/direction``. A switch has more to
+    /// explain than a slider does (a slider's direction is visible in the
+    /// track), so this is drawn rather than hidden in a tooltip.
+    public let detail: String
+
+    public var id: String { key }
+
+    public init(key: String, label: String, detail: String) {
+        self.key = key
+        self.label = label
+        self.detail = detail
+    }
+}
+
 /// One group: a tab on the phone, a rail icon and a panel on the Mac.
 public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// **The panel's own identity** — what `EditorChrome.activeGroupKey` holds,
@@ -103,8 +140,18 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// The phase that implements this group.
     public let phase: String
     /// Working sliders. Empty for a group whose render node does not exist yet
-    /// (Trang điểm and Tóc are Phase 5).
+    /// (Trang điểm and Tóc are Phase 5) **and** for a group whose controls are
+    /// all switches ("Sửa da" — see ``toggles``).
     public let parameters: [SliderParameter]
+
+    /// Working on/off rows, drawn under the sliders.
+    ///
+    /// Empty for every panel but "Sửa da", which is the reverse: one toggle and
+    /// no sliders. A panel is therefore *working* when it has either kind of
+    /// control, which is what ``isLocked`` asks — before 2026-09-21 "no
+    /// parameters" and "nothing to offer" were the same statement, and they are
+    /// not any more.
+    public let toggles: [PanelToggleDescriptor]
     /// `true` when the group's sliders need a detected face. With no face in the
     /// picture — or with the Core ML models absent — they cannot do anything,
     /// and the UI says so instead of offering a control that silently no-ops.
@@ -153,33 +200,44 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// `true` for the Phase 5 groups. They are drawn dimmed and inert rather
     /// than hidden, so the shell shows the full future taxonomy
     /// (docs/design/SPEC.md cross-cutting rule 4).
-    public var isLocked: Bool { parameters.isEmpty }
+    ///
+    /// "Has no control of **either** kind", not "has no slider": "Sửa da" is one
+    /// toggle and no sliders, and calling it locked would tell the user its
+    /// control does not exist when it does (docs/ADR-0021 §UI).
+    public var isLocked: Bool { parameters.isEmpty && toggles.isEmpty }
 
     /// Labels only, kept because the Phase 1 panel and its tests are written
     /// against it and because the Phase 5 groups still have nothing else.
     public var plannedParameters: [String] {
-        parameters.isEmpty ? plannedNames : parameters.map(\.label)
+        isLocked ? plannedNames : parameters.map(\.label) + toggles.map(\.label)
     }
     private let plannedNames: [String]
 
-    /// How many of **this panel's own** sliders the document has moved off 0.
+    /// How many of **this panel's own** controls the document has moved off
+    /// their default — a slider off 0, or a toggle switched on.
     ///
     /// Not `state[section: storageKey].values.count`: two panels can share a
-    /// namespace, and "Răng" must not claim the eye sliders' dot.
+    /// namespace, and "Răng" must not claim the eye sliders' dot. The same
+    /// reasoning is why the toggles are counted here rather than by namespace:
+    /// "Sửa da" shares `mask` with "Khoá nền"'s own boolean and must not light
+    /// its dot.
     public func activeParameterCount(in state: EditState) -> Int {
         let values = state[section: storageKey]
-        return parameters.reduce(into: 0) { count, parameter in
+        let sliders = parameters.reduce(into: 0) { count, parameter in
             if values.slider(parameter.key) != Slider.defaultValue { count += 1 }
+        }
+        return toggles.reduce(into: sliders) { count, toggle in
+            if values[toggle.key]?.boolValue == true { count += 1 }
         }
     }
 
     /// `true` when this panel has nothing of its own to reset.
     ///
-    /// A locked group has no parameters to count, so it falls back to "is the
+    /// A locked group has no control to count, so it falls back to "is the
     /// namespace empty" — the check this replaced, and the only one available
     /// for a group whose sliders do not exist yet.
     public func isNeutral(in state: EditState) -> Bool {
-        parameters.isEmpty
+        isLocked
             ? state[section: storageKey].isEmpty
             : activeParameterCount(in: state) == 0
     }
@@ -193,6 +251,7 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
         systemImage: String,
         phase: String,
         parameters: [SliderParameter] = [],
+        toggles: [PanelToggleDescriptor] = [],
         plannedParameters: [String] = [],
         needsFace: Bool = false,
         notifiesFromNodeNamed: String? = nil,
@@ -200,6 +259,7 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     ) {
         self.notifiesFromNodeNamed = notifiesFromNodeNamed
         self.gatedBy = gatedBy
+        self.toggles = toggles
         self.key = key
         self.storageKey = storageKey ?? key
         self.title = title
@@ -222,9 +282,9 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
 /// (`AppEngineSetup`) and a test flips them around a case, so the panel has to
 /// answer the question *now*.
 ///
-/// One case today. It is an enum rather than a `KeyPath` so that the reason the
+/// Two cases today. It is an enum rather than a `KeyPath` so that the reason the
 /// flag is off travels with it: "chưa khả dụng" would be a lie about a feature
-/// whose engine, kernel and numbers all shipped (docs/ADR-0020).
+/// whose engine, kernel and numbers all shipped (docs/ADR-0020, docs/ADR-0021).
 public enum PanelFeatureGate: Hashable, Sendable {
     /// "Tạo khối" — docs/ADR-0020. The lobes, the kernel branch and the golden /
     /// selectivity / speed numbers are all merged and measured on a Mac; the
@@ -232,10 +292,20 @@ public enum PanelFeatureGate: Hashable, Sendable {
     /// "Khoá nền" is held to (docs/ADR-0018).
     case contourSliders
 
+    /// "Sửa da" — docs/ADR-0021. The classifier, the union kernel, the subject
+    /// intersection and the tone-ladder numbers are all merged; the flag stays
+    /// off for the same iPhone reason as the other two, and here it is sharper:
+    /// `VNGeneratePersonSegmentationRequest` has **no Simulator implementation
+    /// at all**, so the ~35 ms/shot this feature spends (17 ms segmentation +
+    /// 17.8 ms classifier at a 2048 px preview, macOS) has never been measured
+    /// on an A-series chip.
+    case bodySkinSync
+
     /// Whether this build has the effect switched on.
     public var isOn: Bool {
         switch self {
         case .contourSliders: RPEngineFeatureFlags.contourSliders
+        case .bodySkinSync: RPEngineFeatureFlags.bodySkinSync
         }
     }
 
@@ -246,11 +316,13 @@ public enum PanelFeatureGate: Hashable, Sendable {
         switch self {
         case .contourSliders:
             "Tạo khối đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+        case .bodySkinSync:
+            "Sửa da đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
         }
     }
 }
 
-/// The slider taxonomy: **nine panels over six `EditState` namespaces**, seven
+/// The slider taxonomy: **ten panels over seven `EditState` namespaces**, eight
 /// of the panels working.
 ///
 /// It is data, not view code, for two reasons: the order and grouping is the
@@ -280,7 +352,11 @@ public enum PanelFeatureGate: Hashable, Sendable {
 /// and reshape are separate tools that happen to share a namespace because both
 /// are per-face and measured in `faceWidth` (docs/ADR-0020 §5), and putting
 /// three dodge/burn amounts at the bottom of the fifteen reshape sliders is the
-/// same mistake "Răng opens an eye panel" was. It is the one panel with a
+/// same mistake "Răng opens an eye panel" was.
+///
+/// **Ten the same day**: "Sửa da" (docs/ADR-0021 §UI), the first panel whose
+/// control is a switch rather than an amount and the first over
+/// `EditState.SectionKey.mask`. It and "Tạo khối" are the two panels with a
 /// ``SliderSectionDescriptor/gatedBy`` flag.
 public enum SliderPanelLayout {
     /// Panel identities that are **not** an `EditState.SectionKey`, because two
@@ -300,6 +376,12 @@ public enum SliderPanelLayout {
         /// that namespace is "Hình dáng mặt", the fifteen reshape sliders, whose
         /// panel key is still the namespace itself.
         public static let contour = "contour"
+        /// "Sửa da" — the one `BodySkinSync` switch of
+        /// `EditState.SectionKey.mask` (docs/ADR-0021). The **only** panel with
+        /// no slider in it, and the only one over the `mask` namespace, which
+        /// RPCore keeps out of `EditState.SectionKey.all` precisely because it
+        /// is not a set of sliders.
+        public static let skinFix = "skinFix"
     }
 
     /// Which of `EyesTeethSliders.Key.all` belong to the "Răng" panel. Everything
@@ -361,6 +443,56 @@ public enum SliderPanelLayout {
                 keys: SkinSliders.Key.all.filter { Self.shineKeys.contains($0) },
                 labels: Self.skinLabels),
             needsFace: true
+        ),
+        // The third "Da" panel, and the only panel in the app with no slider in
+        // it (2026-09-21, docs/ADR-0021 §UI). "Sửa da" is a *scope* switch for
+        // the two panels above — the same eight slider values, applied to a
+        // whole-body skin mask instead of the per-face one — so it owns no
+        // amount of its own and docs/PLAN.md §6.2 fixed it as "một toggle".
+        //
+        // **Its own panel rather than a row inside "Mịn da" / "Kiềm dầu"**, for
+        // a reason that is not layout: `notifiesFromNodeNamed` disables the
+        // group it is attached to, and "Không phát hiện được da." must not
+        // disable the seven face-smoothing sliders — those keep working on the
+        // face exactly as before when the *body* classifier finds nothing. The
+        // notice belongs on the control it is about, which is the toggle. (It is
+        // also what the rail already says: "Sửa da" has been a leaf under "Da"
+        // since the rail was written, described there as this group's own scope
+        // switch.)
+        //
+        // `storageKey` is the `mask` namespace, next to "Khoá nền"'s boolean:
+        // RPCore documents it as "where an effect is allowed to act … not a set
+        // of sliders", which is this exactly.
+        SliderSectionDescriptor(
+            key: PanelKey.skinFix,
+            storageKey: EditState.SectionKey.mask,
+            title: "Sửa da",
+            panelTitle: "Sửa da toàn thân",
+            sectionCaption: "Phạm vi của nhóm Da",
+            systemImage: "bandage",
+            phase: "Phase 6",
+            toggles: [
+                PanelToggleDescriptor(
+                    key: BodySkinSync.key,
+                    label: "Đồng bộ da toàn thân",
+                    // Both halves of the truth in one line: what it does, and
+                    // that it depends on a detection which can fail. When it
+                    // does fail, the panel says so on its own line
+                    // (`notifiesFromNodeNamed`) — docs/ADR-0021 §UI.
+                    detail:
+                        "Áp 8 thanh trượt Da lên cả da cổ / vai / tay, không chỉ trong khuôn mặt. "
+                        + "Cần nhận được vùng da ngoài mặt; với tông da rất đậm máy thường không "
+                        + "nhận ra và sẽ báo ở đây.")
+            ],
+            needsFace: true,
+            // `SkinRenderNode.detectionNotice(for:)`: "Không phát hiện được da."
+            // when the whole-frame classifier came back at ~0 coverage. This is
+            // the honest surface for docs/ADR-0021's unfixed gap — tone VI
+            // always, tone IV on a cluttered frame — which is the condition the
+            // reviewer ruling set for this toggle shipping at all: the failure
+            // is visible instead of silent.
+            notifiesFromNodeNamed: "skin",
+            gatedBy: .bodySkinSync
         ),
         SliderSectionDescriptor(
             key: EditState.SectionKey.face,
@@ -583,8 +715,14 @@ public enum SliderPanelLayout {
     }
 
     /// The namespaces the panel covers, in panel order and without repeats.
-    /// `SliderPanelLayoutTests` pins this to `EditState.SectionKey.all` — that is
-    /// the invariant the split had to keep, not "one panel per namespace".
+    ///
+    /// `SliderPanelLayoutTests` pins the **slider** namespaces among these to
+    /// `EditState.SectionKey.all`, in that order — the invariant the 2026-09-18
+    /// splits had to keep, and it is "every declared namespace has a panel", not
+    /// "one panel per namespace". Since 2026-09-21 this list carries one more
+    /// entry than `all` does: `EditState.SectionKey.mask` ("Sửa da"), which
+    /// RPCore deliberately keeps out of `all` because it holds switches rather
+    /// than sliders and several callers read `all` as "every slider group".
     public static var storageKeys: [String] {
         sections.reduce(into: [String]()) { keys, section in
             if !keys.contains(section.storageKey) { keys.append(section.storageKey) }
@@ -602,8 +740,9 @@ public enum SliderPanelLayout {
     {
         sections.filter { section in
             guard let values = stored[section.storageKey], !values.isEmpty else { return false }
-            guard !section.parameters.isEmpty else { return true }
+            guard !section.isLocked else { return true }
             return section.parameters.contains { values.values[$0.key] != nil }
+                || section.toggles.contains { values.values[$0.key] != nil }
         }
     }
 

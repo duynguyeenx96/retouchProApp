@@ -171,6 +171,76 @@ struct LivePreviewWiringTests {
         #expect(FaceSelection(model.activeEditState).selectedIndex == 1)
     }
 
+    // MARK: - Panel switches ("Sửa da", docs/ADR-0021 §UI)
+
+    /// The toggle the "Sửa da" panel draws, driven exactly as the row drives it,
+    /// through to the value the engine reads and back.
+    ///
+    /// Three claims: the UI's generic `key + namespace` write is the same thing
+    /// `RPEngine.BodySkinSync` reads (otherwise the row would write JSON nothing
+    /// looks at); off leaves no trace; and "Đặt lại" on this panel clears its own
+    /// switch without touching "Khoá nền", which lives in the same namespace.
+    @Test("The Sửa da switch round-trips through the document and resets alone")
+    func skinFixToggleRoundTrip() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        await model.select(shotID: temp.project.shots[0].id)
+        let panel = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.skinFix))
+        let toggle = try #require(panel.toggles.first)
+
+        #expect(!model.isToggleOn(toggle.key, in: panel.storageKey))
+        #expect(BodySkinSync(model.activeEditState).isOn == false)
+
+        model.setToggle(toggle.key, in: panel.storageKey, to: true)
+        #expect(model.isToggleOn(toggle.key, in: panel.storageKey))
+        #expect(BodySkinSync(model.activeEditState).isOn, "the row wrote a key nothing reads")
+        #expect(!model.activeEditState.isDefault)
+
+        model.setToggle(toggle.key, in: panel.storageKey, to: false)
+        #expect(BodySkinSync(model.activeEditState).isOn == false)
+        #expect(model.activeEditState.isDefault, "off left a false behind")
+
+        // "Đặt lại" clears this panel's switch only.
+        model.setToggle(toggle.key, in: panel.storageKey, to: true)
+        var withLock = model.activeEditState
+        BackgroundLock(isOn: true).write(into: &withLock)
+        model.replaceActiveEditState(withLock)
+        model.resetSection(panel)
+        #expect(BodySkinSync(model.activeEditState).isOn == false)
+        #expect(
+            BackgroundLock(model.activeEditState).isOn,
+            "resetting Sửa da cleared Khoá nền, which shares the namespace")
+    }
+
+    /// The enable rule for a switch, which is deliberately not the slider's (see
+    /// `GroupAvailability.togglesEnabled`): a detection notice must not take away
+    /// the user's ability to switch the intent back off.
+    @Test("A detection notice leaves the switch usable; the build gate does not")
+    func toggleStaysUsableWhileTheNoticeShows() throws {
+        let panel = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.skinFix))
+        let previous = RPEngineFeatureFlags.bodySkinSync
+        defer { RPEngineFeatureFlags.bodySkinSync = previous }
+
+        RPEngineFeatureFlags.bodySkinSync = false
+        #expect(!GroupAvailability.togglesEnabled(section: panel))
+
+        RPEngineFeatureFlags.bodySkinSync = true
+        #expect(GroupAvailability.togglesEnabled(section: panel))
+        // The sliders of a blocked group are still disabled — that rule is
+        // unchanged, and it is the one `blockedReason` answers.
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: ["skin": "Không phát hiện được da."]) == "Không phát hiện được da.")
+
+        // A locked panel has nothing to switch either way.
+        let hair = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.hair))
+        #expect(!GroupAvailability.togglesEnabled(section: hair))
+    }
+
     // MARK: - Face selection
 
     @Test("Selecting a face writes perImage and clearing it removes the key")

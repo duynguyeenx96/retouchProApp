@@ -45,6 +45,14 @@ struct GroupSliderList: View {
             notices: model.live?.detectionNotices ?? [:])
     }
 
+    /// Whether this group's **switches** stay usable while ``blockedReason`` is
+    /// showing. The rule and its reasoning live in
+    /// ``GroupAvailability/togglesEnabled(section:)`` so they can be tested
+    /// without building a view, the same as ``blockedReason``.
+    private var togglesEnabled: Bool {
+        GroupAvailability.togglesEnabled(section: section)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsCaption {
@@ -82,6 +90,20 @@ struct GroupSliderList: View {
                         onCommit: {
                             // One disk write per drag, at the end.
                             Task { await model.commitEditState() }
+                        })
+                }
+                ForEach(section.toggles) { toggle in
+                    RPToggleRow(
+                        label: toggle.label,
+                        detail: toggle.detail,
+                        // `storageKey` for the same reason the sliders use it:
+                        // "Sửa da" is a panel over the `mask` namespace, which
+                        // it shares with "Khoá nền".
+                        isOn: model.isToggleOn(toggle.key, in: section.storageKey),
+                        isEnabled: togglesEnabled,
+                        onChange: { isOn in
+                            // One tap, one write — see `EditorModel.setToggle`.
+                            model.setToggle(toggle.key, in: section.storageKey, to: isOn)
                         })
                 }
             }

@@ -16,12 +16,57 @@ struct SliderPanelLayoutTests {
     /// is *"every namespace has a panel, in RPCore's order"*, not *"exactly one
     /// panel per namespace"* — a UI grouping and a storage namespace are
     /// different things, and `eyesTeeth` now has two panels over it.
+    ///
+    /// Since 2026-09-21 the panel also covers `EditState.SectionKey.mask`, which
+    /// RPCore declares but deliberately keeps **out** of `all` because it holds
+    /// switches rather than sliders ("Sửa da", "Khoá nền"). So the invariant is
+    /// asserted on the slider namespaces, with the one non-slider namespace
+    /// named explicitly rather than allowed by a weaker rule.
     @Test("The panels cover exactly EditState.SectionKey.all, in that order")
     func coversEverySection() {
-        #expect(SliderPanelLayout.storageKeys == EditState.SectionKey.all)
+        let mask = EditState.SectionKey.mask
+        #expect(SliderPanelLayout.storageKeys.filter { $0 != mask } == EditState.SectionKey.all)
+        #expect(SliderPanelLayout.storageKeys.contains(mask))
+        #expect(!EditState.SectionKey.all.contains(mask))
         for section in SliderPanelLayout.sections {
-            #expect(EditState.SectionKey.all.contains(section.storageKey), "\(section.key)")
+            #expect(
+                EditState.SectionKey.all.contains(section.storageKey) || section.storageKey == mask,
+                "\(section.key)")
         }
+        // …and the one panel over `mask` is the one with no slider in it.
+        let onMask = SliderPanelLayout.sections.filter { $0.storageKey == mask }
+        #expect(onMask.map(\.key) == [SliderPanelLayout.PanelKey.skinFix])
+        #expect(onMask.allSatisfy { $0.parameters.isEmpty && !$0.toggles.isEmpty })
+    }
+
+    /// "Sửa da" is one switch over the `mask` namespace, and it has to behave
+    /// like a panel in every way a slider panel does: not locked, countable for
+    /// the rail dot, resettable on its own, and summarised by name — without
+    /// ever claiming "Khoá nền"'s boolean, which sits in the same namespace
+    /// (docs/ADR-0021 §UI).
+    @Test("Sửa da is a toggle-only panel that does not claim Khoá nền's key")
+    func skinFixIsAToggleOnlyPanel() throws {
+        let panel = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.skinFix))
+        #expect(panel.parameters.isEmpty)
+        #expect(!panel.isLocked)
+        #expect(panel.toggles.map(\.key) == [BodySkinSync.key])
+        #expect(panel.plannedParameters == ["Đồng bộ da toàn thân"])
+
+        var state = EditState()
+        #expect(panel.activeParameterCount(in: state) == 0)
+        #expect(panel.isNeutral(in: state))
+
+        // "Khoá nền" alone: same namespace, and none of it is this panel's.
+        BackgroundLock(isOn: true).write(into: &state)
+        #expect(panel.activeParameterCount(in: state) == 0)
+        #expect(panel.isNeutral(in: state))
+        #expect(SliderPanelLayout.sections(touchedBy: state.sections).isEmpty)
+
+        BodySkinSync(isOn: true).write(into: &state)
+        #expect(panel.activeParameterCount(in: state) == 1)
+        #expect(!panel.isNeutral(in: state))
+        #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Sửa da"])
     }
 
     /// The split itself (2026-09-18): tapping "Răng" must open **one** slider.

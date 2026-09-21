@@ -166,9 +166,10 @@ Everything that is not one of the three parents keeps the relative order it alre
 
 **"Da" is a parent of its own, not a sub-feature of "Mặt"** (user's correction, same day, after a first pass
 filed Mịn da/Kiềm dầu under the face): **skin smoothing is a whole-body concept**. Today's engine only reaches
-it through a face mask, but extending that to neck/arms/chest is exactly what the still-locked "Sửa da"
+it through a face mask, but extending that to neck/arms/chest is exactly what "Sửa da"
 (`bodySkinSync`) is for — so "Sửa da" is a **child of "Da"**, i.e. this group's own scope switch, rather than a
-top-level item floating next to the parents.
+top-level item floating next to the parents. (It stopped being locked on 2026-09-21: it opens a one-switch
+panel of its own — docs/ADR-0021 §UI.)
 
 Three membership changes, all deliberate:
 * **"Bọng mắt" is deleted**, not repointed — point (2) above. There is now exactly one entry into the eye panel.
@@ -199,10 +200,10 @@ per-tool grid + single "Cường độ" slider) is still locked, see below.
 | Hình dáng mặt *(child of Mặt)* | **Active** | Opens the Face/Warp panel (all 15 keys, flat `SliderPanelView` list — not the per-tool grid below, that grid UI is itself locked) |
 | Mắt *(child of Mặt)* | **Active** | Opens the **Mắt** panel: exactly the 3 eye keys. The only entry into it — ~~Bọng mắt~~ was deleted 2026-09-18. |
 | Răng *(child of Mặt)* | **Active** | Opens the **Răng** panel: exactly one slider, Trắng răng. Own `sectionKey`, own icon (`mouth`). |
-| Da *(parent)* | **Active** | No panel of its own; opens "Mịn da" and shows its strip. Unlocked because 2 of its 3 children work. |
+| Da *(parent)* | **Active** | No panel of its own; opens "Mịn da" and shows its strip. Unlocked because its children work — all three of them since 2026-09-21. |
 | Mịn da *(child of Da)* | **Active** | Opens the **Mịn da** panel: 7 skin sliders, everything except Khử bóng dầu |
 | Kiềm dầu *(child of Da)* | **Active** | Opens the **Kiềm dầu** panel: exactly one slider, Khử bóng dầu. Its own `sectionKey` and its own icon (`humidity`) since 2026-09-18 — it must never highlight together with Mịn da. |
-| Sửa da *(child of Da)* | **Locked** | The whole-body skin-sync toggle for this group (Phase 6.2, `bodySkinSync`). Relocated from top level into "Da" on 2026-09-18; lock state and reason unchanged. |
+| Sửa da *(child of Da)* | **Active (2026-09-21)** | Opens the **Sửa da** panel: the one panel with no slider in it, a single switch "Đồng bộ da toàn thân" over `EditState.sections["mask"]["bodySkinSync"]`. Not locked, and inert anyway while `RPEngineFeatureFlags.bodySkinSync` is off — the panel says so in one line, the `PanelFeatureGate` treatment "Tạo khối" introduced. It is the one panel that also carries a **detection notice** ("Không phát hiện được da.") because the whole-body classifier really can find nothing — deep skin tones, docs/ADR-0021 §5, unfixed. Relocated from top level into "Da" on 2026-09-18. |
 | Mẫu | **Active (screen)** | Opens the preset library (Phase 3), leaves the slider panel where it was |
 | Màu (pinned) | **Active** | Opens the Color panel; outside the scroll view, see the structural note below |
 | Trang điểm, Tóc | Locked (Phase 5, unchanged) | Same treatment as Screen 1a/1b already spec'd |

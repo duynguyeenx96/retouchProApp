@@ -139,17 +139,27 @@ struct DetectionNoticeWiringTests {
                 == nil)
     }
 
-    /// As of today no shipped group names a node: the six in the panel are Da,
-    /// Mặt, Mắt & Răng, Màu, Trang điểm, Tóc, and the only detection any of them
-    /// depends on is the face, which `needsFace` already covers.
+    /// Exactly one shipped group names a node, and it is the one the mechanism
+    /// was built for: "Sửa da" → `"skin"` (2026-09-21, docs/ADR-0021 §UI). Every
+    /// other panel's only detection is the face, which `needsFace` covers.
     ///
-    /// **When the "Sửa da" and "Đầu" panels are wired** (the next task), they set
-    /// `notifiesFromNodeNamed: "skin"` / `"warp"` and this expectation changes to
-    /// name them. That is the one-line hook-up this whole mechanism exists to
-    /// make possible; a failure here means someone wired a panel, which is fine.
-    @Test("No shipped section names a render node yet")
-    func theShippedTableIsUnchanged() {
-        #expect(SliderPanelLayout.sections.allSatisfy { $0.notifiesFromNodeNamed == nil })
+    /// The scoping is the point, not an accident. Attaching `"skin"` to "Mịn
+    /// da" as well would disable seven face-smoothing sliders that still work
+    /// perfectly on the face whenever the *body* classifier came back empty —
+    /// the notice belongs to the control it is about. "Đầu" will add `"warp"`
+    /// here when its panel is wired (the plan's item 3e).
+    @Test("Only Sửa da names a render node")
+    func theShippedTableNamesOnlySkinFix() {
+        #expect(
+            SliderPanelLayout.sections.filter { $0.notifiesFromNodeNamed != nil }
+                .map { ($0.key, $0.notifiesFromNodeNamed) }.map(\.0)
+                == [SliderPanelLayout.PanelKey.skinFix])
+        #expect(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.skinFix)?
+                .notifiesFromNodeNamed == "skin")
+        #expect(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.smooth)?
+                .notifiesFromNodeNamed == nil)
     }
 
     // MARK: - LivePreviewController

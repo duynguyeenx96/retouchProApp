@@ -23,7 +23,7 @@ import RPEngine
 ///   one door per thing. "Cọ mask thủ công" (below) arrived after the hierarchy
 ///   did and is not a body part's sub-feature at all — it stays a top-level leaf.
 /// * **Most entries have nothing behind them.** ``sectionKey`` is `nil` for the
-///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc, Sửa da,
+///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc,
 ///   Căng mọng, Mụn, Đầu, Khoá nền — deferred to Phase 5/6, see
 ///   `docs/PLAN.md` §Phase 2 "Turn 3 canvas"). They are drawn dimmed and inert
 ///   rather than hidden, the same rule the locked slider groups already follow
@@ -53,9 +53,10 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// `nil` = no working section behind this item yet (locked), **or** this item
     /// is a parent and its ``children`` carry the panels. Non-nil points at a
     /// `SliderSectionDescriptor.key` — a **panel**, which is an
-    /// `EditState.SectionKey` for four of the nine and a UI-only
-    /// `SliderPanelLayout.PanelKey` for the five that share a namespace with
-    /// another panel (the 2026-09-18 splits, plus "Tạo khối" over `face`). The
+    /// `EditState.SectionKey` for four of the ten and a UI-only
+    /// `SliderPanelLayout.PanelKey` for the six that share a namespace with
+    /// another panel (the 2026-09-18 splits, "Tạo khối" over `face`, and
+    /// "Sửa da" over `mask` beside "Khoá nền"'s own boolean). The
     /// panel may itself still be locked (Trang điểm / Tóc are Phase 5), so
     /// ``isLocked`` checks both — but a panel whose *engine flag* is off is not
     /// locked, it opens and explains itself
@@ -236,8 +237,9 @@ public enum RailPresentation: Hashable, Sendable {
 /// **"Da" is its own parent, not a sub-feature of "Mặt"** (user's correction,
 /// 2026-09-18): skin smoothing is a *whole-body* concept even though today's
 /// engine only reaches it through a face mask — extending it to the rest of the
-/// body is exactly what the still-locked "Sửa da" (`bodySkinSync`) does, so
-/// "Sửa da" is a child **here** rather than a top-level odd one out.
+/// body is exactly what "Sửa da" (`bodySkinSync`) does, so "Sửa da" is a child
+/// **here** rather than a top-level odd one out. It opens its own one-switch
+/// panel since 2026-09-21 (docs/ADR-0021 §UI).
 ///
 /// Two items changed identity in the move and nothing else did: the old
 /// top-level "Mặt" leaf is the child **"Hình dáng mặt"** (same fifteen sliders,
@@ -342,8 +344,19 @@ public enum RailLayout {
         // face-only mask onto a whole-body skin mask, so a beauty-retouched face
         // doesn't visibly mismatch untouched neck/arm/chest skin in the same
         // frame. That is why it belongs **here** and not at the top level: it is
-        // this group's own scope switch. No engine work yet — still locked.
-        RailItemDescriptor(id: "skinFix", label: "Sửa da", systemImage: "bandage"),
+        // this group's own scope switch.
+        //
+        // Wired 2026-09-21 (docs/ADR-0021 §UI). Its panel is the one panel in
+        // the app with no slider in it — a single `BodySkinSync` switch — and
+        // it is **not locked**, for the reason "Tạo khối" is not: there is a
+        // real panel behind it that a flag flip lights up. It is inert
+        // meanwhile (`PanelFeatureGate.bodySkinSync`), and when it is live it
+        // carries `SkinRenderNode`'s "Không phát hiện được da." for the frames
+        // where the classifier finds no body skin — the deep-tone case
+        // docs/ADR-0021 could not fix and therefore has to surface.
+        RailItemDescriptor(
+            id: "skinFix", label: "Sửa da", systemImage: "bandage",
+            sectionKey: SliderPanelLayout.PanelKey.skinFix),
     ]
 
     /// The two sub-features of the body. Both locked today, which makes the

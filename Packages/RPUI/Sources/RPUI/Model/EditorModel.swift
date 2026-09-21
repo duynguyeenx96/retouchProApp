@@ -213,6 +213,28 @@ public final class EditorModel {
         live?.update(editState: activeEditState)
     }
 
+    /// Reads one panel switch out of the active shot's document
+    /// (``PanelToggleDescriptor``). Absent means off.
+    public func isToggleOn(_ name: String, in section: String) -> Bool {
+        activeEditState[section: section][name]?.boolValue == true
+    }
+
+    /// Flips one panel switch, repaints the canvas and writes the document.
+    ///
+    /// Unlike ``setSlider(_:in:to:)`` this **does** commit: a switch produces one
+    /// value per tap, not tens per second, so there is no drag to coalesce and
+    /// nothing to gain by leaving it in memory. Turning it off *removes* the
+    /// key, which is the storage rule `EditSection.setSlider`,
+    /// `RPEngine.BackgroundLock` and `RPEngine.BodySkinSync` all follow — an
+    /// untouched document stays empty.
+    public func setToggle(_ name: String, in section: String, to isOn: Bool) {
+        var values = activeEditState[section: section]
+        values[name] = isOn ? .bool(true) : nil
+        activeEditState[section: section] = values
+        live?.update(editState: activeEditState)
+        Task { await commitEditState() }
+    }
+
     /// Sets every slider of one **namespace** back to 0 (i.e. removes them).
     public func resetSection(_ section: String) {
         activeEditState[section: section] = EditSection()
@@ -225,12 +247,22 @@ public final class EditorModel {
     /// Not the same as ``resetSection(_:)`` since the 2026-09-18 Mắt / Răng
     /// split — two panels share the `eyesTeeth` namespace, and clearing the
     /// namespace from the Răng panel would silently wipe the three eye sliders
-    /// the user never touched there. A locked panel has no parameters of its own,
+    /// the user never touched there. A locked panel has no control of its own,
     /// so it still clears its namespace.
+    ///
+    /// A panel's **switches** go back to off here too, and for the same reason
+    /// the split exists: "Sửa da" shares the `mask` namespace with "Khoá nền",
+    /// so clearing the namespace would unlock a background the user never
+    /// touched from this panel.
     public func resetSection(_ section: SliderSectionDescriptor) {
-        guard !section.parameters.isEmpty else { return resetSection(section.storageKey) }
+        guard !section.isLocked else { return resetSection(section.storageKey) }
         for parameter in section.parameters {
             activeEditState.setSlider(parameter.key, in: section.storageKey, to: Slider.defaultValue)
+        }
+        if !section.toggles.isEmpty {
+            var values = activeEditState[section: section.storageKey]
+            for toggle in section.toggles { values[toggle.key] = nil }
+            activeEditState[section: section.storageKey] = values
         }
         live?.update(editState: activeEditState)
         Task { await commitEditState() }

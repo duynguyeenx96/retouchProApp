@@ -76,6 +76,12 @@ public final class LivePreviewController {
     /// which is the shipping default — see ``prepareBodySkinMask(for:contentHash:)``
     /// for why the whole computation is skipped rather than computed and ignored.
     /// `SkinRenderNode` reads it through ``renderRequest``.
+    ///
+    /// Computed regardless of the document's own "Sửa da" switch, the same way
+    /// ``backgroundLockGate`` is: the switch is read at request-assembly time
+    /// (`BodySkinSync.mask(for:bodySkinMask:)`), so flipping it must not cost a
+    /// re-classification. With the feature flag off nothing here runs at all,
+    /// which is what makes the shipping build pay nothing for either switch.
     public private(set) var bodySkinMask: RenderMask?
     /// Mean coverage of ``bodySkinMask`` over the frame, for the status line and
     /// the log. `nil` when no mask was computed.
@@ -498,7 +504,16 @@ public final class LivePreviewController {
     /// the very `PreviewImage` that was uploaded as the source texture, so it is
     /// already in the grid `RenderRequest.bodySkinMask` documents ("also already
     /// scaled to the texture being rendered"). That is the same property that
-    /// lets ``faces`` go in unscaled.
+    /// lets ``faces`` go in unscaled. It passes through
+    /// ``RPEngine/BodySkinSync/mask(for:bodySkinMask:)`` (2026-09-21,
+    /// docs/ADR-0021 §UI) so the document's own "Sửa da" switch decides whether
+    /// the skin node ever sees it — the mirror of what
+    /// ``RPEngine/BackgroundLock/gateMasks(for:subjectGate:)`` does one line
+    /// below, and for the same reason: the *toggle* belongs at request assembly,
+    /// where flipping it costs one frame, while `SkinRenderNode`'s union, its
+    /// kernel and ADR-0009's 79.0 dB stay untouched. With the switch off the
+    /// request carries no body mask, which is the state the node has always
+    /// rendered as "bind the per-face coverage, byte for byte".
     ///
     /// ``backgroundLockGate`` is **appended** to `gateMasks` rather than
     /// assigned over it, and only when
@@ -518,7 +533,7 @@ public final class LivePreviewController {
     public var renderRequest: RenderRequest {
         var request = RenderRequest(
             editState: editState, allFaces: faces, quality: renderer.quality)
-        request.bodySkinMask = bodySkinMask
+        request.bodySkinMask = BodySkinSync.mask(for: editState, bodySkinMask: bodySkinMask)
         request.gateMasks += BackgroundLock.gateMasks(
             for: editState, subjectGate: backgroundLockGate)
         if let manualMask, !manualMask.isEmpty {

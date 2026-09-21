@@ -15,8 +15,14 @@ import Foundation
 ///
 /// Since 2026-09-21 it carries one more case of the same rule, where the thing
 /// missing is not a detection but a switch: a group whose engine flag is off in
-/// this build (``SliderSectionDescriptor/gatedBy``, "Tạo khối" today) says that,
-/// instead of offering three live-looking sliders whose values no kernel reads.
+/// this build (``SliderSectionDescriptor/gatedBy``, "Tạo khối" and "Sửa da")
+/// says that, instead of offering live-looking controls whose values no kernel
+/// reads.
+///
+/// The returned sentence disables the group's **sliders**. It does not disable
+/// its **switches** except in the `gatedBy` case — see
+/// `GroupSliderList.togglesEnabled`, which explains why an intent has to stay
+/// revocable on the photo where it could not be carried out.
 ///
 /// ## The shape of the message, which is not negotiable per group
 /// One sentence, Vietnamese, **live-computed on every render** — not one-shot,
@@ -94,6 +100,25 @@ enum GroupAvailability {
             return notice
         }
         return nil
+    }
+
+    /// Whether the group's **switches** stay usable while ``blockedReason``
+    /// is showing — and they do, unless the build itself has the effect off.
+    ///
+    /// A slider and a switch fail differently. A slider whose group cannot work
+    /// is disabled because dragging it would write a value nothing reads; a
+    /// switch is the user's stated *intent*, and turning an intent back off has
+    /// to stay possible on the very photo where it could not be carried out. If
+    /// "Không phát hiện được da." disabled the "Sửa da" toggle, a user who
+    /// switched it on and then opened a deep-tone photo could not switch it off
+    /// again (docs/ADR-0021 §UI).
+    ///
+    /// The one exception is ``SliderSectionDescriptor/gatedBy``: with the engine
+    /// flag off the value has nothing to mean in this build at all, so the row
+    /// is inert exactly like the gated sliders next to it.
+    static func togglesEnabled(section: SliderSectionDescriptor) -> Bool {
+        guard !section.isLocked else { return false }
+        return section.gatedBy?.isOn ?? true
     }
 
     /// Reads the controller's state into ``PreviewState``. The mapping the view
