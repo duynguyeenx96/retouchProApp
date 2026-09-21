@@ -141,6 +141,20 @@ public final class EditorChrome {
     /// ``ManualMaskBrushSettings`` says why at length.
     public var brush = ManualMaskBrushSettings()
 
+    /// The row in the brush bar's "layers" list (one row per finished stroke,
+    /// oldest first — user's request, 2026-09-21: "giống Lightroom") the user is
+    /// hovering (Mac) or has tapped (phone), or `nil` for none.
+    ///
+    /// This is the **only** thing that puts the green tint back on screen once
+    /// a stroke has ended: painting shows it live (the canvas drives that off
+    /// its own in-flight-stroke state, not this), and it goes away the instant
+    /// the finger lifts. Adjusting a slider afterward must never bring it back
+    /// on its own — the tint is opaque paint sitting on top of the one thing a
+    /// "how strong is this" judgement needs to see, the real pixels — so the
+    /// only way to see a past stroke's extent again is to deliberately ask for
+    /// it from the list.
+    public var previewedMaskStrokeIndex: Int?
+
     public init() {}
 
     public var activeSection: SliderSectionDescriptor {
@@ -219,7 +233,10 @@ public final class EditorChrome {
     /// Puts the brush away. Called when the editor closes or another screen
     /// takes over the canvas, so a mode cannot outlive the picture it was armed
     /// on.
-    public func disarmBrush() { isBrushing = false }
+    public func disarmBrush() {
+        isBrushing = false
+        previewedMaskStrokeIndex = nil
+    }
 
 
     public func cycleSubject() { subject = subject.next }

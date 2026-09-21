@@ -252,6 +252,21 @@ struct CanvasView: View {
         isDualPane ? (size.width + RPTheme.Metrics.macCanvasGap) / 2 : 0
     }
 
+    /// The green tint's whole visibility policy (user's request, 2026-09-21:
+    /// "giống Lightroom" — on while painting, gone the instant the stroke ends,
+    /// back only on deliberate request):
+    ///
+    /// 1. **While a stroke is in flight** (``liveStroke`` non-nil), every
+    ///    committed stroke plus the in-flight one, so the edge being extended is
+    ///    judged against what is already there.
+    /// 2. **Otherwise**, only when ``EditorChrome/previewedMaskStrokeIndex`` asks
+    ///    for one specific past stroke — hovering or tapping a row in the brush
+    ///    bar's layer list — and then only *that* stroke, not the union: the
+    ///    question a hover is answering is "what does this one do", not
+    ///    "what's painted so far".
+    /// 3. Never merely because the brush is armed or a slider is being dragged —
+    ///    the tint is opaque paint over the one thing a "how strong is this"
+    ///    judgement needs to see, the real pixels under it.
     @ViewBuilder
     private func maskOverlay(size: CGSize, paneSize: CGSize) -> some View {
         if let original, let live = model.live, chrome?.isBrushing == true,
@@ -262,16 +277,31 @@ struct CanvasView: View {
             // the other (`LivePreviewController.paint`). Nothing compares mask
             // pixels to decide to redraw, which is what `generation` is for.
             let _ = live.version
-            ManualMaskOverlay(
-                strokes: live.manualMaskStrokes,
-                liveStroke: liveStroke,
-                imageSize: original.pixelSize,
-                frame: model.viewport.imageFrame(
-                    imageSize: original.pixelSize, viewSize: paneSize),
-                paneOriginX: paneOriginX(in: size)
-            )
-            .frame(width: size.width, height: size.height)
-            .clipped()
+            if let liveStroke {
+                ManualMaskOverlay(
+                    strokes: live.manualMaskStrokes,
+                    liveStroke: liveStroke,
+                    imageSize: original.pixelSize,
+                    frame: model.viewport.imageFrame(
+                        imageSize: original.pixelSize, viewSize: paneSize),
+                    paneOriginX: paneOriginX(in: size)
+                )
+                .frame(width: size.width, height: size.height)
+                .clipped()
+            } else if let index = chrome?.previewedMaskStrokeIndex,
+                live.manualMaskStrokes.indices.contains(index)
+            {
+                ManualMaskOverlay(
+                    strokes: [live.manualMaskStrokes[index]],
+                    liveStroke: nil,
+                    imageSize: original.pixelSize,
+                    frame: model.viewport.imageFrame(
+                        imageSize: original.pixelSize, viewSize: paneSize),
+                    paneOriginX: paneOriginX(in: size)
+                )
+                .frame(width: size.width, height: size.height)
+                .clipped()
+            }
         }
     }
 

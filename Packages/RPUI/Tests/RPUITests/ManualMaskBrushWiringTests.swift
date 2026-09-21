@@ -201,6 +201,22 @@ struct ManualMaskBrushWiringTests {
         }
     }
 
+    /// User's request, 2026-09-21: the green tint must not come back on its own
+    /// once a stroke has ended — the only way back is a deliberate hover/tap on
+    /// a row in the brush bar's layer list, tracked by
+    /// ``EditorChrome/previewedMaskStrokeIndex``. This pins the one place that
+    /// index is cleared for the user without their asking: putting the brush
+    /// away, so a stale preview from one session cannot leak into the next time
+    /// the brush is armed.
+    @Test("Disarming the brush clears whichever layer was being previewed")
+    func disarmingClearsThePreviewedLayer() {
+        let chrome = EditorChrome()
+        #expect(chrome.previewedMaskStrokeIndex == nil)
+        chrome.previewedMaskStrokeIndex = 2
+        chrome.disarmBrush()
+        #expect(chrome.previewedMaskStrokeIndex == nil)
+    }
+
     // MARK: - Session lifecycle and the gate
 
     /// The lock, in the controller: with the flag off there is no session, so

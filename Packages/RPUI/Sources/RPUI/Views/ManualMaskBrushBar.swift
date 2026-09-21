@@ -63,7 +63,93 @@ struct ManualMaskBrushBar: View {
                 onChange: { chrome.brush.flow = $0 })
 
             historyRow
+            effectRow
+            layerList
         }
+    }
+
+    /// The sliders of whichever group is open underneath the brush — the same
+    /// ``GroupSliderList`` the panel shows once the brush is put away, right
+    /// here instead, so the mask and the effect it gates can be tuned in one
+    /// pass instead of a "paint, tap Xong, drag, arm the brush again" loop.
+    ///
+    /// Painting the mask's tint is not drawn while a row here is dragged — the
+    /// canvas already stops drawing it the instant a stroke ends (see
+    /// ``layerList``), so there is nothing left to turn off here.
+    private var effectRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(RPTheme.hairline).padding(.vertical, 4)
+            Text("Cường độ — \(chrome.activeSection.panelTitle)")
+                .font(RPTheme.text(11, weight: .medium))
+                .foregroundStyle(RPTheme.textTertiary)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+            GroupSliderList(model: model, section: chrome.activeSection, thumbSize: thumbSize)
+        }
+    }
+
+    /// One row per finished stroke, oldest first (user's request, 2026-09-21:
+    /// "giống Lightroom"). The green tint only comes back on screen for the one
+    /// row the user is hovering (Mac) or has tapped (phone) —
+    /// ``EditorChrome/previewedMaskStrokeIndex`` says why at length — so this is
+    /// also the only way to see a past stroke's extent again once painting it
+    /// has ended.
+    ///
+    /// A stroke, not a paint-then-adjust cycle, is the unit: the session already
+    /// tracks strokes individually for undo/redo, so a second grouping concept
+    /// on top would be state with nothing behind it to keep in sync.
+    @ViewBuilder
+    private var layerList: some View {
+        let strokes = live?.manualMaskStrokes ?? []
+        if !strokes.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Divider().overlay(RPTheme.hairline).padding(.vertical, 4)
+                Text("Các nét đã vẽ")
+                    .font(RPTheme.text(11, weight: .medium))
+                    .foregroundStyle(RPTheme.textTertiary)
+                    .padding(.top, 4)
+                    .padding(.bottom, 2)
+                VStack(spacing: 4) {
+                    ForEach(Array(strokes.enumerated()), id: \.offset) { index, stroke in
+                        layerRow(index: index, stroke: stroke)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private func layerRow(index: Int, stroke: BrushStroke) -> some View {
+        let isPreviewed = chrome.previewedMaskStrokeIndex == index
+        return HStack(spacing: 8) {
+            Image(systemName: stroke.mode == .add ? "paintbrush.fill" : "eraser")
+                .font(.system(size: 11))
+                .foregroundStyle(isPreviewed ? RPTheme.accent : RPTheme.textSecondary)
+                .frame(width: 16)
+            Text(stroke.mode == .add ? "Nét \(index + 1) · vẽ" : "Nét \(index + 1) · xoá")
+                .font(RPTheme.text(12))
+                .foregroundStyle(isPreviewed ? RPTheme.accent : RPTheme.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            isPreviewed ? RPTheme.accentSoft : Color.white.opacity(0.05),
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+        #if os(macOS)
+            .onHover { hovering in
+                chrome.previewedMaskStrokeIndex = hovering ? index : nil
+            }
+        #else
+            .onTapGesture {
+                chrome.previewedMaskStrokeIndex = isPreviewed ? nil : index
+            }
+        #endif
+        .help("Di chuột vào để xem vùng nét này ảnh hưởng")
+        .accessibilityLabel(stroke.mode == .add ? "Nét \(index + 1), vẽ" : "Nét \(index + 1), xoá")
+        .accessibilityAddTraits(isPreviewed ? [.isButton, .isSelected] : .isButton)
     }
 
     /// Why the canvas cannot be painted on right now — a canvas fact, not a
