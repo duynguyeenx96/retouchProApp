@@ -92,6 +92,35 @@ public enum WhiteBalance {
         return 1_000_000 / declared
     }
 
+    /// The exact inverse of ``declaredKelvin(amount:neutralKelvin:)``: the amount
+    /// (−1…1) whose declared temperature is `kelvin`.
+    ///
+    /// Needed because the "Nhiệt độ" row is typed into in **Kelvin**, not in
+    /// slider units (2026-09-21): the row prints "5200K", so the number a
+    /// photographer types back into it is a temperature, the way Lightroom's Temp
+    /// field works. The UI reads it here rather than inverting the mired formula
+    /// a second time next to the text field, so the two directions cannot drift.
+    ///
+    /// Same mired-linear interpolation, solved for `|a|`:
+    /// `|a| = (declaredMired − neutralMired) / (endpointMired − neutralMired)`,
+    /// with the *cool* endpoint (fewer mired than neutral) on the positive side —
+    /// which is what makes positive = warmer, as the type's note explains.
+    ///
+    /// Out-of-reach temperatures clamp to ±1 rather than returning nil: a typed
+    /// "1000" means "as warm as this slider goes", which is exactly −1.
+    public static func amount(declaringKelvin kelvin: Double, neutralKelvin: Double) -> Double {
+        guard kelvin.isFinite else { return 0 }
+        let neutral = mired(neutralKelvin)
+        let declared = mired(kelvin)
+        guard declared != neutral else { return 0 }
+        let isWarming = declared < neutral
+        let endpoint = mired(isWarming ? coolCeilingKelvin : warmFloorKelvin)
+        let span = endpoint - neutral
+        guard span != 0 else { return 0 }
+        let magnitude = min(1, max(0, (declared - neutral) / span))
+        return isWarming ? magnitude : -magnitude
+    }
+
     // MARK: - Planckian locus
 
     /// CIE 1931 `xy` of a blackbody at `kelvin`, by the **Kim et al. (2002)**

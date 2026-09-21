@@ -84,7 +84,7 @@ struct GroupSliderList: View {
                         range: parameter.range,
                         thumbSize: thumbSize,
                         isEnabled: blockedReason == nil,
-                        valueOverride: Self.valueOverride(for: parameter.key, amount: model.slider(parameter.key, in: section.storageKey)),
+                        unit: Self.unit(for: parameter.key),
                         onChange: { value in
                             model.setSlider(parameter.key, in: section.storageKey, to: value)
                         },
@@ -111,23 +111,24 @@ struct GroupSliderList: View {
         }
     }
 
-    /// "5200K" for "Nhiệt độ" instead of its raw −100…100 amount, which is
-    /// meaningless to a photographer on its own (2026-09-21, user request after
-    /// shipping docs/ADR-0023's real Kelvin/Bradford model — the number next to
-    /// the slider should say what the model actually computes, the same way
-    /// Lightroom's does). `RenderRequest.referenceColorTemperatureKelvin` has no
-    /// producer yet (ADR-0023 §"What this round did not do" — real RAW/EXIF
-    /// Kelvin is Phase 2 spike S4), so this reads the same
-    /// `WhiteBalance.defaultNeutralKelvin` (6500K/D65) the render node falls
-    /// back to — the display and the render agree because they call the same
-    /// function. `nil` for every other slider, whose raw amount already *is*
-    /// the value (EV, %, …).
-    private static func valueOverride(for key: String, amount: Double) -> String? {
-        guard key == ColorSliders.Key.wbTemperature else { return nil }
-        let kelvin = WhiteBalance.declaredKelvin(
-            amount: amount, neutralKelvin: WhiteBalance.defaultNeutralKelvin)
-        let rounded = (kelvin / 50).rounded() * 50
-        return "\(Int(rounded))K"
+    /// "Nhiệt độ" is a **Kelvin** row — it shows "5200K" instead of its raw
+    /// −100…100 amount, which is meaningless to a photographer on its own, and
+    /// since 2026-09-21 it also *accepts* a typed Kelvin (2026-09-21, user
+    /// request after shipping docs/ADR-0023's real Kelvin/Bradford model — the
+    /// number next to the slider should say, and take, what the model actually
+    /// computes, the same way Lightroom's does).
+    ///
+    /// `RenderRequest.referenceColorTemperatureKelvin` has no producer yet
+    /// (ADR-0023 §"What this round did not do" — real RAW/EXIF Kelvin is Phase 2
+    /// spike S4), so this passes the same `WhiteBalance.defaultNeutralKelvin`
+    /// (6500K/D65) the render node falls back to: the label and the pixels agree
+    /// because they call the same function with the same neutral.
+    ///
+    /// Everything else is `.amount`, whose raw number already *is* the value
+    /// (EV, %, …).
+    private static func unit(for key: String) -> SliderValueUnit {
+        guard key == ColorSliders.Key.wbTemperature else { return .amount }
+        return .kelvin(neutral: WhiteBalance.defaultNeutralKelvin)
     }
 }
 

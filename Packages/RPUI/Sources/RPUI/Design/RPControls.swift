@@ -94,6 +94,16 @@ struct RPToggleRow: View {
 /// Dragging writes through ``onChange`` on every movement (memory + a GPU
 /// repaint, `EditorModel.setSlider`) and calls ``onCommit`` once when the finger
 /// lifts — the "one disk write per drag" rule from docs/ADR-0013.
+///
+/// ## The value is also a text field (2026-09-21)
+///
+/// Clicking / tapping the number turns it into a one-line field: a precise value
+/// is typed, not hunted for with a 2 px track, the way Lightroom's and
+/// Photoshop's readouts work. It commits on Return and on losing focus, reverts
+/// on anything that is not a number, and clamps through the same
+/// ``SliderValueEntry`` rounding a drag goes through — so there is no path into
+/// the document that a drag could not also have produced. A disabled row is not
+/// editable: the number stays plain text.
 struct RPSliderRow: View {
     let label: String
     /// Which way the slider goes. Not drawn: it is the help text on macOS and
@@ -103,24 +113,30 @@ struct RPSliderRow: View {
     var range: ClosedRange<Double> = Slider.range
     var thumbSize: CGFloat = RPTheme.Metrics.macSliderThumb
     var isEnabled: Bool = true
-    /// Overrides ``valueText`` with a real-world unit — "5200K" for "Nhiệt độ"
-    /// (2026-09-21) instead of the raw −100…100 amount, which is meaningless to
-    /// a photographer on its own. `nil` for every other row: the amount itself
-    /// *is* the value there (Phơi sáng's EV, Bão hoà's %, …).
-    var valueOverride: String? = nil
+    /// What this row's number *means* — see ``SliderValueUnit``. `.amount` for
+    /// every row but "Nhiệt độ", which shows and accepts real Kelvin.
+    var unit: SliderValueUnit = .amount
     let onChange: (Double) -> Void
     var onCommit: () -> Void = {}
 
+    /// True while the number is a text field. Purely local: nothing outside the
+    /// row needs to know, and the document is untouched until the commit.
+    @State private var isEditingValue = false
+    /// What has been typed so far. Never written through until it parses.
+    @State private var draft = ""
+    @FocusState private var isFieldFocused: Bool
+    /// macOS only: the number gets a faint plate under the pointer, because
+    /// "this text is clickable" is otherwise invisible.
+    @State private var isHoveringValue = false
+
     private var isBidirectional: Bool { range.lowerBound < 0 }
 
-    /// "40", "−40", "0". An explicit sign on the bidirectional rows only, so a
-    /// glance at the number says which half of the track the thumb is on
-    /// without reading the thumb.
-    private var valueText: String {
-        if let valueOverride { return valueOverride }
-        let rounded = Int(value.rounded())
-        return isBidirectional && rounded > 0 ? "+\(rounded)" : "\(rounded)"
-    }
+    /// Formatting and parsing in one place, built from the row's own range so a
+    /// typed value clamps exactly where a dragged one does.
+    private var entry: SliderValueEntry { SliderValueEntry(unit: unit, range: range) }
+
+    /// "40", "+40", "5200K".
+    private var valueText: String { entry.displayText(for: value) }
 
     var body: some View {
         // Phone rows (`thumbSize > 12`) get extra vertical padding beyond the
@@ -136,10 +152,7 @@ struct RPSliderRow: View {
                     .font(RPTheme.text(thumbSize > 12 ? 13 : 12.5))
                     .foregroundStyle(RPTheme.textLabel)
                 Spacer(minLength: 8)
-                Text(valueText)
-                    .font(RPTheme.mono(thumbSize > 12 ? 12 : 11.5))
-                    .foregroundStyle(value == 0 ? RPTheme.textTertiary : RPTheme.accent)
-                    .monospacedDigit()
+                valueView
             }
             RPSliderTrack(
                 value: value, range: range, thumbSize: thumbSize, isEnabled: isEnabled,
@@ -147,10 +160,15 @@ struct RPSliderRow: View {
         }
         .padding(.vertical, thumbSize > 12 ? 14 : 8)
         .opacity(isEnabled ? 1 : 0.4)
-        .accessibilityElement(children: .ignore)
+        // `.ignore` is what makes the row *one* VoiceOver element with one
+        // label, value and adjustable action — the shape every group has shipped
+        // with. While the number is a text field that would hide the field from
+        // VoiceOver entirely, so the container opens up for exactly that moment
+        // and closes again on commit.
+        .accessibilityElement(children: isEditingValue ? .contain : .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(
-            valueOverride != nil
+            unit != .amount
                 ? valueText
                 : isBidirectional
                     ? "\(valueText), từ -100 đến 100" : "\(Int(value.rounded())) trên 100")
@@ -164,6 +182,9 @@ struct RPSliderRow: View {
             }
             onCommit()
         }
+        // The way into the text field without a pointer: a rotor action, since
+        // the field is invisible to VoiceOver until editing has begun.
+        .accessibilityAction(named: Text("Nhập giá trị")) { beginEditingValue() }
         #if os(macOS)
             .help(direction.isEmpty ? label : "\(label) — \(hintText)")
         #endif
@@ -171,6 +192,107 @@ struct RPSliderRow: View {
 
     private var hintText: String {
         isBidirectional ? direction : "100 = \(direction)"
+    }
+
+    // MARK: - The number, and the field it becomes
+
+    private var valueFont: Font { RPTheme.mono(thumbSize > 12 ? 12 : 11.5) }
+
+    @ViewBuilder
+    private var valueView: some View {
+        if isEditingValue {
+            valueField
+        } else {
+            Text(valueText)
+                .font(valueFont)
+                .foregroundStyle(value == 0 ? RPTheme.textTertiary : RPTheme.accent)
+                .monospacedDigit()
+                // Padded out for a finger, then padded back in, so the hit area
+                // and the hover plate are bigger than the digits while the
+                // digits stay exactly where they have always been drawn.
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    isHoveringValue ? RPTheme.fillNeutral : .clear,
+                    in: RoundedRectangle(cornerRadius: 5)
+                )
+                .contentShape(Rectangle())
+                .padding(.horizontal, -6)
+                .padding(.vertical, -3)
+                .onTapGesture { beginEditingValue() }
+                #if os(macOS)
+                    .onHover { hovering in isHoveringValue = hovering && isEnabled }
+                    .help(isEnabled ? "Bấm để nhập giá trị" : "")
+                #endif
+        }
+    }
+
+    private var valueField: some View {
+        HStack(spacing: 1) {
+            TextField("", text: $draft)
+                .textFieldStyle(.plain)
+                .font(valueFont)
+                .monospacedDigit()
+                .foregroundStyle(RPTheme.textPrimary)
+                .multilineTextAlignment(.trailing)
+                .frame(width: unit == .amount ? 40 : 54)
+                .focused($isFieldFocused)
+                .submitLabel(.done)
+                .onSubmit { commitDraft() }
+                .accessibilityLabel("Giá trị \(label)")
+                .accessibilityHint("Nhập số rồi nhấn Return")
+                #if !os(macOS)
+                    // Not `.decimalPad`: a "Màu" row goes to −100 and that
+                    // keyboard has no minus sign.
+                    .keyboardType(.numbersAndPunctuation)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                #endif
+            if !entry.unitSuffix.isEmpty {
+                Text(entry.unitSuffix)
+                    .font(valueFont)
+                    .foregroundStyle(RPTheme.textTertiary)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(RPTheme.fillNeutral, in: RoundedRectangle(cornerRadius: 5))
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(RPTheme.accent.opacity(0.7), lineWidth: 1)
+        )
+        .onAppear { isFieldFocused = true }
+        // Blur commits, the same as Return: clicking another row's number or
+        // tapping the canvas must not quietly throw the typed value away.
+        .onChange(of: isFieldFocused) { _, focused in
+            if !focused { commitDraft() }
+        }
+        #if os(macOS)
+            .onExitCommand { cancelEditing() }
+        #endif
+    }
+
+    private func beginEditingValue() {
+        guard isEnabled, !isEditingValue else { return }
+        draft = entry.editText(for: value)
+        isEditingValue = true
+    }
+
+    private func cancelEditing() {
+        isEditingValue = false
+        isFieldFocused = false
+    }
+
+    /// Return / blur. Anything that is not a number reverts — ``entry`` returns
+    /// `nil` and nothing is written — and anything that is one arrives clamped
+    /// and rounded exactly as a drag would have delivered it.
+    private func commitDraft() {
+        guard isEditingValue else { return }
+        isEditingValue = false
+        isFieldFocused = false
+        guard isEnabled, let typed = entry.parse(draft), typed != value else { return }
+        onChange(typed)
+        onCommit()
     }
 }
 
@@ -198,6 +320,12 @@ struct RPSliderRow: View {
 /// Because (1) means a plain tap no longer reaches `onEnded` on iOS, tap-to-set
 /// is a separate `SpatialTapGesture` there.
 ///
+/// 3. **Double-click / double-tap resets to 0 without a third recogniser.**
+///    (2026-09-21, user request.) The reset is detected from the click/tap ends
+///    the two gestures above already deliver, by ``DoubleActivation`` — see that
+///    type for why a `TapGesture(count: 2)` here would have cost either
+///    tap-to-set's latency or the scroll view's flick.
+///
 /// ## The mint fill starts at the neutral value, not at the left edge
 /// On a `0...100` row those are the same point and the drawing is unchanged. On
 /// a `-100...100` row (the "Màu" group, docs/ADR-0016) the fill runs from the
@@ -215,6 +343,10 @@ struct RPSliderTrack: View {
     /// Nil until the first `onChanged` of a sequence has decided whether this
     /// drag belongs to the slider (`true`) or to the scroll view (`false`).
     @State private var isMine: Bool?
+
+    /// Remembers the previous click/tap so the next one can be recognised as the
+    /// second of a double — the reset to neutral.
+    @State private var doubleActivation = DoubleActivation()
 
     /// 0 on macOS, 12 pt on touch — see the type's note.
     private var minimumDistance: CGFloat {
@@ -271,8 +403,15 @@ struct RPSliderTrack: View {
                     .onEnded { gesture in
                         defer { isMine = nil }
                         guard isEnabled, isMine != false else { return }
-                        onChange(clamped(gesture.location.x / width))
-                        onCommit()
+                        // On macOS this `onEnded` *is* the end of a click, so it
+                        // is also where a double-click is recognised. On touch a
+                        // sequence that got here travelled ≥ 12 pt, i.e. it was
+                        // a real drag, which `isStationary: false` tells the
+                        // detector to treat as "not half of a double".
+                        let travel = hypot(gesture.translation.width, gesture.translation.height)
+                        finish(
+                            atX: gesture.location.x, width: width,
+                            isStationary: travel <= Self.clickSlop)
                     }
             )
             #if !os(macOS)
@@ -282,8 +421,7 @@ struct RPSliderTrack: View {
                     SpatialTapGesture()
                         .onEnded { tap in
                             guard isEnabled else { return }
-                            onChange(clamped(tap.location.x / width))
-                            onCommit()
+                            finish(atX: tap.location.x, width: width, isStationary: true)
                         }
                 )
             #endif
@@ -303,6 +441,32 @@ struct RPSliderTrack: View {
     static func value(atFraction fraction: Double, in range: ClosedRange<Double>) -> Double {
         let raw = range.lowerBound + fraction * (range.upperBound - range.lowerBound)
         return min(range.upperBound, max(range.lowerBound, raw)).rounded()
+    }
+
+    /// How far a press may travel and still count as a click rather than a drag,
+    /// in points. A mouse wobbles a point or two under a real click.
+    static let clickSlop: CGFloat = 3
+
+    /// What one finished click/tap writes: the value under it, or the neutral
+    /// when it was the second of a double.
+    ///
+    /// Static and pure so the rule can be tested without a window
+    /// (`SliderValueEntryTests.doubleClickWritesTheNeutral`), which is as close
+    /// to testing the gesture as this codebase gets.
+    static func activationValue(
+        atFraction fraction: Double, in range: ClosedRange<Double>, isDouble: Bool
+    ) -> Double {
+        isDouble ? Slider.defaultValue : value(atFraction: fraction, in: range)
+    }
+
+    /// The tail of both gestures: set the value (or reset it) and commit once.
+    private func finish(atX x: CGFloat, width: CGFloat, isStationary: Bool) {
+        let isDouble = doubleActivation.register(
+            x: x, at: Date.timeIntervalSinceReferenceDate, isStationary: isStationary)
+        onChange(
+            Self.activationValue(
+                atFraction: Double(x / width), in: range, isDouble: isDouble))
+        onCommit()
     }
 
     private func clamped(_ fraction: CGFloat) -> Double {

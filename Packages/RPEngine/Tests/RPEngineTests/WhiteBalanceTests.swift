@@ -127,6 +127,46 @@ struct WhiteBalanceTests {
         }
     }
 
+    /// The inverse the "Nhiệt độ" text field types into (2026-09-21): a typed
+    /// Kelvin has to come back as the amount that *declares* that Kelvin, or the
+    /// field would silently write a different temperature from the one it shows.
+    @Test("amount(declaringKelvin:) inverts declaredKelvin(amount:) to 1e-9")
+    func kelvinRoundTrips() {
+        var worst = 0.0
+        for neutral in [6500.0, 3200.0, 7400.0] {
+            for step in -100...100 {
+                let amount = Double(step) / 100
+                let kelvin = WhiteBalance.declaredKelvin(amount: amount, neutralKelvin: neutral)
+                let back = WhiteBalance.amount(declaringKelvin: kelvin, neutralKelvin: neutral)
+                worst = max(worst, abs(back - amount))
+            }
+            // …and the three fixed points, from the Kelvin side.
+            #expect(
+                WhiteBalance.amount(declaringKelvin: neutral, neutralKelvin: neutral) == 0)
+            #expect(
+                abs(
+                    WhiteBalance.amount(
+                        declaringKelvin: WhiteBalance.warmFloorKelvin, neutralKelvin: neutral) + 1)
+                    < 1e-12)
+            #expect(
+                abs(
+                    WhiteBalance.amount(
+                        declaringKelvin: WhiteBalance.coolCeilingKelvin, neutralKelvin: neutral) - 1)
+                    < 1e-12)
+        }
+        print("WB Kelvin round-trip: max abs amount error = \(worst)")
+        #expect(worst < 1e-9, "declaredKelvin does not invert (\(worst))")
+
+        // Out of reach clamps to the endpoint rather than running off the slider,
+        // and nonsense lands on the neutral instead of a NaN.
+        #expect(
+            WhiteBalance.amount(declaringKelvin: 500, neutralKelvin: 6500) == -1)
+        #expect(
+            WhiteBalance.amount(declaringKelvin: 1_000_000, neutralKelvin: 6500) == 1)
+        #expect(WhiteBalance.amount(declaringKelvin: .nan, neutralKelvin: 6500) == 0)
+        #expect(WhiteBalance.amount(declaringKelvin: .infinity, neutralKelvin: 6500) == 0)
+    }
+
     /// The invariant `RPCore/EditState` states in words: *0 is the identity, for
     /// every photograph*. Not "within a tolerance" — the matrix is short-
     /// circuited precisely so this is exact, because `M_A⁻¹ · M_A` is not.
