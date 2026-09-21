@@ -1,6 +1,15 @@
 # ADR-0016 — Bidirectional (−100…100) sliders, scoped to the "Màu" group
 
-Status: accepted — 2026-09-08
+Status: accepted — 2026-09-08.
+**Amended 2026-09-21 by docs/ADR-0023**, which changed what two of these sliders
+*map to* without touching the −100…100 storage contract this ADR is about.
+`exposure` is now ±5 EV (32× / 1/32×), and `wbTemperature`'s ± halves are a
+Bradford adaptation to a colour temperature interpolated in mired — so they are
+no longer exact channel-wise inverses of each other, by design. Rows below that
+say "+1 EV (2.0×)", "R×1.22, B×0.78" or "WB ±60 round-trips" are stale and are
+marked in place. Everything this ADR actually decides — the per-(section,
+parameter) range lookup, `fabs()` skip tests, 0 as the bit-exact identity, the
+two one-directional exceptions — is unchanged.
 Scope: Phase 2 of `docs/PLAN.md` §3. Amends **ADR-0012**'s "one direction each"
 decision for the "Màu" group only, and the `Slider` range contract in
 `RPCore/EditState.swift` that made it a project-wide rule. The "Da" (ADR-0009),
@@ -76,11 +85,11 @@ positive one. The `direction` string in the UI names **both** ends on these rows
 
 | slider | at +100 | at −100 | Vietnamese direction line |
 |---|---|---|---|
-| `exposure` | brighter, +1 EV (2.0×) | darker, −1 EV (0.5×) | `+ sáng hơn (+1 EV) · − tối hơn (−1 EV)` |
+| `exposure` | brighter, **+5 EV (32×)** | darker, **−5 EV (1/32×)** | `+ sáng hơn (+5 EV) · − tối hơn (−5 EV)` *(was ±1 EV until docs/ADR-0023)* |
 | `contrast` | more contrast (S-curve mixed in) | flatter, toward mid-grey (S-curve extrapolated away from) | `+ tương phản mạnh · − phẳng lại` |
 | `highlights` | highlights pulled **down** (recovery) | highlights pushed **up** | `+ kéo vùng sáng xuống · − đẩy lên` |
 | `shadows` | shadows pulled **up** (lift) | shadows pushed **down** (deepen) | `+ nâng vùng tối lên · − dìm xuống` |
-| `wbTemperature` | warmer (R×1.22, B×0.78) | cooler (the exact channel-wise inverse) | `+ ấm hơn · − lạnh hơn` |
+| `wbTemperature` | warmer — declares 50000 K light | cooler — declares 2000 K light (**not** the inverse of +100; the halves walk different mired distances) | `+ ấm hơn (tới 50000K) · − lạnh hơn (tới 2000K)` *(was a fixed R×1.22/B×0.78 von Kries until docs/ADR-0023)* |
 | `wbTint` | toward magenta (G×0.88) | toward green (G×1/0.88) | `+ ngả magenta · − ngả lục` |
 | `vibrance` | more saturation, weighted by `1 − sat` | less, same weighting and same skin damping | `+ đậm · − nhạt, mạnh nhất ở màu nhạt` |
 | `saturation` | 2× saturation | 0× — grayscale | `+ đậm đều · − nhạt đều (−100 = trắng đen)` |
@@ -131,8 +140,9 @@ half is built in whatever space makes ±x actual inverses:
 
 | slider | naive mirror | what shipped | why |
 |---|---|---|---|
-| `exposure` | gain `1 + a` → −100 is 0.0× (black) | `exp2(a · stops)` | symmetric in **stops**: −100 is 0.5×, the exact inverse of +100's 2× |
-| `wbTemperature`, `wbTint` | gain `1 ± k·a` → cooling by x does not undo warming by x | `pow(1 ± k, a)` | symmetric in **log gain**; endpoints still exactly the 1.22 / 0.78 / 0.88 of ADR-0012, and −x is the exact channel-wise inverse of +x |
+| `exposure` | gain `1 + a` → −100 is 0.0× (black) | `exp2(a · stops)` | symmetric in **stops**: −100 is the exact inverse of +100. `stops` was 1 here and is 5 since docs/ADR-0023, so 1/32× against 32× |
+| `wbTint` | gain `1 ± k·a` → one direction does not undo the other | `pow(1 − 0.12, a)` | symmetric in **log gain**; −x is the exact channel-wise inverse of +x. Unchanged by docs/ADR-0023 |
+| `wbTemperature` | *(as shipped here: `pow(1 ± 0.22, a)`, same argument)* | **superseded** — a Bradford CAT to a Kelvin interpolated in mired (docs/ADR-0023) | the symmetry that survives is in **mired**, not in the gain; ±x deliberately no longer round-trips, because 2000 K and 50000 K are not equidistant from any neutral |
 | `highlights`, `shadows` | mix weight `a` extrapolating past the gamma → a near-black pixel goes **below 0** | gamma `g` for +, `1/g` for −; `\|a\|` is the mix weight | symmetric in the **exponent's log space**, and stays inside [0,1] by construction, so neither end can crush or clip |
 | `saturation` | — | linear in the multiplier, `1 + a` | deliberately *not* exponential: `2^a` would only reach 0.5× at −100 and never actually reach grayscale. Linear lands exactly on 0× |
 
@@ -217,14 +227,18 @@ on the *shadow* window would score just as well.
 | Shadows −100 **deepens** the dark end | ramp 0.05–0.25: **−0.0755** (vs +0.1059 at +100) |
 | …and still leaves the bright end alone | ramp 0.75–0.95: **0.0** |
 | …without crushing to black | darkest pixel **0.00757 > 0**, **0** channels clipped |
-| Exposure −100 is exactly −1 EV | linear 0.21540 → 0.10770, ratio **0.49999995** |
+| Exposure −100 is exactly −1 EV | linear 0.21540 → 0.10770, ratio **0.49999995** — *stale: now −5 EV, 0.21540 → 0.006731, ratio 0.031250 (docs/ADR-0023)* |
 | Saturation −100 is true grayscale | worst residual chroma **0.0** |
 | …and the 8 HSL bands at −100 partition to the same thing | max abs diff vs Saturation −100 **3.0e-8** |
 | Contrast −100 flattens the ramp | spread 0.6478 → **0.5596** (and 0.7360 at +100) |
 | …and stays monotone | minimum slope **0.750** |
-| WB ±60 round-trips | max abs residual **0.00201** off the clip; 0.0347 including 2880 channels that clipped at the fixture's saturated patches |
+| WB ±60 round-trips | max abs residual **0.00201** off the clip; 0.0347 including 2880 channels that clipped at the fixture's saturated patches — *stale: docs/ADR-0023 made ±x deliberately not a round trip; the replacement claims are the ±50 linear R/B factors (1.8341× / 0.1209×, against 1.2506× / 0.7996× here) and the 3200 K cast test* |
 | Cancelling sliders still change the picture | **0.1418** (exposure/contrast), **0.3023** (HSL) |
 | Curves / Auto D&B refuse a negative value | clamped to 0 by `Slider.range(for:in:)` |
+
+*(Stale since docs/ADR-0023: the same +60/−60 residual is now **0.30619**, and
+that is the intended behaviour rather than a regression — the paragraph below
+describes the formula this ADR shipped.)*
 
 The WB round-trip residual is the honest one to read: 0.002 is float32 through
 two linear-light round trips and a luminance renormalisation, not an exact
@@ -307,6 +321,8 @@ written to a "Da" slider clamps to 0 and the key is deleted.
   flattening is ugly, `ColorReference` and the kernel agree and both are ugly.
 * **WB ±x is not a bit-exact round trip** (0.002 off the clip, worse where a
   channel saturates). It is an inverse in the gain, not in the clipped output.
+  *Since docs/ADR-0023 it is not an inverse at all: the two halves cover
+  different mired distances on purpose.*
 * **`curves` and `autoDodgeBurn` have no negative half**, by the argument above.
   A user who wants "less film look than the file already has" cannot get it here;
   that needs the deferred knot editor.

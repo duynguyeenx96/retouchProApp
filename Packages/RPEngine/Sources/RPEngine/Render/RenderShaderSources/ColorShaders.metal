@@ -159,6 +159,26 @@ struct ColorParams {
     // branch on a picture the user has graded.
     float4 hslA;   // red, orange, yellow, green      — -1…1
     float4 hslB;   // aqua, blue, purple, magenta     — -1…1
+    /// Linear-sRGB white-balance gain for `wbTemperature`, computed on the CPU
+    /// by `WhiteBalance.linearRGBGain` (docs/ADR-0023): the slider is mapped
+    /// linearly in **mired** to a declared colour temperature between 2000 K and
+    /// 50000 K, and that becomes a **Bradford chromatic adaptation** from the
+    /// declared illuminant to the photograph's own neutral.
+    ///
+    /// It is a matrix and not the old `float3` von Kries diagonal because a
+    /// Bradford CAT is only diagonal in *cone* space; reduced to a diagonal in
+    /// sRGB primaries it explodes (a 2000 K adaptation wants a 48x blue gain
+    /// that way, against 6.5x through Bradford — measured, ADR-0023).
+    ///
+    /// **Exactly the identity when `wbTemperature == 0`**, short-circuited on the
+    /// CPU rather than computed, so a render that only moves Exposure is
+    /// bit-exact what it was before this matrix existed.
+    ///
+    /// Uniform over the frame, so the whole of the colour science is paid once
+    /// per render on the CPU and the kernel pays one 3x3 multiply — which is
+    /// *cheaper* than the three per-pixel `pow()` calls it replaces
+    /// (docs/ADR-0016 filed that hoist as "a known move, not a discovery").
+    float3x3 wbMatrix;
     uint2 size;
     uint2 analysisSize;
     float exposure;        // -1…1
@@ -192,19 +212,22 @@ struct ContourLobe {
     float pad;
 };
 
-/// Stops of exposure at slider ±100. One, because a portrait that needs more
-/// than a stop needs a re-shoot or a raw redevelop. `exp2(amount * stops)` is
-/// symmetric in *stops*: -100 is 0.5x, the exact inverse of +100's 2x, which a
-/// mirrored linear gain (1 ± amount) would not be.
-constant float kRPExposureStops = 1.0;
-/// Von Kries diagonal gains at "WB temperature" = 100, before luminance
-/// renormalisation: red up, blue down by the same fraction. Applied as
-/// pow(1 ± gain, amount) rather than 1 ± gain * amount, so the two ends of the
-/// slider are exact channel-wise inverses of each other and the endpoints stay
-/// exactly the 1.22 / 0.78 of docs/ADR-0012.
-constant float kRPWBTemperatureGain = 0.22;
+/// Stops of exposure at slider ±100 — **five**, Lightroom's convention
+/// (docs/ADR-0023). It was 1.0 until 2026-09-21, on the argument that "a portrait
+/// that needs more than a stop needs a re-shoot"; that argument is wrong for the
+/// one thing this group exists to do, which is *correct* a file that arrived
+/// wrong, and a frame off the a6300 metered two stops down cannot be rescued by
+/// a slider that stops at one. `exp2(amount * stops)` is symmetric in *stops*:
+/// -100 is 1/32x, the exact inverse of +100's 32x, which a mirrored linear gain
+/// (1 ± amount) would not be.
+constant float kRPExposureStops = 5.0;
 /// Green pulled down at "WB tint" = 100, i.e. toward magenta; pushed up (toward
-/// green) at -100.
+/// green) at -100. Applied as pow(1 - gain, amount), so the two ends of the
+/// slider are exact channel-wise inverses of each other.
+///
+/// Deliberately untouched by the 2026-09-21 temperature rework (docs/ADR-0023):
+/// tint is the green/magenta axis *off* the Planckian locus, it has no Kelvin
+/// meaning, and Lightroom keeps it on its own small relative scale too.
 constant float kRPWBTintGain = 0.12;
 /// Gamma applied to the brightest pixels at "Highlights" = 100. > 1 darkens; the
 /// negative half uses its RECIPROCAL, so the two directions are symmetric in the
@@ -448,20 +471,21 @@ kernel void rp_color_composite(
     if (prm.exposure != 0.0 || prm.wbTemperature != 0.0 || prm.wbTint != 0.0) {
         float3 lin = rp_color_to_linear(c);
         lin *= exp2(prm.exposure * kRPExposureStops);
-        // pow(base, amount), not 1 + gain * amount: the endpoints are the same
-        // 1.22 / 0.78 / 0.88 as before, but cooling by x now exactly undoes
-        // warming by x per channel (measured, `whiteBalanceDirectionsAreInverse`).
-        float3 gain = float3(
-            pow(1.0 + kRPWBTemperatureGain, prm.wbTemperature),
-            pow(1.0 - kRPWBTintGain, prm.wbTint),
-            pow(1.0 - kRPWBTemperatureGain, prm.wbTemperature));
+        // Temperature: the CPU-built Bradford adaptation matrix (see wbMatrix
+        // above and docs/ADR-0023). Exactly the identity at wbTemperature == 0,
+        // so "only Exposure moved" is still bit-exact.
+        float3 adapted = prm.wbMatrix * lin;
+        // Tint: unchanged from docs/ADR-0012 — one channel, one pow, no Kelvin.
+        float3 tint = float3(1.0, pow(1.0 - kRPWBTintGain, prm.wbTint), 1.0);
+        adapted *= tint;
         // Renormalise so the white balance changes the colour of the light and
-        // not the amount of it. kRPLuma's weights are the Rec.709 luminance
-        // coefficients, and here — unlike everywhere else in this package —
-        // they are applied to genuinely linear values, which is what they are
-        // for.
-        gain /= max(dot(gain, kRPLuma), 1e-4);
-        c = rp_color_to_srgb(lin * gain);
+        // not the amount of it: divide by what the pair does to a linear white.
+        // kRPLuma's weights are the Rec.709 luminance coefficients, and here —
+        // unlike everywhere else in this package — they are applied to genuinely
+        // linear values, which is what they are for.
+        float3 white = (prm.wbMatrix * float3(1.0)) * tint;
+        adapted /= max(dot(white, kRPLuma), 1e-4);
+        c = rp_color_to_srgb(adapted);
     }
 
     // 3. Highlights (recovery / push) and 4. Shadows (lift / deepen). Both are

@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Metal
 import RPCore
+import simd
 
 /// The "Color" slider group — ``RenderStage/color`` on ``RenderGraph``, and the
 /// **first** stage of the pipeline docs/PLAN.md §2 fixes
@@ -66,6 +67,11 @@ import RPCore
 /// linear, scale, and convert back inside one branch — one transfer function for
 /// both. Everything else is display-referred, which is also what Photoshop's
 /// Curves and Contrast do and what `commands.js` was written against.
+///
+/// Exposure is `exp2(amount · 5)`, i.e. **±5 EV** at ±100 (Lightroom's range,
+/// docs/ADR-0023); White Balance is a **Bradford chromatic adaptation** built on
+/// the CPU by ``WhiteBalance`` from a mired-linear Kelvin mapping, and `wbTint`
+/// is the unchanged one-channel gain from docs/ADR-0012.
 ///
 /// ## Metal, not a CIFilter chain
 /// docs/PLAN.md §1.3 says "Core Image + kernel" for this row. It is a Metal
@@ -326,7 +332,8 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
         encoder.setTexture(destination, index: 4)
         var params = ColorParams(
             sliders, size: (width, height), analysisSize: analysisSize,
-            contourLobeCount: lobes.count)
+            contourLobeCount: lobes.count,
+            referenceColorTemperatureKelvin: request.referenceColorTemperatureKelvin)
         encoder.setBytes(&params, length: MemoryLayout<ColorParams>.stride, index: 0)
         encoder.setBuffer(lobeBuffer, offset: 0, index: 1)
         let dispatch = MetalContext.threadgroups(
@@ -485,6 +492,11 @@ public final class ColorRenderNode: RenderNode, @unchecked Sendable {
 struct ColorParams {
     var hslA: SIMD4<Float>
     var hslB: SIMD4<Float>
+    /// The "Nhiệt độ" slider's Bradford adaptation gain in linear sRGB, built by
+    /// ``WhiteBalance/linearRGBGain(amount:neutralKelvin:)`` — the whole of the
+    /// colour science is paid once per render here, and the kernel gets a 3×3.
+    /// Exactly `identity` at `wbTemperature == 0` (docs/ADR-0023).
+    var wbMatrix: simd_float3x3
     var size: SIMD2<UInt32>
     var analysisSize: SIMD2<UInt32>
     var exposure: Float
@@ -505,11 +517,14 @@ struct ColorParams {
 
     init(
         _ sliders: ColorSliders, size: (Int, Int), analysisSize: SIMD2<UInt32>,
-        contourLobeCount: Int = 0
+        contourLobeCount: Int = 0, referenceColorTemperatureKelvin: Double? = nil
     ) {
         func amount(_ band: HueBand) -> Float { Float(sliders[band] / 100) }
         self.hslA = SIMD4<Float>(amount(.red), amount(.orange), amount(.yellow), amount(.green))
         self.hslB = SIMD4<Float>(amount(.aqua), amount(.blue), amount(.purple), amount(.magenta))
+        self.wbMatrix = WhiteBalance.matrix(
+            amount: sliders.wbTemperature / 100,
+            neutralKelvin: WhiteBalance.neutralKelvin(referenceColorTemperatureKelvin))
         self.size = SIMD2<UInt32>(UInt32(size.0), UInt32(size.1))
         self.analysisSize = analysisSize
         self.exposure = Float(sliders.exposure / 100)

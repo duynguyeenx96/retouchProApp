@@ -404,8 +404,9 @@ project = không có cách nào lấy lại dung lượng trên iPhone. Đã shi
   node 136.3 dB**, max abs 9.5e-7 — vượt xa bar 45 dB. Số **PSNR không nói được**: Highlights kéo
   đầu sáng **−0.0483**, đầu tối **đúng 0**; Shadows nâng đầu tối **+0.1059**, đầu sáng **0**; Auto
   D&B **−0.0727** đốm sáng / **+0.0738** đốm tối / **+0.0013** dốc phẳng; `hslRed` đổi mảng đỏ
-  0.1162, xanh lá/aqua **đúng 0**; exposure = **+1 EV** (tỉ lệ 1.9999997); WB giữ độ sáng (lệch
-  −3.9e-4). Tốc độ M1 Pro, ảnh a6300 thật (4000×6000): preview 2048 px đủ 18 slider **1.59 ms →
+  0.1162, xanh lá/aqua **đúng 0**; exposure = **+1 EV** (tỉ lệ 1.9999997 — *số cũ, nay ±5 EV /
+  32.000004, xem "Cập nhật 2026-09-21" bên dưới*); WB giữ độ sáng (lệch −3.9e-4 — *nay −3.8e-3
+  trên gain mạnh hơn nhiều*). Tốc độ M1 Pro, ảnh a6300 thật (4000×6000): preview 2048 px đủ 18 slider **1.59 ms →
   628 fps**, chỉ tone 0.54 ms; 24 MP **9.46 ms** (bar 8 s). iOS Simulator 3.62 ms preview / 10.0 ms
   export — **chưa đo trên iPhone thật**, giống S1/S2/S3/FaceAnalyzer/Da/Mặt/Mắt-Răng. Ghi rõ giới
   hạn: mọi hằng số **chưa tinh chỉnh theo mắt người**; mỗi slider một chiều; Auto D&B toàn khung;
@@ -501,10 +502,11 @@ project = không có cách nào lấy lại dung lượng trên iPhone. Đã shi
   dấu 139.33 dB** (max abs 5.4e-7), toàn dương 136.58 dB — bar 45 dB. Số PSNR không nói được:
   Highlights −100 **đẩy đầu sáng lên +0.0360** (so −0.0483 ở +100), đầu tối **đúng 0**; Shadows
   −100 **dìm đầu tối −0.0755**, đầu sáng **0**, pixel tối nhất còn **0.00757 > 0** và **0 kênh
-  bị kẹp**; Exposure −100 = **−1 EV** (tỉ lệ 0.49999995); Saturation −100 = trắng đen **thật**
+  bị kẹp**; Exposure −100 = **−1 EV** (tỉ lệ 0.49999995 — *số cũ, nay −5 EV / 0.031250*); Saturation −100 = trắng đen **thật**
   (chroma dư **0.0**) và 8 dải HSL cùng −100 khớp đúng nó (lệch **3.0e-8**); Contrast dải ramp
   0.6478 → **0.5596** ở −100 (và 0.7360 ở +100); WB ±60 quay về lệch **0.00201** ngoài vùng kẹp
-  (0.0347 nếu tính cả 2880 kênh kẹp ở mảng màu bão hoà — ghi cả hai, không chỉ số đẹp). **Tốc độ
+  (0.0347 nếu tính cả 2880 kênh kẹp ở mảng màu bão hoà — ghi cả hai, không chỉ số đẹp; *claim
+  round-trip này đã hết hiệu lực từ 2026-09-21, xem bên dưới*). **Tốc độ
   có trả giá và đã đo tử tế**: 3 `pow()`/pixel thay 3 phép nhân-cộng ở khối WB. Đọc lần đầu ra
   **+14 %** ở 24 MP nhưng **chạy lại 3 lần mới dám kết luận** — biên độ run-to-run của
   `all_sliders` là **~6 %**, nên +14 % là nhiễu: 9.197 ms (nền ADR-0012) → **9.538 / 9.966 /
@@ -534,6 +536,42 @@ project = không có cách nào lấy lại dung lượng trên iPhone. Đã shi
   công thức đẹp; WB ±x **không** round-trip bit-exact (0.002, tệ hơn ở chỗ kênh bão hoà); chỉ
   nhóm Màu hai chiều. Số liệu: `Research/bench/p2-color-{macos,ios-simulator}.json`,
   `Scripts/bench-color.sh`, `docs/ADR-0016`.
+
+**Cập nhật 2026-09-21 — "Nhiệt độ" thành CCT thật (Kelvin/mired + Bradford) và "Phơi sáng" nới ±5 EV
+(`docs/ADR-0023`):** user (nhiếp ảnh gia, test ảnh a6300 thật) báo kéo "Nhiệt độ" trên ảnh ám vàng nặng
+gần như không ăn thua, và đọc code thì đúng: `kRPWBTemperatureGain = 0.22` **không hề có nhiệt độ màu
+trong đó** — chỉ là một gain von Kries cố định `pow(1 ± 0.22, a)` trên R/B. Đo ngược lại từ nền D65: toàn
+bộ hành trình ấm của slider cũ chỉ bằng **+48 mired** (≈ declared 9462 K) và toàn bộ hành trình lạnh chỉ
+**−43 mired** (≈ 5068 K), trong khi một cast tungsten 3200 K lệch **159 mired** — tức slider cũ không đi
+nổi 1/4 quãng đường cần thiết, và đúng ở **chiều lạnh** như user phàn nàn. Thay bằng: giá trị slider = **nhiệt
+độ ánh sáng user khai báo** (đúng định nghĩa slider Temp của Lightroom), nội suy **tuyến tính theo mired**
+giữa neutral của chính bức ảnh và 2000 K (−100) / 50000 K (+100), rồi dựng **Bradford chromatic adaptation**
+từ illuminant khai báo về neutral. Hằng số đều là **số công bố được trích dẫn**: quỹ tích Planck theo Kim et
+al. (2002), `M_A`/`M_A⁻¹` và ma trận sRGB/D65 theo Bruce Lindbloom. Ma trận (không phải diagonal) vì Bradford
+chỉ chéo trong **không gian cone** — ép về chéo trong primaries sRGB thì đòi gain xanh lam **48.7×** thay vì
+6.45×. Tính **1 lần/khung trên CPU** (`WhiteBalance.linearRGBGain`) rồi truyền `float3x3` vào kernel, tức **bỏ
+3 `pow()`/pixel** — đúng nước đi ADR-0016 đã ghi là "biết nhưng cố ý chưa làm". `wbTint` **không đụng tới**.
+Số đo: cast 3200 K trên xám tuyến tính 0.4 — lệch kênh **0.5281** trước; công thức **cũ** ở đầu −100 chỉ gỡ
+được 28 % (**0.3820**); công thức mới ở **−45.9** còn **0.00050**. Qua **RenderGraph thật** (khung 64×64, một
+slider trong `EditState` thật): spread **1.402 → 0.0341** ở slider −45, **còn dư địa** (không phải kịch
+slider), và hàng **control** slider 0 trả lại ảnh **đúng từng bit** (max abs = 0). Ở nửa hành trình, hệ số R/B
+tuyến tính: **1.8341× / 0.1209×** so với **1.2506× / 0.7996×** của gain cũ → chiều lạnh mạnh hơn **6.6×**.
+`kRPExposureStops` 1.0 → **5.0** (chuẩn Lightroom; lý lẽ cũ "quá 1 stop thì chụp lại hoặc redevelop RAW" sai,
+vì app **không có** RAW redevelop — spike S4 chưa làm): +100 = **32.000004×**, −100 = **0.031250×**, và đã quét
+toàn ảnh xác nhận không NaN/không âm ở hai đầu. Golden **không đổi**: all-sliders-0 vẫn **max abs 0 bit-exact**
+(matrix được **short-circuit** về identity ở amount 0 vì `M_A⁻¹·M_A` chỉ về identity tới 4.4e-7), mọi tầng
+PSNR vẫn ≥ 45 dB; `ColorParams` stride 96 → **144 B**. **EXIF thì sao**: dump `CGImageSourceCopyPropertiesAtIndex`
++ `CGImageMetadata` cho ARW và JPEG a6300 thật → **không có Kelvin ở đâu cả**, `Exif/WhiteBalance = 0` chỉ là cờ
+auto/manual, **không có dictionary maker-note nào**. `CIRAWFilter.neutralTemperature` *có* (6816 K cho
+DSC05123, dải 6072–7383 K qua 5 file) nhưng **cố ý chưa nối vào**: nó thuộc đường RAW (spike **S4**), tốn
+**~40 ms ấm / ~190–230 ms lạnh mỗi file ARW**, và chênh so với D65 nhiều nhất **19 mired** — không nhìn thấy
+được. Đã dựng sẵn seam `RenderRequest.referenceColorTemperatureKelvin: Double?` (nil ⇒ 6500 K) có test, chưa
+ai điền. Lý do "thang tương đối" là **đúng** chứ không phải hạn chế: `ImageDecoder` hôm nay decode mọi file
+(kể cả ARW) bằng `CGImageSourceCreateThumbnailAtIndex` → **JPEG preview nhúng trong máy ảnh**, không có
+calibration sensor nào để neo Kelvin tuyệt đối — đúng tình huống mà **chính Lightroom** cũng chuyển sang thang
+−100…+100 cho JPEG/TIFF. Giới hạn ghi rõ: dưới khoảng −70 kênh đỏ của pixel trung tính **kẹp về 0** (gain trắng
+ở −100 là (−0.373, 0.858, 6.451) — gamut sRGB, Lightroom ở Temp 2000 cũng vậy); **±x không còn round-trip** (cố
+ý); neutral vẫn là 6500 K cho mọi ảnh; **vẫn chưa ai nhìn render**.
 - `RenderGraph` slider (Màu −100…100 cho 16/18 key, các nhóm còn lại 0–100 — `docs/ADR-0016`):
   - **Da**: Mịn da, Giữ texture, Đều màu da, Khử đỏ, Khử bóng dầu, Sáng da, Quầng thâm, Nếp nhăn.
   - **Mặt**: Bóp mặt, Gò má, Hàm, Cằm, Trán, Thái dương, Mũi (thu nhỏ/sống/đầu), Mắt (to/khoảng cách/nghiêng), Miệng (to/cười), Môi đầy.

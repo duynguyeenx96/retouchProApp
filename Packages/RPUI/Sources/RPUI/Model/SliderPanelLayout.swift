@@ -727,11 +727,13 @@ public enum SliderPanelLayout {
                 in: EditState.SectionKey.color,
                 keys: ColorSliders.Key.all,
                 labels: [
-                    ColorSliders.Key.exposure: ("Phơi sáng", "+ sáng hơn (+1 EV) · − tối hơn (−1 EV)"),
+                    ColorSliders.Key.exposure: ("Phơi sáng", "+ sáng hơn (+5 EV) · − tối hơn (−5 EV)"),
                     ColorSliders.Key.contrast: ("Tương phản", "+ tương phản mạnh · − phẳng lại"),
                     ColorSliders.Key.highlights: ("Vùng sáng", "+ kéo vùng sáng xuống · − đẩy lên"),
                     ColorSliders.Key.shadows: ("Vùng tối", "+ nâng vùng tối lên · − dìm xuống"),
-                    ColorSliders.Key.wbTemperature: ("Nhiệt độ", "+ ấm hơn · − lạnh hơn"),
+                    ColorSliders.Key.wbTemperature: (
+                        "Nhiệt độ", "+ ấm hơn (tới 50000K) · − lạnh hơn (tới 2000K)"
+                    ),
                     ColorSliders.Key.wbTint: ("Sắc độ", "+ ngả magenta · − ngả lục"),
                     ColorSliders.Key.vibrance: ("Rực rỡ", "+ đậm · − nhạt, mạnh nhất ở màu nhạt"),
                     ColorSliders.Key.saturation: ("Bão hoà", "+ đậm đều · − nhạt đều (−100 = trắng đen)"),

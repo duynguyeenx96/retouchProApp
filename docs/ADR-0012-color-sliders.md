@@ -1,6 +1,16 @@
 # ADR-0012 — The "Color" slider group and `ColorRenderNode`
 
-Status: accepted — 2026-09-06
+Status: accepted — 2026-09-06.
+**Amended 2026-09-08 by docs/ADR-0016** (the "one direction each" decision:
+16 of the 18 sliders are now −100…100).
+**Amended 2026-09-21 by docs/ADR-0023** — step 2 of the composite below was
+rewritten. Exposure is now **±5 EV**, not ±1, and White Balance's temperature
+half is a **Bradford chromatic adaptation** to a Kelvin interpolated in mired,
+not the `pow(1 ± 0.22, a)` von Kries diagonal described here. Every number on
+this page that mentions `0.22`, `1.22 / 0.78`, "+1 EV" or "1.9999972×" is
+**stale** and is marked where it appears; the argument around them (linear light,
+one transfer function for both, luminance renormalisation, the step order) is
+unchanged and still current. `wbTint`'s `0.12` is untouched.
 Scope: Phase 2 of `docs/PLAN.md` §3 — the fourth and last slider group of the
 phase, at `RenderStage.color`, the **first** stage of the pipeline. The realtime
 `MTKView` preview, multi-face canvas selection and the RPUI slider panel are
@@ -123,11 +133,18 @@ for step, so it is part of the contract:
    light that reached the sensor. This is the one documented exception to
    `pixelSpace == .sRGBEncoded`: the kernel converts, scales and converts back
    inside a single branch, so the transfer function is paid once for both and
-   only when one of the three sliders is off 0. Exposure is `exp2(amount)`, i.e.
-   +1 EV at 100 (measured: 1.99999972× on a linear mid-grey). White balance is a
-   von Kries diagonal `(1 + 0.22a, 1 − 0.12t, 1 − 0.22a)` renormalised by
-   `dot(gain, Rec.709)`, so it changes the colour of the light and not the amount
-   (measured: mean luminance moves 3.9e-4 at `wbTemperature = 100`).
+   only when one of the three sliders is off 0.
+   **Superseded 2026-09-21 — docs/ADR-0023.** As shipped here: exposure was
+   `exp2(amount)`, +1 EV at 100 (measured 1.99999972× on a linear mid-grey), and
+   white balance was a von Kries diagonal `(1 + 0.22a, 1 − 0.12t, 1 − 0.22a)`.
+   **Today** exposure is `exp2(amount · 5)` — ±5 EV, measured 32.000004× — and
+   the temperature half is a Bradford CAT from a declared colour temperature
+   (2000 K…50000 K, interpolated in mired from the photograph's neutral) built on
+   the CPU and handed to the kernel as a `float3x3`. The tint half is unchanged
+   (`1 − 0.12t` on green), and so is the renormalisation by `dot(gain, Rec.709)`,
+   so white balance still changes the colour of the light and not the amount
+   (measured: mean luminance moves 3.8e-3 at `wbTemperature = 100`, against
+   3.9e-4 for the much weaker gain this replaced).
 3. **Highlights** — `pow(c, 1.45)` weighted by `smoothstep(0.45, 1, luma)`.
 4. **Shadows** — `pow(c, 0.65)` weighted by `1 − smoothstep(0, 0.55, luma)`.
    Both are endpoint-preserving gammas, so neither can crush black or clip white,
@@ -309,8 +326,8 @@ monotonicity, endpoints and the per-channel split.
 | …on the green patch | **0** |
 | …on the aqua patch | **0** |
 | …on the skin patch | 0.0325 — correct, skin's 20° hue is inside the red band's ±60° window |
-| Exposure = +1 EV | linear ratio **1.9999997** |
-| WB is luminance-preserving | mean luma change **−3.9e-4** |
+| Exposure = +1 EV | linear ratio **1.9999997** — *stale, now +5 EV / 32.000004, docs/ADR-0023* |
+| WB is luminance-preserving | mean luma change **−3.9e-4** — *stale, now −3.8e-3 on the far stronger gain, docs/ADR-0023* |
 | Vibrance holds back on skin | 0.0283 on a 20° hue against **0.0750** on a 140° hue of identical saturation |
 | All 8 HSL bands = plain Saturation | max abs **0.0** |
 
@@ -343,7 +360,9 @@ group's 552 MB and the Mắt/Răng group's 384 MB at 24 MP.
 * Every constant — the stop, the two WB gains, the two tone windows and their
   gammas, the contrast mix, the vibrance protection, the film curve's toe and
   shoulder — is argued from what the operation physically is and is **not tuned
-  against a retoucher's eye**. Nobody has looked at a render. What is measured is
+  against a retoucher's eye**. (Two of them stopped being arbitrary on
+  2026-09-21: the stop is now Lightroom's ±5 EV and the temperature gain is real
+  colour science with published constants — docs/ADR-0023. The rest still are.) Nobody has looked at a render. What is measured is
   that the GPU computes the documented formula and that each slider lands on the
   right part of the picture.
 * Every slider is one-directional; see above.

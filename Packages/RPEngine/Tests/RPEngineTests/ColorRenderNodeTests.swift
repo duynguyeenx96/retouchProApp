@@ -3,6 +3,7 @@ import Foundation
 import Metal
 import RPCore
 import Testing
+import simd
 
 @testable import RPEngine
 
@@ -101,9 +102,11 @@ struct ColorRenderNodeTests {
 
     @Test("The shader parameter structs have the layout ColorShaders.metal declares")
     func parameterStructsMatchShaderLayout() {
-        // 2 x float4 (32) + 2 x uint2 (16) + 10 floats (40) + uint (4) = 92,
-        // rounded to the float4 alignment of 16.
-        #expect(MemoryLayout<ColorParams>.stride == 96)
+        // 2 x float4 (32) + float3x3 (48, three 16-byte columns) + 2 x uint2 (16)
+        // + 10 floats (40) + 2 uint (8) = 144, already a multiple of the float4
+        // alignment of 16. It was 96 before docs/ADR-0023 added `wbMatrix`.
+        #expect(MemoryLayout<ColorParams>.stride == 144)
+        #expect(MemoryLayout<simd_float3x3>.size == 48)
         #expect(MemoryLayout<ColorAnalysisParams>.stride == 16)
         #expect(MemoryLayout<ColorBoxParams>.stride == 16)
     }
@@ -250,7 +253,14 @@ struct ColorRenderNodeTests {
 
     // MARK: - 3. Behaviour — the claims a PSNR cannot make
 
-    @Test("Exposure brightens, and the linear-light gain is +1 EV at 100")
+    /// **+5 EV at 100 since 2026-09-21** (docs/ADR-0023); it was +1 EV, and
+    /// `exposureIsSymmetricInStops` below is the matching −5 EV.
+    ///
+    /// The measurement is taken at the **dark** end of the ramp rather than the
+    /// middle, because 32× on a mid-grey is far past white and a clipped pixel
+    /// can only say "≥ 1". That is not the slider being wrong — the same is true
+    /// of Lightroom at +5 — it is what makes the *ratio* unmeasurable there.
+    @Test("Exposure brightens, and the linear-light gain is +5 EV at 100")
     func exposureIsAStopOfLight() throws {
         guard let context = SpikeS3Support.context else { return }
         let flags = RPEngineTestFlags.enterColorRenderGraph()
@@ -259,14 +269,20 @@ struct ColorRenderNodeTests {
         let node = try ColorRenderNode(context: context)
         let output = try Self.runNode(
             node, context: context, request: Self.request(ColorSliders(exposure: 100)))
-        // A mid-grey ramp pixel must land within rounding of 2x its linear value.
-        let x = Self.width / 2
+        // A DARK ramp pixel (linear ≈ 0.010), so 32x still lands inside 0…1 and
+        // the ratio is a number rather than a clip.
+        let x = 21
         let y = 120
         let o = (y * Self.width + x) * 4
         let before = ColorReference.toLinear(Double(Self.source[o + 1]))
         let after = ColorReference.toLinear(Double(output[o + 1]))
         print("P2 color exposure: linear \(before) -> \(after), ratio \(after / before)")
-        #expect(abs(after / before - 2) < 0.01, "ratio \(after / before) is not one stop")
+        #expect(after < 1, "the probe pixel clipped; pick a darker one")
+        #expect(abs(after / before - 32) < 0.2, "ratio \(after / before) is not five stops")
+        // …and a mid-grey really does go to white, which is the point of the
+        // wider range: +5 EV is a rescue, not a nudge.
+        let mid = (y * Self.width + Self.width / 2) * 4
+        #expect(output[mid + 1] >= 0.999, "mid-grey did not reach white at +5 EV")
     }
 
     @Test("Highlights pulls the bright end down and leaves the dark end alone")
@@ -460,7 +476,7 @@ struct ColorRenderNodeTests {
         #expect(bandChange > 1e-2, "the cancelling bands were skipped (\(bandChange))")
     }
 
-    @Test("Exposure at −100 is −1 EV, the exact inverse of +100")
+    @Test("Exposure at −100 is −5 EV, the exact inverse of +100")
     func exposureIsSymmetricInStops() throws {
         guard let context = SpikeS3Support.context else { return }
         let flags = RPEngineTestFlags.enterColorRenderGraph()
@@ -475,7 +491,15 @@ struct ColorRenderNodeTests {
         let before = ColorReference.toLinear(Double(Self.source[o + 1]))
         let after = ColorReference.toLinear(Double(output[o + 1]))
         print("P2 color exposure -100: linear \(before) -> \(after), ratio \(after / before)")
-        #expect(abs(after / before - 0.5) < 0.01, "ratio \(after / before) is not minus one stop")
+        #expect(
+            abs(after / before - 1.0 / 32) < 0.002,
+            "ratio \(after / before) is not minus five stops")
+        // Nothing went negative or NaN on the way down — the concern a 32x
+        // range raises that a 2x one did not.
+        for value in output where !(value.isFinite && value >= 0) {
+            Issue.record("exposure -100 produced \(value)")
+            break
+        }
     }
 
     @Test("Highlights at −100 pushes the bright end up and still leaves the dark end alone")
@@ -525,11 +549,22 @@ struct ColorRenderNodeTests {
         #expect(crushed == 0, "\(crushed) pixels were crushed to black")
     }
 
-    /// The white balance gains are `pow(base, amount)`, so cooling by x is the
-    /// exact channel-wise inverse of warming by x. What survives a round trip is
-    /// the luminance renormalisation (`dot(g, luma) · dot(1/g, luma) ≥ 1` by
-    /// Cauchy–Schwarz) and two sRGB transfer functions — measured, not assumed.
-    @Test("White balance cools at −100, and ±x round-trips back to the original")
+    /// **±x is no longer a round trip, and that is the change, not a
+    /// regression** (docs/ADR-0023). The gains used to be `pow(1 ± 0.22, x)`,
+    /// which made −x the exact channel-wise inverse of +x; they are now a
+    /// Bradford adaptation to a colour temperature interpolated in **mired**,
+    /// and the two halves of the slider cover wildly different mired distances
+    /// (from a 6500 K neutral: 346 mired down to 2000 K, 134 mired up to
+    /// 50000 K). Lightroom's Temp slider is asymmetric for exactly the same
+    /// reason — it is what the Planckian locus looks like.
+    ///
+    /// What replaces the round trip is the property that actually matters, and
+    /// the one the photographer complained was missing: the cool half has to be
+    /// *strong enough to fix a real cast*. That is
+    /// `aTungstenCastIsNeutralised` in `WhiteBalanceTests` on the maths and
+    /// `aYellowCastFrameIsNeutralisedThroughTheGraph` below on the GPU. Here we
+    /// only check the direction and the magnitude on the chart.
+    @Test("White balance cools at −100, and moves the picture far more than the old gain did")
     func whiteBalanceDirectionsAreInverse() throws {
         guard let context = SpikeS3Support.context else { return }
         let flags = RPEngineTestFlags.enterColorRenderGraph()
@@ -542,33 +577,132 @@ struct ColorRenderNodeTests {
         #expect(cool[o] < Self.source[o], "red did not go down")
         #expect(cool[o + 2] > Self.source[o + 2], "blue did not go up")
 
-        let warm = try Self.runNode(
-            node, context: context, request: Self.request(ColorSliders(wbTemperature: 60)))
-        let back = try Self.runNode(
-            node, context: context, request: Self.request(ColorSliders(wbTemperature: -60)),
-            pixels: warm)
-        // Only where the intermediate did **not** clip: this chart's ramp reaches
-        // 0.99 in red, warming takes it past 1, and no amount of cooling brings
-        // back a channel that was pinned at white. That is a property of a
-        // clamped 0…1 pipeline, not of the gain formula, so it is excluded and
-        // counted rather than hidden in a looser bar.
-        var residual = 0.0
-        var clipped = 0
-        for i in 0..<Self.source.count where i % 4 != 3 {
-            let intermediate = Double(warm[i])
-            guard intermediate > 1e-6, intermediate < 1 - 1e-6 else {
-                clipped += 1
-                continue
-            }
-            residual = max(residual, abs(Double(Self.source[i]) - Double(back[i])))
+        // At ±50, i.e. half travel, in **linear light** where the gain actually
+        // lives. Before docs/ADR-0023 the same ±50 was `pow(1 ± 0.22, ±0.5)`
+        // renormalised — a linear R/B ratio change of 1.2506x warm and 0.7996x
+        // cool. It is now 1.835x and 0.1097x, and those are the numbers asserted
+        // rather than only printed.
+        func linearRatio(_ data: [Float]) -> Double {
+            ColorReference.toLinear(Double(data[o])) / ColorReference.toLinear(Double(data[o + 2]))
         }
-        let all = SpikeTextureIO.maxAbsoluteDifference(Self.source, back)
+        let halfWarm = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(wbTemperature: 50)))
+        let halfCool = try Self.runNode(
+            node, context: context, request: Self.request(ColorSliders(wbTemperature: -50)))
+        let base = linearRatio(Self.source)
+        let warmFactor = linearRatio(halfWarm) / base
+        let coolFactor = linearRatio(halfCool) / base
         print(
-            "P2 color WB +60 then -60: max abs residual = \(residual) off the clip "
-                + "(\(clipped) clipped channels), \(all) including it")
-        #expect(residual < 0.005, "the round trip left \(residual)")
-        // …and the trip was not a no-op in the first place.
-        #expect(SpikeTextureIO.maxAbsoluteDifference(Self.source, warm) > 0.02)
+            "P2 color WB ±50 linear R/B factor: warm \(warmFactor)x, cool \(coolFactor)x "
+                + "(the 0.22 von Kries this replaces: 1.2506x / 0.7996x)")
+        #expect(warmFactor > 1.7, "the warm half is only \(warmFactor)x")
+        #expect(coolFactor < 0.15, "the cool half is only \(coolFactor)x")
+
+        // Stated rather than hidden: at −100 the adaptation asks for a
+        // *negative* red gain on a neutral (white gain −0.373, docs/ADR-0023
+        // "Known limitations"), so the red channel of a near-neutral pixel pins
+        // at 0. Lightroom's Temp 2000 does the same thing to a daylight frame;
+        // it is the extreme end of a corrective slider, not a working value.
+        print("P2 color WB −100 red on a mid-ramp pixel: \(cool[o]) (source \(Self.source[o]))")
+        #expect(cool[o] >= 0, "red went negative rather than clamping")
+    }
+
+    /// The bug this whole change exists to fix, end to end **through
+    /// `RenderGraph`**: a frame with a heavy tungsten cast, a real `EditState`
+    /// with one slider in it, and the three channel means measured before and
+    /// after.
+    ///
+    /// The cast is built from *published* CIE Planckian chromaticities, not from
+    /// ``WhiteBalance/planckianChromaticity(kelvin:)``, so the fixture and the
+    /// correction cannot cancel a shared mistake.
+    @Test("A yellow-cast frame is neutralised through the real render graph")
+    func aYellowCastFrameIsNeutralisedThroughTheGraph() throws {
+        guard let context = SpikeS3Support.context else { return }
+        let flags = RPEngineTestFlags.enterColorRenderGraph()
+        defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }
+
+        let side = 64
+        func whitePoint(_ x: Double, _ y: Double) -> SIMD3<Double> {
+            SIMD3(x / y, 1, (1 - x - y) / y)
+        }
+        // A neutral developed for daylight (6500 K) but lit at 3200 K.
+        let castMatrix =
+            WhiteBalance.xyzToLinearSRGB
+            * (WhiteBalance.bradfordXYZ(
+                sourceWhite: whitePoint(0.3135, 0.3236),
+                destinationWhite: whitePoint(0.4234, 0.3990))
+                * WhiteBalance.linearSRGBToXYZ)
+        var pixels = [Float](repeating: 1, count: side * side * 4)
+        for i in 0..<(side * side) {
+            // A gentle luminance ramp so the frame is a photograph and not one
+            // flat colour, kept dark enough that no channel clips on the way in.
+            let grey = 0.18 + 0.30 * Double(i % side) / Double(side - 1)
+            var lit = castMatrix * SIMD3<Double>(grey, grey, grey)
+            let luma = 0.2126 * lit.x + 0.7152 * lit.y + 0.0722 * lit.z
+            lit *= grey / max(luma, 1e-6)  // keep the brightness, change the colour
+            for c in 0..<3 {
+                pixels[i * 4 + c] = Float(ColorReference.toSRGB(min(max(lit[c], 0), 1)))
+            }
+        }
+        let quantised = SpikeTextureIO.float16ToFloat32(SpikeTextureIO.float32ToFloat16(pixels))
+
+        func channelMeans(_ data: [Float]) -> SIMD3<Double> {
+            var sum = SIMD3<Double>(0, 0, 0)
+            for i in 0..<(side * side) {
+                for c in 0..<3 {
+                    sum[c] += ColorReference.toLinear(Double(data[i * 4 + c]))
+                }
+            }
+            return sum / Double(side * side)
+        }
+        /// Max relative gap between the three linear channel means. 0 is a
+        /// perfectly neutral frame.
+        func castStrength(_ means: SIMD3<Double>) -> Double {
+            let mean = (means.x + means.y + means.z) / 3
+            return (means.max() - means.min()) / max(mean, 1e-6)
+        }
+
+        let graph = try RenderGraph.standard(context: context)
+        func render(_ temperature: Double) throws -> [Float] {
+            var state = EditState()
+            state.setSlider(
+                ColorSliders.Key.wbTemperature, in: EditState.SectionKey.color, to: temperature)
+            let source = try SpikeTextureIO.makeTexture(
+                fromFloatPixels: quantised, width: side, height: side, device: context.device,
+                usage: [.shaderRead, .shaderWrite])
+            let destination = try SpikeTextureIO.makeTexture(
+                width: side, height: side, device: context.device, pixelFormat: .rgba32Float,
+                usage: [.shaderRead, .shaderWrite])
+            _ = try graph.render(
+                source: source, destination: destination,
+                request: RenderRequest(editState: state, faces: [], quality: .preview))
+            return try RenderGraph.readFloat32(destination, queue: context.commandQueue)
+        }
+
+        // Control: slider 0 must leave the cast exactly where it is.
+        let control = try render(0)
+        #expect(
+            SpikeTextureIO.maxAbsoluteDifference(quantised, control) == 0,
+            "slider 0 was not a bit-exact passthrough on the cast frame")
+
+        let before = castStrength(channelMeans(quantised))
+        var best = (strength: Double.infinity, amount: 0.0)
+        var atFullTravel = Double.infinity
+        for amount in stride(from: -100.0, through: 0.0, by: 5.0) {
+            let strength = castStrength(channelMeans(try render(amount)))
+            if strength < best.strength { best = (strength, amount) }
+            if amount == -100 { atFullTravel = strength }
+        }
+        print(
+            "P2 color yellow cast (3200 K on a daylight-balanced frame): "
+                + "before \(before), best \(best.strength) at slider \(best.amount), "
+                + "at -100 \(atFullTravel)")
+        #expect(before > 1.0, "the fixture is not actually cast (\(before))")
+        // Neutralised to within a few percent, and reached **inside** the
+        // slider's travel rather than at its end — i.e. there is headroom left.
+        #expect(best.strength < 0.05, "the cast survived at \(best.strength)")
+        #expect(best.amount > -100, "the correction needed the whole slider")
+        #expect(best.amount < -10, "the correction was suspiciously small")
     }
 
     @Test("Saturation at −100 is grayscale, and the eight HSL bands agree with it")

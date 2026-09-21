@@ -74,11 +74,11 @@ public enum HueBand: Int, Sendable, CaseIterable {
 ///
 /// | slider | at +100 | at −100 |
 /// |---|---|---|
-/// | `exposure` | **brighter**, +1 EV | **darker**, −1 EV (symmetric in stops, not in gain) |
+/// | `exposure` | **brighter**, +5 EV | **darker**, −5 EV (symmetric in stops, not in gain) |
 /// | `contrast` | more contrast (S-curve) | flatter, toward mid-grey |
 /// | `highlights` | highlights pulled **down** (recovery) | highlights pushed **up** |
 /// | `shadows` | shadows pulled **up** (lift) | shadows pushed **down** |
-/// | `wbTemperature` | **warmer** | **cooler** |
+/// | `wbTemperature` | **warmer** — declares 50000 K light | **cooler** — declares 2000 K light |
 /// | `wbTint` | toward **magenta** | toward **green** |
 /// | `vibrance` | more saturation in the least saturated colours | less, same weighting |
 /// | `saturation` | 2× saturation | 0× — grayscale |

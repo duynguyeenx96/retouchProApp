@@ -428,8 +428,9 @@ struct LivePreviewWiringTests {
         #expect(report.nodes == ["color"])
         let change = SpikeTextureIO.maxAbsoluteDifference(before, after)
         print("RPUI slider → GPU: max abs change = \(change)")
-        // Exposure 100 is +1 EV on a mid-grey fixture; anything near zero means
-        // the write never reached the render request.
+        // Exposure 100 is +5 EV on a mid-grey fixture (docs/ADR-0023; it was
+        // +1 EV until 2026-09-21); anything near zero means the write never
+        // reached the render request.
         #expect(change > 0.1)
 
         // …and back to 0 is the original again, bit for bit — the "absent ==

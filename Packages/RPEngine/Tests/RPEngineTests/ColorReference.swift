@@ -253,9 +253,100 @@ enum ColorReference {
 
     // MARK: - Constants (the specification, restated)
 
-    static let exposureStops = 1.0
-    static let wbTemperatureGain = 0.22
+    static let exposureStops = 5.0
     static let wbTintGain = 0.12
+    /// docs/ADR-0023's mapping, restated: slider amount (−1…1) → declared
+    /// colour temperature, linear in mired between the photograph's neutral and
+    /// 2000 K / 50000 K.
+    static let warmFloorKelvin = 2000.0
+    static let coolCeilingKelvin = 50000.0
+
+    static func declaredKelvin(amount: Double, neutralKelvin: Double) -> Double {
+        guard amount != 0 else { return neutralKelvin }
+        let a = min(max(amount, -1), 1)
+        let neutral = 1_000_000 / neutralKelvin
+        let endpoint = 1_000_000 / (a > 0 ? coolCeilingKelvin : warmFloorKelvin)
+        return 1_000_000 / (neutral + abs(a) * (endpoint - neutral))
+    }
+
+    /// Kim et al. (2002) Planckian locus, written from the published
+    /// coefficients — a separate transcription from `WhiteBalance`'s.
+    static func planckianXY(_ kelvin: Double) -> (Double, Double) {
+        let t = 1 / kelvin
+        let x =
+            kelvin < 4000
+            ? -0.2661239e9 * t * t * t - 0.2343589e6 * t * t + 0.8776956e3 * t + 0.179910
+            : -3.0258469e9 * t * t * t + 2.1070379e6 * t * t + 0.2226347e3 * t + 0.240390
+        let y: Double
+        if kelvin < 2222 {
+            y = -1.1063814 * x * x * x - 1.34811020 * x * x + 2.18555832 * x - 0.20219683
+        } else if kelvin < 4000 {
+            y = -0.9549476 * x * x * x - 1.37418593 * x * x + 2.09137015 * x - 0.16748867
+        } else {
+            y = 3.0817580 * x * x * x - 5.87338670 * x * x + 3.75112997 * x - 0.37001483
+        }
+        return (x, y)
+    }
+
+    /// Bradford `M_A`, `M_A⁻¹` and the sRGB/D65 matrices (Bruce Lindbloom), as
+    /// flat row-major arrays so the arithmetic below is visibly independent of
+    /// `Matrix3`.
+    static let coneMatrix: [Double] = [
+        0.8951000, 0.2664000, -0.1614000,
+        -0.7502000, 1.7135000, 0.0367000,
+        0.0389000, -0.0685000, 1.0296000,
+    ]
+    static let coneInverse: [Double] = [
+        0.9869929, -0.1470543, 0.1599627,
+        0.4323053, 0.5183603, 0.0492912,
+        -0.0085287, 0.0400428, 0.9684867,
+    ]
+    static let rgbToXYZ: [Double] = [
+        0.4124564, 0.3575761, 0.1804375,
+        0.2126729, 0.7151522, 0.0721750,
+        0.0193339, 0.1191920, 0.9503041,
+    ]
+    static let xyzToRGB: [Double] = [
+        3.2404542, -1.5371385, -0.4985314,
+        -0.9692660, 1.8760108, 0.0415560,
+        0.0556434, -0.2040259, 1.0572252,
+    ]
+
+    static func mul(_ a: [Double], _ b: [Double]) -> [Double] {
+        var out = [Double](repeating: 0, count: 9)
+        for i in 0..<3 {
+            for j in 0..<3 {
+                var s = 0.0
+                for k in 0..<3 { s += a[i * 3 + k] * b[k * 3 + j] }
+                out[i * 3 + j] = s
+            }
+        }
+        return out
+    }
+
+    static func apply(_ m: [Double], _ v: (Double, Double, Double)) -> (Double, Double, Double) {
+        (
+            m[0] * v.0 + m[1] * v.1 + m[2] * v.2,
+            m[3] * v.0 + m[4] * v.1 + m[5] * v.2,
+            m[6] * v.0 + m[7] * v.1 + m[8] * v.2
+        )
+    }
+
+    /// The white-balance gain in linear sRGB: the Bradford CAT from the declared
+    /// illuminant to the photograph's neutral. Exactly the identity at 0.
+    static func whiteBalanceMatrix(amount: Double, neutralKelvin: Double) -> [Double] {
+        guard amount != 0 else { return [1, 0, 0, 0, 1, 0, 0, 0, 1] }
+        func white(_ k: Double) -> (Double, Double, Double) {
+            let (x, y) = planckianXY(k)
+            return (x / y, 1, (1 - x - y) / y)
+        }
+        let declared = declaredKelvin(amount: amount, neutralKelvin: neutralKelvin)
+        let s = apply(coneMatrix, white(declared))
+        let d = apply(coneMatrix, white(neutralKelvin))
+        let diagonal: [Double] = [d.0 / s.0, 0, 0, 0, d.1 / s.1, 0, 0, 0, d.2 / s.2]
+        let xyz = mul(coneInverse, mul(diagonal, coneMatrix))
+        return mul(xyzToRGB, mul(xyz, rgbToXYZ))
+    }
     static let highlightGamma = 1.45
     static let highlightPivot = 0.45
     static let shadowGamma = 0.65
@@ -341,8 +432,12 @@ enum ColorReference {
         var wbTemperature = 0.0, wbTint = 0.0, vibrance = 0.0, saturation = 0.0
         var curves = 0.0, autoDodgeBurn = 0.0
         var hsl: [Double] = []
+        /// The photograph's own neutral (docs/ADR-0023). `RenderRequest`
+        /// carries it; D65 when it carries nothing.
+        var neutralKelvin = 6500.0
 
-        init(_ sliders: ColorSliders) {
+        init(_ sliders: ColorSliders, neutralKelvin: Double = 6500) {
+            self.neutralKelvin = neutralKelvin
             exposure = sliders.exposure / 100
             contrast = sliders.contrast / 100
             highlights = sliders.highlights / 100
@@ -381,6 +476,10 @@ enum ColorReference {
             + a.curves + a.autoDodgeBurn + a.hslAbsoluteTotal
         guard active > 0 || !contourLobes.isEmpty else { return out }
 
+        // Uniform over the frame, exactly as ColorParams computes it once per
+        // render on the CPU.
+        let wb = whiteBalanceMatrix(amount: a.wbTemperature, neutralKelvin: a.neutralKelvin)
+
         for y in 0..<height {
             for x in 0..<width {
                 let o = (y * width + x) * 4
@@ -414,17 +513,18 @@ enum ColorReference {
                     var lin = (toLinear(c.0), toLinear(c.1), toLinear(c.2))
                     let e = pow(2, a.exposure * exposureStops)
                     lin = (lin.0 * e, lin.1 * e, lin.2 * e)
-                    // pow(base, amount): the ± directions are exact channel-wise
-                    // inverses and the endpoints are ADR-0012's 1.22/0.78/0.88.
-                    var gain = (
-                        pow(1 + wbTemperatureGain, a.wbTemperature),
-                        pow(1 - wbTintGain, a.wbTint),
-                        pow(1 - wbTemperatureGain, a.wbTemperature)
-                    )
-                    let norm = max(luminance(gain), 1e-4)
-                    gain = (gain.0 / norm, gain.1 / norm, gain.2 / norm)
+                    // Temperature: the Bradford CAT from the declared
+                    // illuminant to this photograph's neutral (docs/ADR-0023).
+                    // Tint: one channel, one pow, unchanged from ADR-0012.
+                    let tint = (1.0, pow(1 - wbTintGain, a.wbTint), 1.0)
+                    var adapted = apply(wb, lin)
+                    adapted = (adapted.0 * tint.0, adapted.1 * tint.1, adapted.2 * tint.2)
+                    var white = apply(wb, (1.0, 1.0, 1.0))
+                    white = (white.0 * tint.0, white.1 * tint.1, white.2 * tint.2)
+                    let norm = max(luminance(white), 1e-4)
                     c = (
-                        toSRGB(lin.0 * gain.0), toSRGB(lin.1 * gain.1), toSRGB(lin.2 * gain.2)
+                        toSRGB(adapted.0 / norm), toSRGB(adapted.1 / norm),
+                        toSRGB(adapted.2 / norm)
                     )
                 }
 
@@ -508,7 +608,7 @@ enum ColorReference {
     /// The whole node in `Double`: analysis (when needed) then composite.
     static func renderNode(
         source: [Float], width: Int, height: Int, sliders: ColorSliders, curveTable: [Float],
-        contourLobes: [ContourLobe] = []
+        contourLobes: [ContourLobe] = [], neutralKelvin: Double = 6500
     ) -> [Float] {
         var big: [Double] = []
         var small: [Double] = []
@@ -521,8 +621,8 @@ enum ColorReference {
         }
         return composite(
             source: source, width: width, height: height, big: big, small: small,
-            analysisSize: size, amounts: Amounts(sliders), curveTable: curveTable,
-            contourLobes: contourLobes)
+            analysisSize: size, amounts: Amounts(sliders, neutralKelvin: neutralKelvin),
+            curveTable: curveTable, contourLobes: contourLobes)
     }
 
     // MARK: - Behaviour

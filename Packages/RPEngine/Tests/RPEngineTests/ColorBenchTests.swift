@@ -233,9 +233,11 @@ struct ColorBenchTests {
                     abs(Double(grey[i]) - Double(grey[i + 1])),
                     abs(Double(grey[i + 1]) - Double(grey[i + 2]))))
         }
-        // The WB round trip is only exact where the intermediate did not clip:
-        // this chart's ramp reaches 0.99 in red, warming pushes it past white,
-        // and cooling cannot bring a pinned channel back. Counted, not hidden.
+        // ±x used to round-trip, because the gains were `pow(1 ± 0.22, x)`.
+        // Since docs/ADR-0023 the two halves are a mired-linear walk to 2000 K
+        // and 50000 K, which are different distances, so the residual is now
+        // large — **filed rather than deleted**, because "this stopped being
+        // true and here is the number" is the honest record of the change.
         var wbResidual = 0.0
         var wbClipped = 0
         for i in 0..<source.count where i % 4 != 3 {
@@ -246,6 +248,17 @@ struct ColorBenchTests {
             }
             wbResidual = max(wbResidual, abs(Double(source[i]) - Double(roundTrip[i])))
         }
+        // The claim that replaces it: how far the temperature slider now moves a
+        // neutral, in **linear light**, at half travel — against the fixed
+        // von Kries gain it replaced (1.2506x / 0.7996x at ±50).
+        let halfWarm = try run(ColorSliders(wbTemperature: 50))
+        let halfCool = try run(ColorSliders(wbTemperature: -50))
+        let probe = (120 * ColorRenderNodeTests.width + ColorRenderNodeTests.width / 2) * 4
+        func linearRB(_ data: [Float]) -> Double {
+            ColorReference.toLinear(Double(data[probe]))
+                / ColorReference.toLinear(Double(data[probe + 2]))
+        }
+        let baseRB = linearRB(source)
 
         return [
             "highlights_minus_100": [
@@ -266,11 +279,22 @@ struct ColorBenchTests {
                 "plus_100": rampSpread(punchy),
             ],
             "saturation_minus_100_worst_residual_chroma": worstChroma,
-            "wb_plus_60_then_minus_60": [
-                "max_abs_residual_off_the_clip": wbResidual,
-                "clipped_channels": wbClipped,
-                "max_abs_residual_including_the_clip": SpikeTextureIO.maxAbsoluteDifference(
-                    source, roundTrip),
+            "wb_temperature": [
+                "neutral_kelvin": WhiteBalance.defaultNeutralKelvin,
+                "declared_kelvin_at_minus_100": WhiteBalance.declaredKelvin(
+                    amount: -1, neutralKelvin: WhiteBalance.defaultNeutralKelvin),
+                "declared_kelvin_at_plus_100": WhiteBalance.declaredKelvin(
+                    amount: 1, neutralKelvin: WhiteBalance.defaultNeutralKelvin),
+                "linear_rb_factor_at_plus_50": linearRB(halfWarm) / baseRB,
+                "linear_rb_factor_at_minus_50": linearRB(halfCool) / baseRB,
+                "previous_von_kries_linear_rb_factor_at_plus_50": pow(1.22, 0.5)
+                    / pow(0.78, 0.5),
+                "previous_von_kries_linear_rb_factor_at_minus_50": pow(0.78, 0.5)
+                    / pow(1.22, 0.5),
+                "plus_60_then_minus_60_residual_off_the_clip": wbResidual,
+                "plus_60_then_minus_60_clipped_channels": wbClipped,
+                "note":
+                    "±x is no longer a round trip (docs/ADR-0023): the two halves walk different mired distances, 346 down to 2000 K and 134 up to 50000 K from a 6500 K neutral. The residual is filed to record that, not as a bar.",
             ],
             "definition":
                 "mean signed luminance change on the ramp's two ends, and mean |Δ| per labelled region; the *_minus_100 entries are the negative half of docs/ADR-0016",

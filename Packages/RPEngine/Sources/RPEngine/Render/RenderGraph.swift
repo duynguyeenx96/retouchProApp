@@ -89,17 +89,43 @@ public struct RenderRequest: Sendable {
     /// `RPEngineFeatureFlags.bodySkinSync` is on; every other node ignores it.
     public var bodySkinMask: RenderMask?
 
+    /// The colour temperature at which **this photograph is already neutral**,
+    /// in Kelvin, or `nil` for "assume D65".
+    ///
+    /// Read by ``ColorRenderNode`` alone, and only to decide how many mired one
+    /// unit of the "Nhiệt độ" slider is worth on this picture
+    /// (``WhiteBalance``, docs/ADR-0023). It does **not** change what the render
+    /// does at slider 0 — that is the identity for every value of this field,
+    /// which is the `RPCore/Slider` invariant — it changes only the scale either
+    /// side of 0.
+    ///
+    /// Resolved per shot before the request is assembled, the same pattern
+    /// ``bodySkinMask`` and ``gateMasks`` follow: the node reads what it is
+    /// given and never goes looking for metadata.
+    ///
+    /// **Nothing fills it today, and that is a measurement rather than an
+    /// oversight** (docs/ADR-0023 §"What EXIF actually has"): a real a6300 ARW
+    /// or JPEG carries no colour temperature anywhere `ImageIO` surfaces — the
+    /// standard `Exif/WhiteBalance` tag is the 0/1 "auto or manual" flag and
+    /// there is no maker-note dictionary. The one place a number does exist is
+    /// `CIRAWFilter.neutralTemperature`, which belongs to the RAW-development
+    /// path docs/PLAN.md defers to spike S4; this field is the seam it will
+    /// arrive through.
+    public var referenceColorTemperatureKelvin: Double?
+
     public init(
         editState: EditState = EditState(), faces: [FaceRenderInput] = [],
         quality: RenderQuality = .preview,
         gateMasks: [any RenderGateMask] = [],
-        bodySkinMask: RenderMask? = nil
+        bodySkinMask: RenderMask? = nil,
+        referenceColorTemperatureKelvin: Double? = nil
     ) {
         self.editState = editState
         self.faces = faces
         self.quality = quality
         self.gateMasks = gateMasks
         self.bodySkinMask = bodySkinMask
+        self.referenceColorTemperatureKelvin = referenceColorTemperatureKelvin
     }
 }
 

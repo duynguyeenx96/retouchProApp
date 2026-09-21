@@ -54,9 +54,12 @@ struct ContourRenderTests {
         // there is no tail padding to disagree about.
         #expect(MemoryLayout<ContourLobe>.stride == 32)
         #expect(MemoryLayout<ContourLobe>.alignment == 8)
-        // One more `uint` on the end of ColorParams, which had 4 bytes of tail
-        // padding to spend — so the stride the colour group pinned is unchanged.
-        #expect(MemoryLayout<ColorParams>.stride == 96)
+        // `contourLobeCount` is one more `uint` on the end of ColorParams, which
+        // had 4 bytes of tail padding to spend, so this group cost the struct
+        // nothing. The 144 is docs/ADR-0023's `wbMatrix` (a `float3x3`, 48 B)
+        // arriving later — `ColorRenderNodeTests.parameterStructsMatchShaderLayout`
+        // owns that number; this row only has to move with it.
+        #expect(MemoryLayout<ColorParams>.stride == 144)
         #expect(ContourMask.lobesPerFace * MemoryLayout<ContourLobe>.stride <= 512)
     }
 
