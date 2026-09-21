@@ -16,10 +16,11 @@ import RPEngine
 /// mechanism.
 ///
 /// The section descriptors here are built **by hand**, not read from
-/// `SliderPanelLayout.sections`. No shipped group names a node yet — wiring the
-/// "Sửa da" and "Đầu" panels is a separate task — so testing through the real
-/// table would either test nothing or force this task to add panels it was not
-/// asked for.
+/// `SliderPanelLayout.sections`: this suite is about the *rule*, and hand-made
+/// sections let it state cases the shipped table does not contain (a locked
+/// group that names a node, a group that names a node and needs no face). The
+/// shipped table's own wiring is asserted separately, in
+/// ``theShippedTableNamesTwoNodes`` and in `RailLayoutTests`.
 @Suite("Detection notice wiring")
 @MainActor
 struct DetectionNoticeWiringTests {
@@ -139,27 +140,43 @@ struct DetectionNoticeWiringTests {
                 == nil)
     }
 
-    /// Exactly one shipped group names a node, and it is the one the mechanism
-    /// was built for: "Sửa da" → `"skin"` (2026-09-21, docs/ADR-0021 §UI). Every
-    /// other panel's only detection is the face, which `needsFace` covers.
+    /// Two shipped groups name a node, and they are the two the mechanism was
+    /// built for: "Sửa da" → `"skin"` (docs/ADR-0021 §UI) and "Đầu" → `"warp"`
+    /// (docs/ADR-0022 §UI), both 2026-09-21. Every other panel's only detection
+    /// is the face, which `needsFace` covers.
     ///
-    /// The scoping is the point, not an accident. Attaching `"skin"` to "Mịn
-    /// da" as well would disable seven face-smoothing sliders that still work
-    /// perfectly on the face whenever the *body* classifier came back empty —
-    /// the notice belongs to the control it is about. "Đầu" will add `"warp"`
-    /// here when its panel is wired (the plan's item 3e).
-    @Test("Only Sửa da names a render node")
-    func theShippedTableNamesOnlySkinFix() {
+    /// The scoping is the point, not an accident, and each of the two shares its
+    /// node with a panel that does **not** name it:
+    ///
+    /// * `"skin"` is also "Mịn da"/"Kiềm dầu"'s node — naming it there would
+    ///   disable seven face-smoothing sliders that still work perfectly on the
+    ///   face whenever the *body* classifier came back empty;
+    /// * `"warp"` is also "Hình dáng mặt"'s node — naming it there would let a
+    ///   subject in a hat switch off fifteen reshape sliders that never needed a
+    ///   hairline.
+    ///
+    /// A notice disables the group it is attached to, so "which panel names the
+    /// node" is a product decision, not a detail of the table.
+    @Test("Exactly Sửa da and Đầu name a render node, and no panel that shares one")
+    func theShippedTableNamesTwoNodes() {
         #expect(
             SliderPanelLayout.sections.filter { $0.notifiesFromNodeNamed != nil }
                 .map { ($0.key, $0.notifiesFromNodeNamed) }.map(\.0)
-                == [SliderPanelLayout.PanelKey.skinFix])
+                == [SliderPanelLayout.PanelKey.skinFix, SliderPanelLayout.PanelKey.head])
         #expect(
             SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.skinFix)?
                 .notifiesFromNodeNamed == "skin")
         #expect(
-            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.smooth)?
-                .notifiesFromNodeNamed == nil)
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.head)?
+                .notifiesFromNodeNamed == "warp")
+        // The three panels that share one of those two nodes and stay silent.
+        for key in [
+            SliderPanelLayout.PanelKey.smooth, SliderPanelLayout.PanelKey.shine,
+            EditState.SectionKey.face,
+        ] {
+            #expect(
+                SliderPanelLayout.section(forKey: key)?.notifiesFromNodeNamed == nil, "\(key)")
+        }
     }
 
     // MARK: - LivePreviewController

@@ -165,8 +165,11 @@ struct SliderPanelLayoutTests {
         // UI-only, exactly like the two 2026-09-18 splits: the three keys were
         // already in the `face` namespace (ADR-0020 §5) and nothing on disk moved.
         #expect(contour.storageKey == EditState.SectionKey.face)
-        #expect(SliderPanelLayout.sections(forStorageKey: EditState.SectionKey.face)
-            .map(\.key) == [EditState.SectionKey.face, SliderPanelLayout.PanelKey.contour])
+        #expect(
+            SliderPanelLayout.sections(forStorageKey: EditState.SectionKey.face).map(\.key) == [
+                EditState.SectionKey.face, SliderPanelLayout.PanelKey.head,
+                SliderPanelLayout.PanelKey.contour,
+            ])
 
         // …and the reshape panel is untouched: fifteen keys, none of them a
         // contour one, so `FaceSliders` still sees an identity after a contour
@@ -185,6 +188,52 @@ struct SliderPanelLayoutTests {
         // A preset carrying only a contour amount summarises as "Tạo khối", not
         // as "Mặt" — the reason `sections(touchedBy:)` filters by parameter.
         #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Tạo khối"])
+    }
+
+    /// The third tool sharing `EditState.SectionKey.face` (2026-09-21,
+    /// docs/ADR-0022 §UI). Same shape as "Tạo khối" above — engine keys, plan
+    /// labels, RPCore range, per-panel counting — plus the two things that are
+    /// only true here: the three keys are prefixed `head…` so they cannot
+    /// collide with the fifteen reshape ones or the three contour ones in the
+    /// namespace they all share, and moving one summarises as "Đầu" alone.
+    @Test("Đầu is a third tool over the face namespace, with the three engine keys")
+    func headIsItsOwnPanelOverTheFaceNamespace() throws {
+        let head = try #require(SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.head))
+        let face = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.face))
+        let contour = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.contour))
+
+        #expect(head.title == "Đầu")
+        #expect(head.parameters.map(\.key) == HeadSliders.Key.all)
+        #expect(head.parameters.map(\.label) == ["Thu nhỏ đầu", "Hẹp đầu", "Phồng tóc"])
+        for parameter in head.parameters {
+            #expect(parameter.range == 0...100, "\(parameter.key)")
+            #expect(!parameter.direction.isEmpty, "\(parameter.key)")
+        }
+        #expect(head.systemImage != face.systemImage)
+        #expect(head.systemImage != contour.systemImage)
+
+        // Three disjoint key sets in one namespace, which is what lets a preset
+        // carry all three tools in one `face` section without a migration.
+        #expect(head.storageKey == EditState.SectionKey.face)
+        let all = Set(FaceSliders.Key.all + ContourSliders.Key.all + HeadSliders.Key.all)
+        #expect(all.count == 15 + 3 + 3)
+        #expect(!face.parameters.contains { HeadSliders.Key.all.contains($0.key) })
+        #expect(!contour.parameters.contains { HeadSliders.Key.all.contains($0.key) })
+
+        var state = EditState()
+        state.setSlider(HeadSliders.Key.volume, in: EditState.SectionKey.face, to: 55)
+        #expect(head.activeParameterCount(in: state) == 1)
+        #expect(face.activeParameterCount(in: state) == 0)
+        #expect(contour.activeParameterCount(in: state) == 0)
+        #expect(face.isNeutral(in: state))
+        #expect(contour.isNeutral(in: state))
+        #expect(!head.isNeutral(in: state))
+        // The engine reads it back, and the neighbours still see an identity.
+        #expect(HeadSliders(state).volume == 55)
+        #expect(FaceSliders(state).isIdentity)
+        #expect(ContourSliders(state).isIdentity)
+        #expect(SliderPanelLayout.sections(touchedBy: state.sections).map(\.title) == ["Đầu"])
     }
 
     /// The two panels together are still exactly the engine's key list, in the

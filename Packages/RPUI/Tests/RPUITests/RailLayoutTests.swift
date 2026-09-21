@@ -84,9 +84,12 @@ struct RailLayoutTests {
     /// not lock the rail item — see ``contourOpensAPanelThatSaysTheFlagIsOff``.
     /// "Sửa da" joined the same day (docs/ADR-0021 §UI) on the same terms:
     /// `RPEngineFeatureFlags.bodySkinSync` is off and disables the one switch
-    /// inside the panel with a reason, rather than locking the item.
+    /// inside the panel with a reason, rather than locking the item. So did
+    /// "Đầu" (docs/ADR-0022 §UI), the last of the five, with
+    /// `RPEngineFeatureFlags.headSliders` off.
     private static let activeLabels: Set<String> = [
-        "Hình dáng mặt", "Mịn da", "Kiềm dầu", "Mắt", "Răng", "Tạo khối", "Sửa da",
+        "Hình dáng mặt", "Mịn da", "Kiềm dầu", "Mắt", "Răng", "Đầu", "Tạo khối",
+        "Sửa da",
     ]
 
     /// The one item that opens a **screen** instead of a slider group: "Mẫu" was
@@ -231,15 +234,15 @@ struct RailLayoutTests {
                 .map(\.key) == [SliderPanelLayout.PanelKey.skinFix])
     }
 
-    /// SPEC's wiring table, restated for the hierarchy: six working leaves —
-    /// four under "Mặt", two under "Da" — each opening its own panel and
+    /// SPEC's wiring table, restated for the hierarchy: eight working leaves —
+    /// five under "Mặt", three under "Da" — each opening its own panel and
     /// nothing else's.
     ///
     /// Pinned off, so "the active items" is the list this table describes
     /// rather than one that grows a nineteenth entry when another suite happens
     /// to have the brush switched on.
     @MainActor
-    @Test("The six active leaves point at the panels the wiring table names")
+    @Test("The eight active leaves point at the panels the wiring table names")
     func wiringTable() async throws {
         try await Self.withManualMask(false) {
         let byLabel = Dictionary(
@@ -249,6 +252,7 @@ struct RailLayoutTests {
         #expect(byLabel["Kiềm dầu"]?.sectionKey == SliderPanelLayout.PanelKey.shine)
         #expect(byLabel["Mắt"]?.sectionKey == SliderPanelLayout.PanelKey.eyes)
         #expect(byLabel["Răng"]?.sectionKey == SliderPanelLayout.PanelKey.teeth)
+        #expect(byLabel["Đầu"]?.sectionKey == SliderPanelLayout.PanelKey.head)
         #expect(byLabel["Tạo khối"]?.sectionKey == SliderPanelLayout.PanelKey.contour)
         #expect(byLabel["Sửa da"]?.sectionKey == SliderPanelLayout.PanelKey.skinFix)
 
@@ -263,6 +267,8 @@ struct RailLayoutTests {
         #expect(panel("Mắt")?.parameters.count == 3)
         #expect(panel("Mịn da")?.parameters.count == 7)
         #expect(panel("Tạo khối")?.parameters.map(\.label) == ["Gò má", "Sống mũi", "Hàm"])
+        #expect(
+            panel("Đầu")?.parameters.map(\.label) == ["Thu nhỏ đầu", "Hẹp đầu", "Phồng tóc"])
         // The one panel with no slider at all: "Sửa da" is a single switch
         // (docs/ADR-0021 §UI), which is why it is not locked despite having no
         // parameters.
@@ -287,30 +293,31 @@ struct RailLayoutTests {
         }
     }
 
-    /// Ten locked leaves with the brush switched off, for four different
-    /// reasons: seven with no section at all, Trang điểm and Tóc whose sections
+    /// Nine locked leaves with the brush switched off, for four different
+    /// reasons: five with no section at all, Trang điểm and Tóc whose sections
     /// exist but are themselves Phase 5, "Khoá nền", which has a finished
     /// engine and is held back on purpose, and "Cọ mask", which is locked only
     /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
     /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
-    /// in Phase 3; "Bọng mắt" was deleted; **"Tạo khối" and "Sửa da" left this
-    /// list on 2026-09-21** when they got panels — their own flags being off
-    /// disables the controls inside those panels instead of locking the items.)
+    /// in Phase 3; "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
+    /// left this list on 2026-09-21** when they got panels — their own flags
+    /// being off disables the controls inside those panels instead of locking
+    /// the items.)
     @MainActor
-    @Test("The other ten leaves are locked, for the four different reasons")
+    @Test("The other nine leaves are locked, for the four different reasons")
     func lockedItems() async throws {
         try await Self.withManualMask(false) {
         let locked = RailLayout.leafItems.filter(\.isLocked)
-        #expect(locked.count == 10)
+        #expect(locked.count == 9)
         #expect(
             locked.map(\.label) == [
-                "Đầu", "Căng mọng", "Mụn", "Tự động",
+                "Căng mọng", "Mụn", "Tự động",
                 "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền", "Cọ mask",
             ])
 
-        // No section behind it at all and no specific reason: six of the ten.
+        // No section behind it at all and no specific reason: five of the nine.
         let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
-        #expect(unbacked.count == 6)
+        #expect(unbacked.count == 5)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
         // The two Phase 5 groups keep the panel's own wording.
@@ -323,8 +330,8 @@ struct RailLayoutTests {
     }
 
     /// A parent is locked only when every child is — one boolean derived from
-    /// the children, not a second concept. "Mặt" has three working children and
-    /// "Da" two; "Cơ thể" has none.
+    /// the children, not a second concept. "Mặt" has five working children and
+    /// "Da" three; "Cơ thể" has none.
     @Test("A parent is locked exactly when all of its children are")
     func parentLocking() throws {
         let face = try #require(RailLayout.items.first { $0.id == "faceGroup" })
@@ -635,13 +642,114 @@ struct RailLayoutTests {
                 notices: notice) == nil)
     }
 
+    // MARK: - "Đầu" — a wired panel, a flag that is off, and a shared node
+
+    /// docs/ADR-0022 §UI, wired 2026-09-21 — the last of the five Phase 6.2 UI
+    /// items. The engine shipped with "there is no UI … `RailLayout.swift` is
+    /// untouched"; this is that UI, and it has one thing neither "Tạo khối" nor
+    /// "Sửa da" had: its render node is **shared with another panel**.
+    ///
+    /// So the claims, in the order they would break: the item opens the panel
+    /// and is not locked, the panel carries ADR-0022 §2's three keys under its
+    /// three labels, the flag being off disables it with a sentence rather than
+    /// a lock, and — the one that is specific to this group — the hairline
+    /// notice reaches **this** panel and not "Hình dáng mặt", whose fifteen
+    /// sliders need no hair at all.
+    @MainActor
+    @Test("Đầu opens a real panel whose hairline notice does not touch Hình dáng mặt")
+    func headOpensAPanelScopedToItsOwnNotice() throws {
+        let item = try #require(RailLayout.leafItems.first { $0.id == "head" })
+        #expect(item.label == "Đầu")
+        #expect(item.sectionKey == SliderPanelLayout.PanelKey.head)
+        #expect(!item.isLocked)
+        #expect(item.lockedReason == nil)
+        #expect(RailLayout.activeItems.contains { $0.id == item.id })
+
+        let panel = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.head))
+        #expect(item.systemImage == panel.systemImage)
+        #expect(panel.parameters.map(\.key) == HeadSliders.Key.all)
+        #expect(panel.parameters.map(\.label) == ["Thu nhỏ đầu", "Hẹp đầu", "Phồng tóc"])
+        #expect(panel.storageKey == EditState.SectionKey.face)
+        #expect(panel.gatedBy == .headSliders)
+        #expect(panel.notifiesFromNodeNamed == "warp")
+        #expect(!panel.isLocked)
+
+        // Tapping it really moves the panel, with the child strip of "Mặt".
+        let chrome = EditorChrome()
+        chrome.activeGroupKey = SliderPanelLayout.PanelKey.smooth
+        chrome.selectRailItem(item)
+        #expect(chrome.activeGroupKey == SliderPanelLayout.PanelKey.head)
+        #expect(chrome.activeSection.parameters.count == 3)
+        #expect(chrome.activeRailParent?.id == "faceGroup")
+
+        let previous = RPEngineFeatureFlags.headSliders
+        defer { RPEngineFeatureFlags.headSliders = previous }
+        let notice = ["warp": WarpRenderNode.noHairBoundaryNotice]
+
+        // 1. The build first: with the flag off, the honest answer is that this
+        //    build does not run the head group at all.
+        RPEngineFeatureFlags.headSliders = false
+        let gated = GroupAvailability.blockedReason(
+            section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+            notices: notice)
+        #expect(gated == PanelFeatureGate.headSliders.offReason)
+        #expect(gated?.contains("Đầu") == true)
+        #expect(gated != "chưa khả dụng")
+
+        RPEngineFeatureFlags.headSliders = true
+        // 2. Then the face — with none there is no head to reshape either.
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 0, preview: .ready(faceAnalysisRan: true),
+                notices: notice) == "Không nhận diện được khuôn mặt trong ảnh này.")
+        // 3. Then the node: the hat / shaved-head / parsing-miss case, which
+        //    ADR-0022 named as a condition of this panel existing at all.
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: notice) == "Không phát hiện được viền tóc.")
+        // …and a frame with a traceable hairline says nothing at all.
+        #expect(
+            GroupAvailability.blockedReason(
+                section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: [:]) == nil)
+
+        // **The scoping.** `"warp"` is also the reshape panel's node, and the
+        // reshape panel names nothing — so the very same notice leaves its
+        // fifteen sliders enabled. This is the assertion that would fail if
+        // someone "helpfully" attached the node to the namespace instead of to
+        // the panel.
+        let reshape = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.face))
+        #expect(reshape.notifiesFromNodeNamed == nil)
+        #expect(reshape.parameters.count == 15)
+        #expect(
+            GroupAvailability.blockedReason(
+                section: reshape, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: notice) == nil)
+        // …as does "Tạo khối", the other panel over the same namespace.
+        let contour = try #require(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.contour))
+        #expect(contour.notifiesFromNodeNamed == nil)
+    }
+
     /// The gate is scoped to the panels that need it, so it did not become a
     /// second, quieter way of marking a group unavailable.
-    @Test("gatedBy is set on exactly the two panels whose engine flag is off")
+    @Test("gatedBy is set on exactly the three panels whose engine flag is off")
     func panelGateIsScoped() {
         #expect(
             SliderPanelLayout.sections.filter { $0.gatedBy != nil }.map(\.key)
-                == [SliderPanelLayout.PanelKey.skinFix, SliderPanelLayout.PanelKey.contour])
+                == [
+                    SliderPanelLayout.PanelKey.skinFix, SliderPanelLayout.PanelKey.head,
+                    SliderPanelLayout.PanelKey.contour,
+                ])
+        // Each panel names the flag that actually governs it — a copy/paste of
+        // another group's gate would show as the wrong sentence on screen and
+        // as a panel that lights up when someone else's flag flips.
+        #expect(
+            SliderPanelLayout.section(forKey: SliderPanelLayout.PanelKey.head)?.gatedBy
+                == .headSliders)
+        #expect(PanelFeatureGate.headSliders.isOn == RPEngineFeatureFlags.headSliders)
     }
 
     /// The override is scoped to the two items that need it — a built feature
@@ -751,8 +859,8 @@ struct RailLayoutTests {
 
     /// The general form of the same rule: no working slider panel may be
     /// orphaned by the rail. Today that is Mịn da / Kiềm dầu / Sửa da /
-    /// Hình dáng mặt / Tạo khối / Mắt / Răng from the tree and Màu from the
-    /// pinned chip; a ninth working panel added in a later phase fails here
+    /// Hình dáng mặt / Đầu / Tạo khối / Mắt / Răng from the tree and Màu from
+    /// the pinned chip; a tenth working panel added in a later phase fails here
     /// until it gets an affordance.
     ///
     /// This is the rule that decides how a flag-gated panel ships: locking the
@@ -761,7 +869,7 @@ struct RailLayoutTests {
     @Test("Every unlocked slider panel is reachable from the rail")
     func noWorkingSectionIsOrphaned() {
         let working = Set(SliderPanelLayout.sections.filter { !$0.isLocked }.map(\.key))
-        #expect(working.count == 8)
+        #expect(working.count == 9)
         #expect(RailLayout.reachableSectionKeys == working)
     }
 

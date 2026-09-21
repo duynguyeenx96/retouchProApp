@@ -24,7 +24,7 @@ import RPEngine
 ///   did and is not a body part's sub-feature at all — it stays a top-level leaf.
 /// * **Most entries have nothing behind them.** ``sectionKey`` is `nil` for the
 ///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc,
-///   Căng mọng, Mụn, Đầu, Khoá nền — deferred to Phase 5/6, see
+///   Căng mọng, Mụn, Khoá nền — deferred to Phase 5/6, see
 ///   `docs/PLAN.md` §Phase 2 "Turn 3 canvas"). They are drawn dimmed and inert
 ///   rather than hidden, the same rule the locked slider groups already follow
 ///   (docs/design/SPEC.md cross-cutting rule 4). A **parent** is locked only when
@@ -53,10 +53,10 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     /// `nil` = no working section behind this item yet (locked), **or** this item
     /// is a parent and its ``children`` carry the panels. Non-nil points at a
     /// `SliderSectionDescriptor.key` — a **panel**, which is an
-    /// `EditState.SectionKey` for four of the ten and a UI-only
-    /// `SliderPanelLayout.PanelKey` for the six that share a namespace with
-    /// another panel (the 2026-09-18 splits, "Tạo khối" over `face`, and
-    /// "Sửa da" over `mask` beside "Khoá nền"'s own boolean). The
+    /// `EditState.SectionKey` for four of the eleven and a UI-only
+    /// `SliderPanelLayout.PanelKey` for the seven that share a namespace with
+    /// another panel (the 2026-09-18 splits, "Tạo khối" and "Đầu" over `face`,
+    /// and "Sửa da" over `mask` beside "Khoá nền"'s own boolean). The
     /// panel may itself still be locked (Trang điểm / Tóc are Phase 5), so
     /// ``isLocked`` checks both — but a panel whose *engine flag* is off is not
     /// locked, it opens and explains itself
@@ -271,9 +271,9 @@ public enum RailPresentation: Hashable, Sendable {
 /// sequence is **Mặt → Da first**, everything else after them in the canvas's
 /// relative order, and **Màu last** (``colorItem``, pinned at the trailing end).
 /// Inside each parent the children run in workflow order — reshape, eyes, teeth,
-/// then the rest in the canvas's own order ("Tạo khối" keeps its slot after
-/// "Đầu" now that it opens a panel, rather than being promoted past a locked
-/// sibling).
+/// then the rest in the canvas's own order ("Đầu" and "Tạo khối" keep the slots
+/// they already had now that they open panels, rather than being promoted past
+/// their still-locked siblings).
 public enum RailLayout {
     /// The seven sub-features of the face, in workflow order. Written out here
     /// rather than inline so the parent below reads as one line.
@@ -300,9 +300,22 @@ public enum RailLayout {
         RailItemDescriptor(
             id: "teeth", label: "Răng", systemImage: "mouth",
             sectionKey: SliderPanelLayout.PanelKey.teeth),
-        // Locked, unchanged by the restructuring: head reshape has an engine
-        // (`HeadReshape`) but no slider section wired to the UI yet.
-        RailItemDescriptor(id: "head", label: "Đầu", systemImage: "person.crop.circle"),
+        // Three head amounts, wired 2026-09-21 (docs/ADR-0022 §UI shipped the
+        // engine in Phase 6.2 with "no UI — nothing in RPUI exposes these
+        // sliders, `RailLayout.swift` is untouched"). Its own panel rather than
+        // three more rows under "Hình dáng mặt", and not only because it is a
+        // different tool: this group depends on a **detection** the reshape
+        // sliders do not need — the traced hair silhouette — and a detection
+        // notice disables the group it is attached to. Sharing a panel would let
+        // a hat switch off fifteen working reshape sliders.
+        //
+        // **Not locked, and inert anyway**, the treatment "Tạo khối" introduced:
+        // `RPEngineFeatureFlags.headSliders` is off by default, so the panel
+        // opens, draws its three real sliders and says why they are disabled
+        // (`PanelFeatureGate.headSliders`).
+        RailItemDescriptor(
+            id: "head", label: "Đầu", systemImage: "person.crop.circle",
+            sectionKey: SliderPanelLayout.PanelKey.head),
         // Three contour amounts, wired 2026-09-21 (docs/ADR-0020 shipped the
         // render in Phase 6.2 with no panel at all). Its own panel rather than
         // three more rows under "Hình dáng mặt": they share the `face` namespace

@@ -15,9 +15,9 @@ import Foundation
 ///
 /// Since 2026-09-21 it carries one more case of the same rule, where the thing
 /// missing is not a detection but a switch: a group whose engine flag is off in
-/// this build (``SliderSectionDescriptor/gatedBy``, "Tạo khối" and "Sửa da")
-/// says that, instead of offering live-looking controls whose values no kernel
-/// reads.
+/// this build (``SliderSectionDescriptor/gatedBy`` — "Tạo khối", "Sửa da" and
+/// "Đầu") says that, instead of offering live-looking controls whose values no
+/// kernel reads.
 ///
 /// The returned sentence disables the group's **sliders**. It does not disable
 /// its **switches** except in the `gatedBy` case — see
@@ -95,7 +95,11 @@ enum GroupAvailability {
 
         // 2. Then whatever this group's render node could not find. A group that
         //    names no node — every group that shipped before Phase 6 — reaches
-        //    `nil` here exactly as it did before this method existed.
+        //    `nil` here exactly as it did before this method existed. Two groups
+        //    name one today: "Sửa da" → `"skin"`, "Đầu" → `"warp"`. The second
+        //    shares its node with "Hình dáng mặt", which names nothing, so a
+        //    frame with no traceable hairline disables the three head sliders
+        //    and leaves the fifteen reshape ones alone.
         if let node = section.notifiesFromNodeNamed, let notice = notices[node] {
             return notice
         }

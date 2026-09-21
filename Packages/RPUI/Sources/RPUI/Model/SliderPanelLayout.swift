@@ -97,7 +97,7 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// what a rail item's `sectionKey` points at, and what
     /// ``SliderPanelLayout/section(forKey:)`` looks up.
     ///
-    /// Usually the same string as ``storageKey``, and for four of the nine
+    /// Usually the same string as ``storageKey``, and for four of the eleven
     /// panels it is. It is a separate concept because a panel is a *UI* grouping
     /// and the namespace is a *storage* one, and since 2026-09-18 they are no
     /// longer 1:1 — see ``storageKey``.
@@ -112,10 +112,11 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// `EyesTeethRenderNode` are untouched, so nothing on disk moved and every
     /// preset written before the split still applies unchanged.
     ///
-    /// "Hình dáng mặt" and "Tạo khối" are two panels over `face` for a different
-    /// reason (2026-09-21, docs/ADR-0020): not a split, but a second tool whose
-    /// three keys were put in the *face* namespace so a preset carries them
-    /// (§5 of that ADR). `EditState`, `Slider` and `FaceSliders` are untouched.
+    /// "Hình dáng mặt", "Đầu" and "Tạo khối" are three panels over `face` for a
+    /// different reason (2026-09-21, docs/ADR-0020, docs/ADR-0022): not a split,
+    /// but two further tools whose keys were put in the *face* namespace so a
+    /// preset carries them (§5 of ADR-0020, §2 of ADR-0022). `EditState`,
+    /// `Slider` and `FaceSliders` are untouched.
     ///
     /// "Mịn da" and "Kiềm dầu" are the same arrangement over `skin`, split later
     /// the same day for the same reason: the two rail entries carried the *same*
@@ -174,6 +175,15 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
     /// `nil` for every group whose sliders cannot fail this way, and that is not
     /// a "not yet" — "Cọ mask thủ công" is user input and "Tạo khối" is pure
     /// landmark geometry, so neither has anything to detect.
+    ///
+    /// **It is scoped to the panel, not to the node.** `"warp"` is the node
+    /// behind *both* "Hình dáng mặt" and "Đầu", and only "Đầu" names it: the
+    /// fifteen reshape sliders are landmarks only and keep working on a subject
+    /// in a hat, where the hair trace the head group needs finds nothing. A
+    /// notice disables the group it is attached to, so attaching this one to the
+    /// reshape panel as well would take fifteen working sliders down with it —
+    /// the same reasoning that gave "Sửa da" its own panel rather than a row
+    /// inside "Mịn da" (docs/ADR-0021 §UI, docs/ADR-0022 §UI).
     public let notifiesFromNodeNamed: String?
 
     /// The build-time feature flag this group's sliders need, or `nil` for a
@@ -282,9 +292,10 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
 /// (`AppEngineSetup`) and a test flips them around a case, so the panel has to
 /// answer the question *now*.
 ///
-/// Two cases today. It is an enum rather than a `KeyPath` so that the reason the
-/// flag is off travels with it: "chưa khả dụng" would be a lie about a feature
-/// whose engine, kernel and numbers all shipped (docs/ADR-0020, docs/ADR-0021).
+/// Three cases today. It is an enum rather than a `KeyPath` so that the reason
+/// the flag is off travels with it: "chưa khả dụng" would be a lie about a
+/// feature whose engine, kernel and numbers all shipped (docs/ADR-0020,
+/// docs/ADR-0021, docs/ADR-0022).
 public enum PanelFeatureGate: Hashable, Sendable {
     /// "Tạo khối" — docs/ADR-0020. The lobes, the kernel branch and the golden /
     /// selectivity / speed numbers are all merged and measured on a Mac; the
@@ -301,11 +312,19 @@ public enum PanelFeatureGate: Hashable, Sendable {
     /// on an A-series chip.
     case bodySkinSync
 
+    /// "Đầu" — docs/ADR-0022. The hair trace, the expanded ring, the MLS
+    /// handles and the golden / round-trip / speed numbers are all merged and
+    /// measured on a Mac and on the Simulator; the flag stays off for the same
+    /// reason as the other two, the standing "no number from a real iPhone"
+    /// blocker (docs/ADR-0018).
+    case headSliders
+
     /// Whether this build has the effect switched on.
     public var isOn: Bool {
         switch self {
         case .contourSliders: RPEngineFeatureFlags.contourSliders
         case .bodySkinSync: RPEngineFeatureFlags.bodySkinSync
+        case .headSliders: RPEngineFeatureFlags.headSliders
         }
     }
 
@@ -318,12 +337,14 @@ public enum PanelFeatureGate: Hashable, Sendable {
             "Tạo khối đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
         case .bodySkinSync:
             "Sửa da đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+        case .headSliders:
+            "Đầu đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
         }
     }
 }
 
-/// The slider taxonomy: **ten panels over seven `EditState` namespaces**, eight
-/// of the panels working.
+/// The slider taxonomy: **eleven panels over seven `EditState` namespaces**,
+/// nine of the panels working.
 ///
 /// It is data, not view code, for two reasons: the order and grouping is the
 /// thing the render graph has to honour, and a test can assert that the panels
@@ -356,8 +377,14 @@ public enum PanelFeatureGate: Hashable, Sendable {
 ///
 /// **Ten the same day**: "Sửa da" (docs/ADR-0021 §UI), the first panel whose
 /// control is a switch rather than an amount and the first over
-/// `EditState.SectionKey.mask`. It and "Tạo khối" are the two panels with a
-/// ``SliderSectionDescriptor/gatedBy`` flag.
+/// `EditState.SectionKey.mask`.
+///
+/// **Eleven, and the last of the Phase 6.2 queue**: "Đầu" (docs/ADR-0022 §UI),
+/// one more panel over `face` — three amounts that warp the whole head by its
+/// traced hair silhouette, which the 478-point mesh cannot express. It, "Sửa da"
+/// and "Tạo khối" are the three panels with a
+/// ``SliderSectionDescriptor/gatedBy`` flag, and it is the second to name a
+/// render node (``SliderSectionDescriptor/notifiesFromNodeNamed``).
 public enum SliderPanelLayout {
     /// Panel identities that are **not** an `EditState.SectionKey`, because two
     /// panels share one namespace. Every other panel's ``SliderSectionDescriptor/key``
@@ -376,6 +403,12 @@ public enum SliderPanelLayout {
         /// that namespace is "Hình dáng mặt", the fifteen reshape sliders, whose
         /// panel key is still the namespace itself.
         public static let contour = "contour"
+        /// "Đầu" — the three `HeadSliders.Key` amounts of
+        /// `EditState.SectionKey.face` (docs/ADR-0022). Same namespace as the
+        /// reshape and contour panels, and for the same reason: the group is
+        /// per-face and every magnitude it uses is a fraction of `faceWidth`, so
+        /// a preset carries it between images unchanged.
+        public static let head = "head"
         /// "Sửa da" — the one `BodySkinSync` switch of
         /// `EditState.SectionKey.mask` (docs/ADR-0021). The **only** panel with
         /// no slider in it, and the only one over the `mask` namespace, which
@@ -522,6 +555,72 @@ public enum SliderPanelLayout {
                     FaceSliders.Key.lipFullness: ("Môi đầy", "môi dày hơn"),
                 ]),
             needsFace: true
+        ),
+        // The head group (2026-09-21, docs/ADR-0022 §UI), between the reshape
+        // panel and the contour one because that is its slot in the rail. Three
+        // amounts the fifteen reshape sliders cannot express: they move the
+        // 478-point mesh, and the mesh stops at the face — moving it alone
+        // slides a face around inside hair that stays where it was. This group's
+        // extra control points come from the **traced hair silhouette**
+        // (`HairBoundary`) plus the face oval expanded out to meet it, which is
+        // why it is the one face-namespace panel that depends on a detection.
+        //
+        // The labels are ADR-0022 §2's own names for the three, and the
+        // direction lines say what each one does *and* what it deliberately does
+        // not touch — "Hẹp đầu" in particular is not "Bóp mặt" (jaw and below)
+        // and not "Thái dương" (which pushes the temples out); it narrows the
+        // cranium, where the mesh is one thin arc and the hair is everything.
+        //
+        // **Live drag, like every other group — a decision, not an oversight**
+        // (user, 2026-09-21, recorded in docs/ADR-0022 §UI). ADR-0022 measured
+        // the preview lattice's MLS round trip at **2.3 % of face width** for
+        // this group against < 1 % for "Mặt", because round-trip error grows
+        // with the displacement per lattice cell and a head edit moves an order
+        // of magnitude further than a reshape slider. The export grid (129)
+        // halves the cell and lands back at 0.8 %, so the *exported* picture is
+        // as accurate as every other group's — what wobbles is the preview
+        // during the drag, up to ~14 px on a 600 px face. The alternatives were
+        // a denser preview lattice (a change to `RenderQuality.meshGrid`, which
+        // "Mặt" shares and ADR-0007 fixed on its own measurement) or a
+        // commit-on-release special case for these three rows. Both were
+        // rejected in favour of shipping: no debounce, no deferred commit, no
+        // per-group quality override — these sliders are wired exactly like the
+        // fifteen next to them.
+        SliderSectionDescriptor(
+            key: PanelKey.head,
+            storageKey: EditState.SectionKey.face,
+            title: "Đầu",
+            panelTitle: "Tạo hình khung đầu",
+            sectionCaption: "Khung đầu · viền tóc",
+            systemImage: "person.crop.circle",
+            phase: "Phase 6",
+            parameters: Self.parameters(
+                in: EditState.SectionKey.face,
+                keys: HeadSliders.Key.all,
+                labels: [
+                    HeadSliders.Key.size: (
+                        "Thu nhỏ đầu", "cả đầu nhỏ lại — mặt, viền tóc cùng một tỉ lệ"
+                    ),
+                    HeadSliders.Key.width: (
+                        "Hẹp đầu", "hộp sọ hẹp lại từ ngang mắt lên, không đụng hàm / má"
+                    ),
+                    HeadSliders.Key.volume: (
+                        "Phồng tóc", "tóc phồng ra phía đỉnh đầu, khuôn mặt giữ nguyên"
+                    ),
+                ]),
+            needsFace: true,
+            // `WarpRenderNode.detectionNotice(for:)`: "Không phát hiện được viền
+            // tóc." when no face in the frame has a traceable hairline — a hat,
+            // a shaved head, a parsing miss (docs/ADR-0022 §"A subject in a hat").
+            // In that state the group really does nothing, and ADR-0022 named
+            // "decide what the UI says when there is no hair" as a condition of
+            // this panel existing at all. This is that answer.
+            //
+            // The node is `"warp"`, which is *also* the reshape panel's node —
+            // and the reshape panel deliberately does **not** name it. See
+            // `SliderSectionDescriptor.notifiesFromNodeNamed`.
+            notifiesFromNodeNamed: "warp",
+            gatedBy: .headSliders
         ),
         // The third panel over `face` (2026-09-21, docs/ADR-0020): three
         // dodge/burn amounts, not three more reshape sliders. They share the

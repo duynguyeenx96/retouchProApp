@@ -8,6 +8,14 @@ that already exists. There is no UI — nothing in RPUI exposes these sliders,
 `RailLayout.swift` is untouched — and `RPEngineFeatureFlags.headSliders` ships
 **off**, for reasons the measurements below make concrete.
 
+> **Addendum 2026-09-21 — the UI exists now; the flag does not move.** The
+> sentences above about "there is no UI" were true of the engine round and are
+> superseded by the "UI (2026-09-21)" section at the end of this file, which also
+> records the **product sign-off on the preview round-trip error** this ADR left
+> open ("the choice belongs to whoever wires the UI, with this number in hand").
+> Everything else here — every decision, constant and measured number — is
+> unchanged, because the wiring added no engine code at all.
+
 ## Context
 
 docs/PLAN.md §6.2 fixes both the problem and the technique:
@@ -204,6 +212,11 @@ head edits (a change to `RenderQuality.meshGrid`, which the "Mặt" group shares
 ADR-0007 fixed on its own measurement) or accepting it. **This ADR accepts it and
 records it**; the choice belongs to whoever wires the UI, with this number in hand.
 
+> **Signed off 2026-09-21: accepted, by the user, explicitly.** See
+> "UI (2026-09-21) → The preview wobble is accepted" below. The three sliders
+> drag live like every other slider in the app — no denser lattice, no debounce,
+> no commit-on-release.
+
 ### The parsing crop cuts the silhouette on 10 of 11 real frames
 
 The BiSeNet crop is 1.87 x the face box, which is not a head-and-hair crop.
@@ -289,4 +302,129 @@ is inert.
   `FaceParsingGroup.hair → RenderMaskKind.hair`, so no new plumbing was needed.
 * The next steps this group needs before a UI, in order: decide the preview-grid
   question above; decide what the UI says when there is no hair; consider a wider
-  parsing crop for the hair class.
+  parsing crop for the hair class. **The first two are decided below
+  (2026-09-21); the third is still open.**
+
+## UI (2026-09-21) — a wired panel, a flag that is still off, and one accepted wobble
+
+No engine *source* file changed for this: it is `SliderPanelLayout` + one rail
+entry, plus tests in RPUI and RPEngine. It is the last of the Phase 6 UI-wiring
+queue and the third of the three Phase 6.2 groups that had an engine and no
+panel, after "Tạo khối" (ADR-0020 §UI) and "Sửa da" (ADR-0021 §UI); it reuses
+both of their mechanisms rather than inventing a third.
+
+### A panel of its own, the third over `EditState.SectionKey.face`
+
+`SliderPanelLayout.PanelKey.head` — "Đầu", header "Tạo hình khung đầu", three
+rows whose keys come from `HeadSliders.Key.all` and whose ranges come from
+`RPCore.Slider`:
+
+| row | key | direction line |
+|---|---|---|
+| **Thu nhỏ đầu** | `headSize` | cả đầu nhỏ lại — mặt, viền tóc cùng một tỉ lệ |
+| **Hẹp đầu** | `headWidth` | hộp sọ hẹp lại từ ngang mắt lên, không đụng hàm / má |
+| **Phồng tóc** | `headVolume` | tóc phồng ra phía đỉnh đầu, khuôn mặt giữ nguyên |
+
+The direction lines say what each slider does *and* what it deliberately leaves
+alone, because §2's whole argument is that these are not reshape sliders: "Hẹp
+đầu" is not "Bóp mặt" (jaw and below) and not "Thái dương" (which pushes the
+temples *out*).
+
+Its own panel rather than three more rows under "Hình dáng mặt", for the reason
+"Sửa da" got one (ADR-0021 §UI) rather than a layout preference: **a detection
+notice disables the group it is attached to**, and this group is the only one on
+the `face` namespace that depends on a detection. Sharing a panel would let a
+subject in a hat switch off fifteen reshape sliders that never needed a hairline.
+
+### The flag is reported, not obeyed by locking
+
+`RPEngineFeatureFlags.headSliders` is **not** flipped — there is still no number
+from a real iPhone, the standing blocker ADR-0018 set and the other two groups
+are held to. So the panel takes the `SliderSectionDescriptor.gatedBy` treatment
+"Tạo khối" introduced: `PanelFeatureGate.headSliders`, read per render by
+`GroupAvailability.blockedReason` ahead of the "no face" check, which draws the
+three real rows disabled under one line —
+
+> Đầu đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật.
+
+The rail item is **not** locked. A locked item with a working three-slider panel
+behind it is the orphan `RailLayoutTests.noWorkingSectionIsOrphaned` exists to
+catch, and this panel is exactly what a later flag flip has to light up with no
+further wiring.
+
+### "What does the UI say when there is no hair" — answered
+
+The second open question above. The answer is the notice the engine already
+publishes: `WarpRenderNode.detectionNotice(for:)` → `RenderReport.notices["warp"]`
+→ `SliderSectionDescriptor.notifiesFromNodeNamed: "warp"` → the panel's own
+`info.circle` line, identical in treatment to "no face detected":
+
+> Không phát hiện được viền tóc.
+
+So the hat / shaved-head / parsing-miss case from §"A subject in a hat" is no
+longer "the slider silently does nothing"; it is a stated fact that disappears on
+its own when the user opens a photo where the trace works. The answer order in
+the panel is **build → face → node**, the same three steps "Sửa da" pinned.
+
+**The notice is scoped to this panel, and that is the load-bearing part.**
+`"warp"` is also "Hình dáng mặt"'s node, and "Hình dáng mặt" names no node at
+all, so the fifteen reshape sliders stay enabled on a frame with no traceable
+hairline — they are landmarks only and work perfectly there. This is the same
+isolation rule ADR-0021 §UI established for `"skin"` / "Mịn da", one node over.
+`DetectionNoticeWiringTests.theShippedTableNamesTwoNodes` and
+`RailLayoutTests.headOpensAPanelScopedToItsOwnNotice` assert both halves.
+
+Driven end to end on a **real a6300 frame** rather than on a compile check:
+`DetectionNoticeTests.aRealFrameWithNoHairPublishesTheNoticeThroughTheGraph`
+takes the frame's real 512² BiSeNet label map, reads the `.hair` mask out of
+**class 18 (`hat`)** — the class the model fills for a hat and leaves empty on
+these bare-headed subjects, so the buffer is a real parsing output of an empty
+class, present, correctly sized and carrying the real derotated affine — and asks
+`RenderGraph.standard` what it would tell the user. It answers
+`["warp": "Không phát hiện được viền tóc."]`. The same frame's real class-17
+plane is the control (no notice), and the same failing frame with the sliders
+back at 0 is the second control (no notice: nothing was asked for).
+
+### The preview wobble is accepted
+
+The first open question above — the 2.3 % preview round trip against "Mặt"'s
+< 1 % — was put to the user on 2026-09-21 and **the decision is to accept it and
+ship**. The three sliders are wired exactly like the fifteen reshape ones next to
+them: live drag, every frame, no debounce, no commit-on-release, and no per-group
+override of `RenderQuality.meshGrid`.
+
+The reasoning, recorded plainly because this ADR flagged it as needing sign-off
+and this is that sign-off:
+
+* **The export is not affected.** At the export grid (129) the round trip is
+  0.8 % of face width, inside the bar every other group meets. What is imprecise
+  is the *preview*, and only while a head slider is being dragged — the picture
+  the user keeps is accurate.
+* **The visible size of it is known and was stated**: up to ~14 px of hairline on
+  a 600 px face, i.e. the preview shows the edit slightly off from where the
+  export will land. It is a wobble, not a different edit — direction, magnitude
+  and shape are right.
+* **Both fixes cost more than the defect.** A denser preview lattice means
+  changing `RenderQuality.meshGrid`, which the "Mặt" group shares and ADR-0007
+  fixed on its own measurement, so it needs a new measurement round for two
+  groups plus a re-check of every warp number in ADR-0007/0010. A head-only
+  debounce or commit-on-release means one slider group in the app behaving
+  differently from every other under the finger — a UX inconsistency traded for a
+  preview-only error.
+* **Speed to ship won**, deliberately and with the number in hand rather than by
+  not looking at it. If it turns out to bother someone in use, the denser-lattice
+  path is still open and unchanged.
+
+This is a user decision, not an engineering conclusion: nothing measured here got
+better.
+
+### What this round did not do
+
+* `RPEngineFeatureFlags.headSliders` stays off. Every number in this ADR and in
+  ADR-0007 … ADR-0021 is untouched, by construction.
+* No engine code changed: no node, no kernel, no constant, no `EditState` key.
+  `HeadSliders`, `HairBoundary`, `HeadReshape` and `WarpRenderNode` are exactly
+  as the engine round left them.
+* The parsing crop is still 1.87 × the face box, so §"The parsing crop cuts the
+  silhouette" stands as the group's known accuracy ceiling — the one open item of
+  the three.

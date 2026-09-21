@@ -601,8 +601,13 @@ không thêm `EditState.SectionKey`, không migrate gì trên đĩa**:
   *(Cập nhật 2026-09-21: **Tạo khối đã được nối UI** và không còn khoá — nó mở panel riêng 3 slider, cờ engine
   vẫn tắt nên nhóm bị disable kèm lý do thay vì khoá cả rail item. Xem "Trạng thái 6.2 — Tạo khối" ở §Phase 6.
   Cùng ngày, **"Sửa da" cũng đã được nối UI** theo đúng cách đó — panel riêng chỉ có **1 toggle**, cờ
-  `bodySkinSync` vẫn tắt; xem "Trạng thái 6.2 — Sửa da" ở §Phase 6. Chín mục còn lại trong danh sách trên vẫn
-  khoá.)*
+  `bodySkinSync` vẫn tắt; xem "Trạng thái 6.2 — Sửa da" ở §Phase 6. Và **"Đầu" cũng vậy** — panel riêng 3
+  slider, cờ `headSliders` vẫn tắt, kèm detection notice "Không phát hiện được viền tóc."; xem "Trạng thái
+  6.2 — Đầu" ở §Phase 6. **Đầu là mục cuối của hàng đợi UI Phase 6.2**: cả ba nhóm có engine mà chưa có panel
+  (Tạo khối · Sửa da · Đầu) nay đều mở được panel, nên không còn "engine xong nhưng UI không tới được" trong
+  6.2. Sáu mục còn lại trong danh sách trên — Căng mọng, Mụn, Thu gọn, Săn chắc, Tự động, Khoá nền — vẫn khoá,
+  và **khoá vì lý do khác**: năm mục đầu chưa có engine, riêng Khoá nền có engine nhưng đang chờ số đo trên
+  iPhone thật (ADR-0018).)*
 
 **Cập nhật kế hoạch (2026-09-11), Phase 6 chi tiết + Share Extension:** Input: `docs/HANDOFF-remaining-features-2026-09-10.md` (13 mục rail khoá + yêu cầu Share Extension), 3 research pass
 song song (mask/segmentation, body/head/contour, object-removal+preset+Share Extension — không phải spike đo số,
@@ -810,6 +815,44 @@ trên vài ảnh thật. Pass: warp không tạo méo/blob ở vùng giữa hai 
 - **Toggle vẫn bấm được khi notice đang hiện** (`GroupAvailability.togglesEnabled`): slider bị disable vì kéo
   nó sẽ ghi giá trị không ai đọc, còn toggle là **ý định** của người dùng — phải luôn tắt lại được, kể cả trên
   đúng tấm ảnh mà nó không chạy nổi. Ngoại lệ duy nhất là cờ build tắt.
+
+**Trạng thái 6.2 — Đầu (cập nhật 2026-09-21): engine xong + đã có UI 3 slider, cờ vẫn tắt, notice "không thấy
+viền tóc" đã nối, và **sai số preview khi kéo được user chấp nhận** — mục cuối của hàng đợi UI 6.2.**
+- **Engine (đã merge, `docs/ADR-0022-head-reshape.md`)**: 3 slider `headSize`/`headWidth`/`headVolume` (0–100,
+  mặc định 0, nằm trong `EditState.SectionKey.face` nên **transfer qua preset**), `HairBoundary` trace biên
+  ngoài mask tóc BiSeNet (Moore-neighbour, tiêu chí dừng Jacob) + vòng oval mặt mở rộng ra tới hairline, tất cả
+  vào **đúng một** `ControlPoints` của `WarpRenderNode` (không pass warp thứ hai). Số đã đo: trace lệch **0 px**
+  so với reference NumPy trên 11/11 khung a6300 thật + 7/7 hình synthetic, golden **69.5 dB**, preview 2048 px
+  0.825 → 0.912 ms, 24 MP 2.75 → 2.92 ms, silhouette cache 1.50 ms nguội → 0.036 ms nóng.
+- **UI (2026-09-21, đợt này)**: rail item "Đầu" (con của "Mặt") nay trỏ vào panel riêng
+  `SliderPanelLayout.PanelKey.head` — một panel nữa trên namespace `face` (cùng chỗ với "Hình dáng mặt" và
+  "Tạo khối", thành ba panel trên một namespace), 3 nhãn "Thu nhỏ đầu" · "Hẹp đầu" · "Phồng tóc" (ADR-0022 §2). Panel riêng chứ không nhét thêm 3 dòng vào "Hình dáng mặt", **vì lý do không phải
+  bố cục**: đây là nhóm duy nhất trên namespace `face` phụ thuộc một *nhận diện*, và notice thì disable đúng
+  nhóm nó gắn vào — chung panel thì một người đội mũ sẽ tắt luôn 15 slider warp vốn chẳng cần viền tóc.
+  UI-only: `EditState`/`Slider`/`HeadSliders`/`WarpRenderNode` không đổi một dòng.
+- **Câu trả lời cho "không có tóc thì UI nói gì" (ADR-0022 để ngỏ)**: `WarpRenderNode.detectionNotice(for:)` →
+  `notifiesFromNodeNamed: "warp"` → panel hiện **"Không phát hiện được viền tóc."** Notice **chỉ** gắn vào panel
+  "Đầu"; "Hình dáng mặt" dùng chung node `"warp"` nhưng **không** khai báo node, nên 15 slider của nó vẫn bật.
+  Có test chạy trên **khung a6300 thật** (đọc mask `.hair` ra từ class 18 `hat` của chính label map — lớp model
+  bỏ trống trên các khung không đội mũ, tức một output parsing thật chứ không phải buffer dựng tay), qua
+  `RenderGraph.standard`, kèm đối chứng class-17 thật: `DetectionNoticeTests
+  .aRealFrameWithNoHairPublishesTheNoticeThroughTheGraph`.
+- **`RPEngineFeatureFlags.headSliders` vẫn mặc định tắt** (chưa có số trên iPhone thật — đúng rào ADR-0018 đặt
+  cho Khoá nền và hai nhóm 6.2 kia). Bản dựng cờ tắt: rail **không khoá**, panel mở được và vẽ đủ 3 slider thật,
+  nhóm bị disable kèm câu "Đầu đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+  (`PanelFeatureGate.headSliders`). Thứ tự trả lời trong panel: **build → mặt → node**.
+- **Quyết định của user (2026-09-21): chấp nhận sai số preview khi kéo, ship như mọi slider khác.** ADR-0022 đo
+  MLS round-trip ở lưới preview (65) là **2.3% bề ngang mặt** cho nhóm này, so với <1% của nhóm "Mặt" — vì sai
+  số round-trip tăng theo độ dịch chuyển trên mỗi ô lưới, và một lệnh "Đầu" dịch xa hơn một bậc. Ở lưới export
+  (129) con số về **0.8%**, tức **ảnh xuất ra vẫn chuẩn**; cái lệch chỉ là preview *trong lúc đang kéo*, tối đa
+  ~14 px viền tóc trên khuôn mặt 600 px. User chốt: **không** làm dày lưới preview (sẽ phải sửa
+  `RenderQuality.meshGrid` mà nhóm "Mặt" dùng chung → kéo theo một vòng đo lại cho cả ADR-0007/0010), **không**
+  debounce/commit-on-release riêng cho 3 slider này (một nhóm hành xử khác mọi nhóm còn lại dưới ngón tay) —
+  kéo live y hệt 15 slider bên cạnh. Ghi rõ đây là **đánh đổi có chủ ý** (ưu tiên ship), không phải "không vấn
+  đề gì"; đường làm dày lưới vẫn còn đó nếu dùng thật thấy khó chịu.
+- **Còn nợ (không đụng đợt này)**: crop parsing vẫn là 1.87× hộp mặt nên 10/11 khung thật bị cắt mất một phần
+  viền tóc (3/11 cắt ngang đỉnh đầu) — trần độ chính xác của nhóm, ADR-0022 §"The parsing crop" ghi rõ, muốn gỡ
+  thì phải nới `CropRegion` của RPVision và đo lại IoU của ADR-0006.
 
 **6.3 — Phụ thuộc 6.1**
 

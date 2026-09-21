@@ -314,6 +314,77 @@ struct DetectionNoticeTests {
                     HeadSliders(), face: FaceSliders(slim: 50), faces: [hatted.face])) == nil)
     }
 
+    /// The same failure on a **real a6300 frame**, driven through the product
+    /// path the panel reads (2026-09-21, docs/ADR-0022 §UI).
+    ///
+    /// ``headNoticeFollowsTheSilhouette`` above pins the node's own answer on a
+    /// synthetic head; this is the end-to-end statement the wired panel needs,
+    /// and it is the head group's counterpart to
+    /// `BodySkinSyncTests.deepToneFramePublishesTheNotice`: a real parsing
+    /// output, through `RenderGraph.standard`, to the `RenderReport.notices`
+    /// dictionary `LivePreviewController` publishes and
+    /// `RPUI.GroupAvailability` turns into the sentence on screen.
+    ///
+    /// **The failing mask is a real parse, not a buffer written by this test.**
+    /// BiSeNet keeps `hat` as class 18, separate from `hair` (17), and
+    /// `FaceParsingGroup.hair` does not fold it in — so a subject in a hat gets
+    /// a `.hair` mask that is present, correctly sized and correctly placed, and
+    /// empty. None of the eleven a6300 subjects is wearing one, which is exactly
+    /// what makes their class-18 plane the right fixture: it is this model's own
+    /// output for a class it found nothing of, on a real photograph, with the
+    /// real derotated affine attached. The frame's real class-17 plane is the
+    /// **control** — same code, same graph, same sliders, no notice — so a green
+    /// assertion below cannot be "the notice is always on".
+    @Test("Head: a real frame whose hair class is empty publishes the notice through the graph")
+    func aRealFrameWithNoHairPublishesTheNoticeThroughTheGraph() throws {
+        guard let context = SpikeS3Support.context else { return }
+        guard let frame = HairMaskFixtures.a6300.first else { return }
+
+        let flags = RPEngineTestFlags.enterHeadRenderGraph()
+        defer { flags.leave { RPEngineTestFlags.disableHeadAndWarp() } }
+        let graph = try RenderGraph.standard(context: context)
+        let sliders = HeadReshapeRenderTests.allHead
+
+        // The control: the frame's real hair mask, which really is traceable.
+        let real = HairMaskFixtures.renderInput(frame)
+        #expect(real.masks[.hair]?.values.contains(255) == true)
+        #expect(graph.detectionNotices(for: SyntheticHead.request(sliders, faces: [real])).isEmpty)
+
+        // The same frame, the same 512² plane and the same affine — read out of
+        // the class the model would have filled for a hat.
+        var hatted = real
+        var hatMask = frame.mask
+        hatMask.values = frame.labels.map { $0 == 18 ? 255 : 0 }
+        hatted.masks[.hair] = hatMask
+        #expect(hatMask.width == frame.mask.width && hatMask.height == frame.mask.height)
+        #expect(hatMask.maskToImage == frame.mask.maskToImage)
+        // The premise, measured rather than assumed: nothing in this plane
+        // reaches the half-coverage isoline the trace binarises at.
+        #expect(!hatMask.values.contains { $0 >= HairBoundary.coverageThreshold })
+
+        #expect(
+            graph.detectionNotices(for: SyntheticHead.request(sliders, faces: [hatted]))
+                == ["warp": "Không phát hiện được viền tóc."])
+
+        // …and with the head sliders back at 0 nothing was asked for, so the
+        // same unusable frame says nothing — the notice is about the user's
+        // request, not a standing complaint about the photo.
+        #expect(
+            graph.detectionNotices(for: SyntheticHead.request(HeadSliders(), faces: [hatted]))
+                .isEmpty)
+    }
+
+    /// The shipping default this UI round did **not** change (docs/ADR-0022
+    /// §UI): the panel exists, the effect stays off until there is an iPhone
+    /// number. Under the flag lock, so it reads the default rather than another
+    /// suite's mid-test value.
+    @Test("Head: headSliders is off by default")
+    func headSlidersIsOffByDefault() {
+        RPEngineTestFlags.exclusive {
+            #expect(RPEngineFeatureFlags.headSliders == false)
+        }
+    }
+
     /// With `headSliders` off the user cannot have asked for the thing that
     /// failed, so there is nothing to report — the same rule as the skin node's
     /// flag check, and the reason neither notice can appear in a build that does
