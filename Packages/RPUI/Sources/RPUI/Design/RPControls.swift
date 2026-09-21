@@ -103,6 +103,11 @@ struct RPSliderRow: View {
     var range: ClosedRange<Double> = Slider.range
     var thumbSize: CGFloat = RPTheme.Metrics.macSliderThumb
     var isEnabled: Bool = true
+    /// Overrides ``valueText`` with a real-world unit — "5200K" for "Nhiệt độ"
+    /// (2026-09-21) instead of the raw −100…100 amount, which is meaningless to
+    /// a photographer on its own. `nil` for every other row: the amount itself
+    /// *is* the value there (Phơi sáng's EV, Bão hoà's %, …).
+    var valueOverride: String? = nil
     let onChange: (Double) -> Void
     var onCommit: () -> Void = {}
 
@@ -112,6 +117,7 @@ struct RPSliderRow: View {
     /// glance at the number says which half of the track the thumb is on
     /// without reading the thumb.
     private var valueText: String {
+        if let valueOverride { return valueOverride }
         let rounded = Int(value.rounded())
         return isBidirectional && rounded > 0 ? "+\(rounded)" : "\(rounded)"
     }
@@ -144,8 +150,10 @@ struct RPSliderRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(
-            isBidirectional
-                ? "\(valueText), từ -100 đến 100" : "\(Int(value.rounded())) trên 100")
+            valueOverride != nil
+                ? valueText
+                : isBidirectional
+                    ? "\(valueText), từ -100 đến 100" : "\(Int(value.rounded())) trên 100")
         .accessibilityHint(direction.isEmpty ? "" : hintText)
         .accessibilityAdjustableAction { adjustment in
             guard isEnabled else { return }
