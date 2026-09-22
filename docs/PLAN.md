@@ -781,6 +781,55 @@ trong RPUI (không đổi format đĩa, không thêm node render):
   Machinery đã sẵn (`Preset.init(from:limitedTo:)` + `applying(_:replacingSections:)`), chỉ còn thiếu UI ⇒ ghi
   lại làm **follow-up**, không nửa vời.
 
+**Cập nhật (2026-09-22) — nhập preset Lightroom `.xmp`, màn preset thành side panel, thêm undo/redo/reset**
+(yêu cầu mới của user, không nằm trong phạm vi Phase 3 gốc; nhiều đợt sửa trong 1 ngày, log gộp trạng thái
+cuối, không phải nhật ký từng đợt):
+- **Đọc `.xmp`**: `LightroomXMPImport.swift` (RPEngine) parse `rdf:Description` (dạng attribute lẫn dạng
+  element con, tuỳ tool xuất) và ánh xạ đúng phần `crs:` RetouchPro có slider tương ứng (Exposure/Contrast/
+  Highlights/Shadows/WB/Vibrance/Saturation/8 dải HSL saturation) lên `ColorSliders`; `wbTemperature` đi qua
+  đúng `WhiteBalance.amount(declaringKelvin:neutralKelvin:)` (không quy đổi tuyến tính). Phần Lightroom có mà
+  RetouchPro không có slider tương ứng (Texture/Clarity/Dehaze/Whites/Blacks/tone curve điểm/Look/Color
+  Grading/Split Toning…) **cố tình không đọc**, không xấp xỉ lên chỗ nó không có nghĩa. **Bắt 1 bug thật khi
+  test với preset thật của user** (`Research/presets/Anime - Hiep Hoang.xmp`): file đọc đúng khi test rời,
+  nhưng qua `.fileImporter` trong app báo "không phải .xmp hợp lệ" — hoá ra là thiếu
+  `startAccessingSecurityScopedResource()`, không phải lỗi định dạng; thông báo lỗi cũ che mất nguyên nhân
+  thật, đã tách 3 nhánh lỗi (invalidXML / noDevelopSettings / lỗi quyền) để không lặp lại.
+- **Nhập 1 file / nhiều file / cả thư mục**: nhiều file rời mỗi file thành 1 preset độc lập trong "Của tôi";
+  nhập cả thư mục gom chung 1 group đặt tên theo thư mục (`Preset.collection`, field mới, tách khỏi `group` —
+  `group` vẫn quyết định phạm vi áp dụng Mẫu/Looks, `collection` chỉ là nhãn hiển thị, tránh 1 thư mục tên
+  trùng "Mẫu" đổi luôn phạm vi áp). Nhập xong vào thẳng "Của tôi" ở cường độ 100%, không hỏi tên/cường độ, không
+  đụng ảnh đang mở — áp dụng là việc riêng, làm ở màn preset.
+- **Màn preset đổi hẳn 3 lần trong ngày theo phản hồi user, chốt bản cuối**: (1) ban đầu là dialog nổi che
+  canvas — đổi thành **side panel** cùng chỗ mọi panel slider khác (`SliderPanelView`/tool sheet điện thoại),
+  vì dialog che mất canvas nên hover-preview vô nghĩa; (2) bỏ hẳn 2 tab "Mẫu"/"Looks" + hàng "Áp cho" + nút "Áp
+  dụng" — chọn 1 dòng preset là xem thử ngay trên ảnh thật (`EditorModel.selectPresetForApply`), 1 thanh trượt
+  **Cường độ** kéo-thả để chỉnh mạnh/nhẹ rồi ghi đĩa, đúng luật "kéo xem thử, thả tay ghi" mọi slider khác đã
+  theo; phạm vi áp dụng suy ra từ `Preset.group` của từng preset (`inferredKind`) chứ không còn theo tab đang
+  mở — "Gốc" (preset rỗng, `sections: {}`) vẫn trả màu về gốc đúng nhờ vậy. (3) Danh sách preset gom nhóm có
+  thể **collapse/expand** ("Hệ thống" + "Của tôi" + 1 group/thư mục đã nhập) thay vì tab phải bấm qua lại; mỗi
+  dòng preset chỉ còn tên (không còn tóm tắt nhóm slider/nhãn "Dựng sẵn"/ngôi sao trên từng dòng — dời ngôi sao
+  xuống thanh dưới, chỉ hiện khi đã chọn 1 preset).
+- **Undo/redo/reset thật**: `EditorModel.commitEditState()` giờ là điểm undo — mỗi lần ghi đĩa thật (kéo thanh
+  trượt thả tay, áp preset, dán thiết lập, "Đặt lại"…) đẩy 1 mục vào `undoStack`, sửa mới xoá `redoStack`. Có
+  sửa 1 race thật: nhiều lệnh ghi bắn song song qua `Task { }` không await (`resetAllSliders`/`setToggle`…) có
+  thể cùng đọc `lastSavedEditState` cũ và đẩy trùng 1 mục undo — sửa bằng cách gán `lastSavedEditState` **trước**
+  khi await ghi đĩa thay vì sau. Lịch sử **trong bộ nhớ theo từng ảnh**, đổi ảnh là reset (đúng yêu cầu "undo
+  cho tới khi ảnh vừa được import vào"). Nút "Hoàn tác"/"Làm lại"/"Đặt lại" thêm vào toolbar Mac, có chữ kèm
+  icon; bỏ hẳn case `.undo` cũ trong `EditorChrome.MacTool` (từng là 1 "tool" chọn được như bàn tay/cọ nhưng
+  không làm gì — sai hình dạng cho 1 hành động tức thời).
+- **Rail bên phải (Mac) thêm chữ dưới icon** (`GroupIconRail`, theo đúng hình `GroupTabRow` điện thoại đã có),
+  và đổi tên mục rail "Mẫu" → "Preset" — lý do cả hai: user không đoán được icon-only làm gì.
+- Test: RPCore 120, RPUI 273 (RPCore +0 test mới cho `Preset.collection`, trực tiếp qua `Codable` round-trip
+  sẵn có; RPUI +7 undo/redo + 9 import .xmp + phần còn lại sửa theo API mới) — tất cả xanh, build app Debug
+  macOS thành công qua từng đợt.
+- **Còn treo, chưa ai xác nhận**: (1) chiều cao 420pt cho panel preset trên tool sheet điện thoại là số đoán,
+  chưa đo trên iPhone thật xem có đè `GroupTabRow` không (session hôm nay chỉ test trên Mac); (2) `RPEngineTests`
+  hiện **không build được** trên máy user — 1 file test cũ (`FaceReshapeTests.swift`, không đụng gì hôm nay)
+  bị compiler timeout khi type-check dưới SDK Xcode mới hơn (macOS 27 xuất hiện giữa phiên, có vẻ do lần accept
+  license Xcode) — chưa xác nhận lại được 12 test `LightroomXMPImportTests` (đã xanh lúc viết, trước khi lỗi
+  build xuất hiện) qua `swift test` đầy đủ của RPEngine; cần tách nhỏ biểu thức `@Test(arguments:)` trong file
+  đó hoặc chờ toolchain, không phải việc của tính năng này.
+
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 
 Hướng kỹ thuật và UX đích **đã chốt với user** (`docs/HANDOFF-remaining-features-2026-09-10.md` §4.1) — phần dưới
