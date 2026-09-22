@@ -14,10 +14,40 @@ struct SliderPanelView: View {
     /// The chrome the rail and this panel share. Defaulted so the smoke tests
     /// (and SwiftUI previews) can build the panel on its own.
     var chrome: EditorChrome = EditorChrome()
+    /// Owns the two preset stores; shared with the rest of the editor so the
+    /// library is not silently re-read from disk every time this panel swaps
+    /// content in. Defaulted for the same reason `chrome` is.
+    var library: PresetLibraryModel = PresetLibraryModel()
 
     private var section: SliderSectionDescriptor { chrome.activeSection }
 
     var body: some View {
+        Group {
+            // The preset library used to be a floating dialog over the canvas
+            // (`MacPresetLibraryDialog`); since 2026-09-22 it takes over this
+            // same panel slot instead, the way every slider group already does
+            // — a user asked for "ở vị trí side panel tương tự các chức năng
+            // khác" (see `PresetLibraryView`'s own doc comment for why that
+            // also fixed the hover preview). `chrome.presetLibrary` still
+            // carries a `PresetLibraryKind` (the rail always asks for
+            // `.templates`; `RailPresentation` still needs a value there),
+            // but the view itself has no more kind to ask for — only whether
+            // the panel is open at all (also 2026-09-22, dropping the
+            // "Mẫu"/"Looks" split the kind used to pick between).
+            if chrome.presetLibrary != nil {
+                PresetLibraryView(
+                    model: model, library: library,
+                    dismiss: { chrome.presetLibrary = nil })
+            } else {
+                slidersPanel
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .background(RPTheme.chrome)
+        .overlay(alignment: .leading) { Rectangle().fill(RPTheme.hairline).frame(width: 1) }
+    }
+
+    private var slidersPanel: some View {
         VStack(spacing: 0) {
             // The brush is a **mode**, not a seventh group, so it borrows the
             // panel rather than adding one: the user keeps the slider group they
@@ -60,9 +90,6 @@ struct SliderPanelView: View {
             Divider().overlay(RPTheme.hairline)
             footer
         }
-        .frame(maxHeight: .infinity)
-        .background(RPTheme.chrome)
-        .overlay(alignment: .leading) { Rectangle().fill(RPTheme.hairline).frame(width: 1) }
     }
 
     private var header: some View {
@@ -101,9 +128,13 @@ struct SliderPanelView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             // Phase 3 landed, so the chip is a real button now: it opens the
-            // same preset library the rail's "Mẫu" item opens
+            // same preset library the rail's "Preset" item opens
             // (``PresetLibraryView``), where saving the current look lives.
+            // Clears the brush the same way `EditorChrome.selectRailItem`
+            // does — this is a second door into the same panel slot, and the
+            // two must agree on "exactly one thing is ever open".
             Button {
+                chrome.isBrushing = false
                 chrome.presetLibrary = .templates
             } label: {
                 Text("Lưu preset")

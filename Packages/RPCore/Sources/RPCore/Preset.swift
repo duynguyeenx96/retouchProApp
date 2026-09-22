@@ -19,6 +19,19 @@ public struct Preset: Identifiable, Hashable, Sendable {
     /// Optional grouping for the preset browser ("Da", "Mặt", "Color"…),
     /// Phase 3. `nil` means the preset covers everything it carries.
     public var group: String?
+    /// A **display** grouping inside "Của tôi" — the name of the folder a
+    /// batch of `.xmp` sidecars was imported from together (2026-09-22, user
+    /// request: *"import folder thì sẽ tạo 1 group"*), `nil` for everything
+    /// else (a hand-saved preset, or one file imported on its own).
+    ///
+    /// Deliberately **not** the same field as ``group``: `group` decides
+    /// which sections applying a preset may touch
+    /// (``PresetLibraryKind/sectionNames``, `Preset.inferredKind` in RPUI) —
+    /// a scope, not a label — and every `.xmp` import is a colour-only Look
+    /// regardless of which folder it came from. Conflating the two would mean
+    /// a folder named, say, "Mẫu" silently changing what applying its
+    /// contents is allowed to do.
+    public var collection: String?
     public var createdAt: Date
     public var schemaVersion: Int
     /// Same namespaces as ``EditState/sections``.
@@ -30,6 +43,7 @@ public struct Preset: Identifiable, Hashable, Sendable {
         id: PresetID = .generate(),
         name: String,
         group: String? = nil,
+        collection: String? = nil,
         createdAt: Date = Date(),
         schemaVersion: Int = Preset.currentSchemaVersion,
         sections: [String: EditSection] = [:],
@@ -38,6 +52,7 @@ public struct Preset: Identifiable, Hashable, Sendable {
         self.id = id
         self.name = name
         self.group = group
+        self.collection = collection
         self.createdAt = createdAt
         self.schemaVersion = schemaVersion
         self.sections = sections
@@ -114,11 +129,11 @@ extension EditState {
 
 extension Preset: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, name, group, createdAt, schemaVersion, sections
+        case id, name, group, collection, createdAt, schemaVersion, sections
     }
 
     private static let knownKeys: Set<String> = [
-        "id", "name", "group", "createdAt", "schemaVersion", "sections",
+        "id", "name", "group", "collection", "createdAt", "schemaVersion", "sections",
     ]
 
     public init(from decoder: any Decoder) throws {
@@ -126,6 +141,7 @@ extension Preset: Codable {
         id = try container.decode(PresetID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         group = try container.decodeIfPresent(String.self, forKey: .group)
+        collection = try container.decodeIfPresent(String.self, forKey: .collection)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         schemaVersion =
             try container.decodeIfPresent(Int.self, forKey: .schemaVersion)
@@ -139,6 +155,7 @@ extension Preset: Codable {
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(group, forKey: .group)
+        try container.encodeIfPresent(collection, forKey: .collection)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(sections, forKey: .sections)

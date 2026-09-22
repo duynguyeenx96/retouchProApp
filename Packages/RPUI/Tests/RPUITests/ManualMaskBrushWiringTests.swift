@@ -159,8 +159,12 @@ struct ManualMaskBrushWiringTests {
     }
 
     /// With the flag on it is a mode: tapping arms it, tapping again puts it
-    /// away, and either way the slider panel stays where the user left it —
-    /// painting a mask is only useful *with* a group turned up.
+    /// away, and arming it keeps the slider panel where the user left it — the
+    /// brush bar sits over the group already open, so painting is still *with*
+    /// a group turned up. Switching to a **different** rail item, though, puts
+    /// the brush away (2026-09-22): the two used to coexist, and a user
+    /// reported that as the rail showing two items active at once with no way
+    /// to tell which was "real".
     @Test("With manualMask on the rail item arms and disarms the brush")
     func railItemTogglesTheBrush() async throws {
         try await Self.withManualMask(true) {
@@ -178,12 +182,19 @@ struct ManualMaskBrushWiringTests {
             #expect(chrome.isRailItemActive(item))
             #expect(chrome.activeGroupKey == EditState.SectionKey.skin)
 
-            // The other rail items still work while the brush is armed, and
-            // selecting one does not secretly disarm it.
-            chrome.selectRailItem(try #require(RailLayout.leafItems.first { $0.id == "face" }))
+            // Picking a different rail item now puts the brush away — exactly
+            // one thing is ever "the open panel".
+            let face = try #require(RailLayout.leafItems.first { $0.id == "face" })
+            chrome.selectRailItem(face)
             #expect(chrome.activeGroupKey == EditState.SectionKey.face)
-            #expect(chrome.isBrushing)
+            #expect(!chrome.isBrushing)
+            #expect(!chrome.isRailItemActive(item))
+            #expect(chrome.isRailItemActive(face))
 
+            // Re-arming after switching away, then the plain toggle-off/on the
+            // brush always had.
+            chrome.selectRailItem(item)
+            #expect(chrome.isBrushing)
             chrome.selectRailItem(item)
             #expect(!chrome.isBrushing)
             chrome.selectRailItem(item)

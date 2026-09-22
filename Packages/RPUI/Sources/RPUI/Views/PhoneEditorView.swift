@@ -26,6 +26,10 @@ struct PhoneEditorView: View {
     let back: () -> Void
     let importFromFiles: () -> Void
     let importFromPhotos: () -> Void
+    /// Owns the two preset stores; shared with ``SliderPanelView`` so the
+    /// library is not re-read from disk every time the tool sheet swaps to it.
+    /// Defaulted so the smoke tests can build this screen on its own.
+    var library: PresetLibraryModel = PresetLibraryModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -207,42 +211,59 @@ struct PhoneEditorView: View {
                 .padding(.top, 7)
                 .padding(.bottom, 3)
 
-            // The second level, when the open panel belongs to a body part:
-            // "Mặt" → Hình dáng mặt · Mịn da · Kiềm dầu · Mắt · Răng · … It sits
-            // directly under the grabber, above the sliders it switches, while
-            // the parent stays selected in the rail at the bottom of the sheet.
-            if let parent = chrome.activeRailParent {
-                RailChildStrip(chrome: chrome, parent: parent) { section in
-                    section.activeParameterCount(in: model.activeEditState)
-                }
-                Divider().overlay(RPTheme.hairlineStrong)
-            }
-
-            ScrollView {
-                // The brush takes the sheet's slider slot while it is armed
-                // (docs/PLAN.md §6.1): it is a mode over whichever group the
-                // user was in, so it borrows the space rather than adding a
-                // second panel on a 390 pt screen. "Xong" gives it back.
-                if chrome.isBrushing {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ManualMaskBrushHeader(model: model, chrome: chrome)
-                            .padding(.top, 10)
-                        ManualMaskBrushBar(
-                            model: model, chrome: chrome,
-                            thumbSize: RPTheme.Metrics.phoneSliderThumb)
+            // The preset library used to be its own `.sheet` on top of this
+            // one; since 2026-09-22 it takes over the sheet's slider slot
+            // instead, the same "side panel, not a popup" move the Mac side
+            // got (`PresetLibraryView`'s own doc comment says why).
+            if chrome.presetLibrary != nil {
+                // Taller than a slider list's own 250 pt: this view is a
+                // header + the list + a footer, not one scroller, so the
+                // fixed slider height would crush it. A first pass, not a
+                // measured number — needs eyes on a real phone to confirm
+                // 420 pt does not crowd `GroupTabRow` below it.
+                PresetLibraryView(
+                    model: model, library: library,
+                    dismiss: { chrome.presetLibrary = nil })
+                .frame(height: 420)
+            } else {
+                // The second level, when the open panel belongs to a body part:
+                // "Mặt" → Hình dáng mặt · Mịn da · Kiềm dầu · Mắt · Răng · … It
+                // sits directly under the grabber, above the sliders it
+                // switches, while the parent stays selected in the rail at the
+                // bottom of the sheet.
+                if let parent = chrome.activeRailParent {
+                    RailChildStrip(chrome: chrome, parent: parent) { section in
+                        section.activeParameterCount(in: model.activeEditState)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
-                } else {
-                    GroupSliderList(
-                        model: model, section: chrome.activeSection,
-                        thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                    Divider().overlay(RPTheme.hairlineStrong)
+                }
+
+                ScrollView {
+                    // The brush takes the sheet's slider slot while it is armed
+                    // (docs/PLAN.md §6.1): it is a mode over whichever group the
+                    // user was in, so it borrows the space rather than adding a
+                    // second panel on a 390 pt screen. "Xong" gives it back.
+                    if chrome.isBrushing {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ManualMaskBrushHeader(model: model, chrome: chrome)
+                                .padding(.top, 10)
+                            ManualMaskBrushBar(
+                                model: model, chrome: chrome,
+                                thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                        }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 10)
+                    } else {
+                        GroupSliderList(
+                            model: model, section: chrome.activeSection,
+                            thumbSize: RPTheme.Metrics.phoneSliderThumb)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 10)
+                    }
                 }
+                .frame(height: RPTheme.Metrics.phoneSheetSliderHeight)
+                .scrollIndicators(.hidden)
             }
-            .frame(height: RPTheme.Metrics.phoneSheetSliderHeight)
-            .scrollIndicators(.hidden)
 
             Divider().overlay(RPTheme.hairlineStrong)
 

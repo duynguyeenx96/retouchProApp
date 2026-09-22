@@ -49,6 +49,21 @@ public enum PresetLibraryKind: String, CaseIterable, Hashable, Sendable, Identif
     public var groupName: String { builtInKind.groupName }
 }
 
+extension Preset {
+    /// Which picker this preset belongs to, inferred from its own ``group`` —
+    /// no longer a UI tab a user switches (2026-09-22, ``PresetLibraryView``
+    /// dropped the "Mẫu"/"Looks" pills into one flat list), but the group tag
+    /// is still what decides which sections applying it is allowed to touch —
+    /// see ``EditorModel/selectPresetForApply(_:)``. "Gốc" carries **no**
+    /// `color` key at all (`sections: {}`), and still has to reset colour back
+    /// to neutral when applied; that only works because its scope is `[color]`
+    /// regardless of what it does or does not carry, exactly as it worked when
+    /// a picker's own tab supplied that scope.
+    public var inferredKind: PresetLibraryKind {
+        group == PresetLibraryKind.looks.groupName ? .looks : .templates
+    }
+}
+
 /// The three tabs of both pickers.
 ///
 /// **"Nổi bật", not the mockup's "Cho bạn"** — decided 2026-09-11 (see
@@ -107,6 +122,13 @@ public final class PresetLibraryModel {
     /// bundle.
     public var featured: [Preset] { BuiltInPresets.all(of: kind.builtInKind) }
 
+    /// Every built-in preset, both kinds together — read-only, shipped in the
+    /// app bundle. The "Hệ thống" group in ``PresetLibraryView``, which shows
+    /// one unified list rather than switching between the two kinds
+    /// (2026-09-22); `Preset.inferredKind` is what still scopes what applying
+    /// one of these is allowed to touch.
+    public var allFeatured: [Preset] { BuiltInPresets.all }
+
     /// The user's presets of the current kind.
     ///
     /// A preset with **no** group is shown under "Mẫu": that is what a preset
@@ -117,6 +139,39 @@ public final class PresetLibraryModel {
             if let group = preset.group { return group == kind.groupName }
             return kind == .templates
         }
+    }
+
+    /// One named group of "Của tôi" — either the default bucket (every preset
+    /// with no ``Preset/collection``) or one folder's worth of `.xmp`
+    /// sidecars imported together. See ``mineGroupedByCollection``.
+    public struct PresetGroup: Identifiable, Sendable {
+        public var id: String { title }
+        public let title: String
+        public let presets: [Preset]
+    }
+
+    /// ``mine`` split by ``Preset/collection`` (2026-09-22, user request) —
+    /// the default "Của tôi" bucket first (if it has anything in it), then one
+    /// group per folder a batch of `.xmp` sidecars was imported from
+    /// together, named after that folder, in the order each first appears in
+    /// `mine` (itself newest-first). ``PresetLibraryView`` renders each as
+    /// its own collapsible section.
+    public var mineGroupedByCollection: [PresetGroup] {
+        var order: [String] = []
+        var buckets: [String: [Preset]] = [:]
+        for preset in mine {
+            let key = preset.collection ?? "Của tôi"
+            if buckets[key] == nil {
+                order.append(key)
+                buckets[key] = []
+            }
+            buckets[key]!.append(preset)
+        }
+        if let index = order.firstIndex(of: "Của tôi"), index != 0 {
+            order.remove(at: index)
+            order.insert("Của tôi", at: 0)
+        }
+        return order.map { PresetGroup(title: $0, presets: buckets[$0] ?? []) }
     }
 
     /// Starred presets of the current kind, built-in ones included — a favourite
@@ -202,6 +257,52 @@ public final class PresetLibraryModel {
             group: kind.groupName,
             from: editState,
             limitedTo: kind.sectionNames
+        )
+        do {
+            try store.savePreset(preset)
+            mine.insert(preset, at: 0)
+            tab = .mine
+            return preset
+        } catch {
+            lastErrorMessage = "Không lưu được preset: \(error)"
+            return nil
+        }
+    }
+
+    /// Saves an already-built "Color" section as a Look — the write half of
+    /// importing a Lightroom `.xmp` sidecar (`EditorModel+ImportXMP.swift`).
+    ///
+    /// Always a Look and always switches to it (``kind`` → `.looks`, ``tab`` →
+    /// `.mine`), regardless of which picker was on screen: an `.xmp` sidecar
+    /// only ever carries colour values, so there is nothing else it could be,
+    /// and a user who just imported one wants to see it land, not go hunting
+    /// for which tab it appeared on.
+    ///
+    /// The one difference from ``savePreset(named:from:)``: that one takes a
+    /// whole `EditState` and filters it down; this one is handed the section
+    /// directly, because `EditorModel`'s pending import
+    /// (``EditorModel/xmpImport``) is not a document on any shot — it is a
+    /// blend that has not been written anywhere yet.
+    /// - Parameter collection: the folder a *batch* of sidecars was imported
+    ///   from together (2026-09-22, user request), so ``mineGroupedByCollection``
+    ///   can show them under their own heading instead of flattened into
+    ///   "Của tôi". `nil` for a single loose file, which lands in "Của tôi"
+    ///   like a hand-saved preset does.
+    @discardableResult
+    public func saveXMPPreset(
+        named name: String, colorSection: EditSection, collection: String? = nil
+    ) -> Preset? {
+        guard let store else {
+            lastErrorMessage = "Không mở được thư mục preset của máy này."
+            return nil
+        }
+        kind = .looks
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preset = Preset(
+            name: trimmed.isEmpty ? defaultPresetName() : trimmed,
+            group: PresetLibraryKind.looks.groupName,
+            collection: collection,
+            sections: [EditState.SectionKey.color: colorSection]
         )
         do {
             try store.savePreset(preset)

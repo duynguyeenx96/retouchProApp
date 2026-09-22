@@ -223,6 +223,148 @@ struct PresetLibraryTests {
         #expect(reset.slider("smooth", in: EditState.SectionKey.skin) == 40)
     }
 
+    // MARK: - Applying with intensity (2026-09-22, replaces "Áp cho" + "Áp dụng")
+
+    @Test("Selecting a preset previews it live at full strength, uncommitted")
+    func selectingPreviewsAtFullStrength() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider("smooth", in: EditState.SectionKey.skin, to: 40)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
+        await model.commitEditState()
+        let before = model.activeEditState
+        let look = BuiltInPresets.looks[4]  // "Điện ảnh"
+
+        model.selectPresetForApply(look)
+
+        #expect(model.presetApply?.presetID == look.id)
+        #expect(model.presetApply?.intensity == 100)
+        #expect(
+            model.activeEditState[section: EditState.SectionKey.color]
+                == look.sections[EditState.SectionKey.color])
+        // A Look never touches skin, selecting one included.
+        #expect(model.slider("smooth", in: EditState.SectionKey.skin) == 40)
+        // Nothing has reached disk yet.
+        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
+        #expect(onDisk == before)
+    }
+
+    @Test("\"Gốc\" resets colour to neutral even though it carries no data at all")
+    func gocResetsColorToNeutral() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 42)
+        await model.commitEditState()
+        let goc = BuiltInPresets.looks[0]
+        #expect(goc.name == "Gốc")
+        #expect(goc.sections.isEmpty)
+
+        model.selectPresetForApply(goc)
+
+        #expect(model.slider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color) == 0)
+    }
+
+    @Test("Intensity blends from the baseline toward the preset, and resets keys the preset does not set")
+    func intensityBlendsAndResetsUnsetKeys() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.contrast, in: EditState.SectionKey.color, to: -20)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 50)
+        await model.commitEditState()
+        // "Điện ảnh" sets contrast (18) but not vibrance at all.
+        let look = BuiltInPresets.looks[4]
+        let section = try #require(look.sections[EditState.SectionKey.color])
+        #expect(section.values[ColorSliders.Key.vibrance] == nil)
+        let targetContrast = section.slider(ColorSliders.Key.contrast)
+        #expect(targetContrast == 18)
+
+        model.selectPresetForApply(look)
+        model.setPresetApplyIntensity(50)
+
+        // Halfway from -20 toward the preset's own contrast (18): -1.
+        #expect(
+            model.slider(ColorSliders.Key.contrast, in: EditState.SectionKey.color)
+                == -20 + (targetContrast - -20) * 0.5)
+        // Vibrance: the preset does not set it, so it blends toward 0
+        // (neutral) — a Look replaces the whole section, not just its own keys.
+        #expect(model.slider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color) == 25)
+    }
+
+    @Test("Committing writes the current blend to disk and clears the selection")
+    func committingWritesToDisk() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let look = BuiltInPresets.looks[4]
+
+        model.selectPresetForApply(look)
+        model.setPresetApplyIntensity(40)
+        await model.commitPresetApply()
+
+        #expect(model.presetApply == nil)
+        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
+        #expect(
+            onDisk[section: EditState.SectionKey.color]
+                == model.activeEditState[section: EditState.SectionKey.color])
+        // "Điện ảnh" sets contrast to 18; 40% of the way from the 0 baseline.
+        #expect(onDisk.slider(ColorSliders.Key.contrast, in: EditState.SectionKey.color) == 18 * 0.4)
+    }
+
+    @Test("Cancelling restores exactly what was there before selecting; nothing reaches disk")
+    func cancellingRestoresBaseline() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
+        await model.commitEditState()
+        let before = model.activeEditState
+
+        model.selectPresetForApply(BuiltInPresets.looks[4])
+        model.setPresetApplyIntensity(70)
+        model.cancelPresetApply()
+
+        #expect(model.presetApply == nil)
+        #expect(model.activeEditState == before)
+        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
+        #expect(onDisk == before)
+    }
+
+    @Test("Switching to a second preset before committing keeps blending from the original baseline")
+    func switchingPresetsKeepsTheOriginalBaseline() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
+        await model.commitEditState()
+        let before = model.activeEditState
+
+        model.selectPresetForApply(BuiltInPresets.looks[4])
+        model.selectPresetForApply(BuiltInPresets.looks[1])
+
+        #expect(model.presetApply?.presetID == BuiltInPresets.looks[1].id)
+        #expect(
+            model.activeEditState[section: EditState.SectionKey.color]
+                == BuiltInPresets.looks[1].sections[EditState.SectionKey.color])
+
+        model.cancelPresetApply()
+        #expect(model.activeEditState == before)
+    }
+
+    @Test("cancelPresetApply with nothing selected is a no-op")
+    func cancelWithNoSelectionDoesNothing() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let before = model.activeEditState
+
+        model.cancelPresetApply()
+
+        #expect(model.activeEditState == before)
+    }
+
     // MARK: - Auto-apply
 
     @Test("Arming a preset copies it into the project so the bundle is self-contained")

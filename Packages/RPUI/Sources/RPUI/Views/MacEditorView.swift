@@ -24,6 +24,10 @@ struct MacEditorView: View {
     let back: () -> Void
     let importFromFiles: () -> Void
     let importFromPhotos: () -> Void
+    /// Owns the two preset stores; shared with ``SliderPanelView`` so the
+    /// library is not re-read from disk every time the panel swaps to it.
+    /// Defaulted so the smoke tests can build this screen on its own.
+    var library: PresetLibraryModel = PresetLibraryModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,7 +36,7 @@ struct MacEditorView: View {
                 importFromFiles: importFromFiles, importFromPhotos: importFromPhotos)
             HStack(spacing: 0) {
                 centreColumn
-                SliderPanelView(model: model, chrome: chrome)
+                SliderPanelView(model: model, chrome: chrome, library: library)
                     .frame(width: RPTheme.Metrics.macPanelWidth)
                 GroupIconRail(chrome: chrome)
             }
@@ -143,6 +147,7 @@ struct EditorToolbar: View {
                         .opacity(tool.isPlanned ? RPTheme.lockedOpacity : 1)
                     }
                 }
+                historyButtons
             }
 
             Spacer(minLength: 8)
@@ -202,5 +207,55 @@ struct EditorToolbar: View {
         .frame(height: RPTheme.Metrics.macToolbarHeight)
         .background(RPTheme.chrome)
         .overlay(alignment: .bottom) { Rectangle().fill(RPTheme.hairline).frame(height: 1) }
+    }
+
+    /// "Hoàn tác" / "Làm lại" / "Đặt lại" (2026-09-22, user request) — every
+    /// commit is an undo point (`EditorModel.commitEditState()`'s own doc
+    /// comment says why), so this covers a slider release, a preset apply, a
+    /// paste, not only a brush stroke. "Đặt lại" is
+    /// ``EditorModel/resetAllSliders()``, which already existed; it only had
+    /// no button anyone could reach it from.
+    ///
+    /// Text next to every icon, not just a tooltip — the same fix the far
+    /// rail and the preset panel already got, for the same reason: *"sao tao
+    /// biết cái nào là chức năng nào?"*.
+    private var historyButtons: some View {
+        HStack(spacing: 4) {
+            Rectangle().fill(RPTheme.hairlineStrong).frame(width: 1, height: 18)
+                .padding(.horizontal, 4)
+            historyButton(title: "Hoàn tác", systemImage: "arrow.uturn.backward", isEnabled: model.canUndo) {
+                Task { await model.undo() }
+            }
+            historyButton(title: "Làm lại", systemImage: "arrow.uturn.forward", isEnabled: model.canRedo) {
+                Task { await model.redo() }
+            }
+            historyButton(
+                title: "Đặt lại", systemImage: "arrow.counterclockwise",
+                isEnabled: model.activeShot != nil && !model.activeEditState.isDefault
+            ) {
+                model.resetAllSliders()
+            }
+        }
+    }
+
+    private func historyButton(
+        title: String, systemImage: String, isEnabled: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage).font(.system(size: 12))
+                Text(title).font(RPTheme.text(12))
+            }
+            .foregroundStyle(RPTheme.textSecondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(RPTheme.fillNeutralSoft, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .help(title)
+        .accessibilityLabel(title)
     }
 }

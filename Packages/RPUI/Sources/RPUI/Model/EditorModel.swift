@@ -67,8 +67,16 @@ public final class EditorModel {
     /// import controls from being tapped twice.
     public private(set) var isImporting = false
     /// `ImportReport.summary` of the last import, for the status line. Cleared by
-    /// ``dismissImportMessage()``.
-    public private(set) var lastImportMessage: String?
+    /// ``dismissImportMessage()``. `internal(set)` (not `private`) so
+    /// `EditorModel+ImportXMP.swift` can report its own outcome the way
+    /// ``lastSettingsMessage`` already lets `EditorModel+CopySettings.swift`.
+    public internal(set) var lastImportMessage: String?
+
+    /// A preset selected in the library, waiting on the "Cường độ" slider
+    /// before it is kept or thrown away (`EditorModel+Presets.swift`).
+    /// `internal(set)` for the same reason ``copiedSettings`` is: one file
+    /// owns the feature.
+    public internal(set) var presetApply: PresetIntensityPreview?
 
     /// The render seam (docs/ADR-0004 §2), used for the **original** side of the
     /// canvas and for filmstrip thumbnails.
@@ -297,16 +305,81 @@ public final class EditorModel {
     /// Persists the active shot's `EditState` to `edits/<id>.json`.
     ///
     /// Safe to call often: it is a no-op when the state has not changed since
-    /// the last write.
+    /// the last write. Every real write is also an undo point (2026-09-22,
+    /// user request) — the state being replaced goes on ``undoStack`` and
+    /// ``redoStack`` is cleared, because a new edit is exactly what makes
+    /// whatever was in redo stale. This is the **one** place every committing
+    /// action funnels through — slider release, preset apply, "Đặt lại",
+    /// paste settings — so undo covers all of them without each call site
+    /// knowing about history.
     public func commitEditState() async {
-        guard let shot = activeShot else { return }
+        guard activeShot != nil else { return }
         guard lastSavedEditState != activeEditState else { return }
+        if let previous = lastSavedEditState {
+            undoStack.append(previous)
+            redoStack.removeAll()
+        }
+        let state = activeEditState
+        // Set *before* the write, not after (see `persistToDisk`'s own doc
+        // comment) — several call sites fire this from an un-awaited `Task {
+        // }` (``resetAllSliders()``, ``setToggle(_:in:to:)``, …), so two
+        // commits can genuinely race. Marking the state "spoken for" here,
+        // synchronously, is what stops the second one from reading a stale
+        // `lastSavedEditState` and pushing the same undo point twice.
+        lastSavedEditState = state
+        await persistToDisk(state)
+    }
+
+    /// Steps ``undoStack`` back one entry, writing it to disk immediately —
+    /// unlike a slider, undo has nothing left to "release", so there is no
+    /// preview-only half. The state undo moves *away from* goes onto
+    /// ``redoStack`` so ``redo()`` can step forward again.
+    public func undo() async {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(activeEditState)
+        activeEditState = previous
+        live?.update(editState: activeEditState)
+        lastSavedEditState = previous
+        await persistToDisk(previous)
+    }
+
+    /// The exact inverse of ``undo()``.
+    public func redo() async {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(activeEditState)
+        activeEditState = next
+        live?.update(editState: activeEditState)
+        lastSavedEditState = next
+        await persistToDisk(next)
+    }
+
+    /// `true` while there is a state to undo back to. Reset by
+    /// ``loadActiveEditState()`` — history does not follow a shot switch; it
+    /// runs out exactly at "the photo as it was when this session opened it",
+    /// which is the boundary a user asked for by name ("undo cho tới khi ảnh
+    /// vừa được import vào").
+    public var canUndo: Bool { !undoStack.isEmpty }
+    public var canRedo: Bool { !redoStack.isEmpty }
+
+    /// In-memory only, per shot — cleared by ``loadActiveEditState()``. A
+    /// crash loses the history, the same guarantee a lost drag already gives;
+    /// what disk always has is the last state actually committed.
+    private var undoStack: [EditState] = []
+    private var redoStack: [EditState] = []
+
+    /// The actual file write ``commitEditState()`` and undo/redo all funnel
+    /// through, once each has already updated ``lastSavedEditState``
+    /// synchronously and decided the history stacks. This step is only I/O —
+    /// it does not touch `lastSavedEditState` itself, so two overlapping
+    /// calls (see ``commitEditState()``'s doc comment) each still write their
+    /// own state, they just cannot each *decide* to push an undo point for
+    /// the same change.
+    private func persistToDisk(_ state: EditState) async {
+        guard let shot = activeShot else { return }
         let store = self.store
         let id = shot.id
-        let state = activeEditState
         do {
             try await Task.detached { try store.saveEditState(state, for: id) }.value
-            lastSavedEditState = state
             if state.isDefault {
                 editedShotIDs.remove(id)
             } else {
@@ -586,6 +659,11 @@ public final class EditorModel {
     }
 
     public func loadActiveEditState() async {
+        // A shot switch is the undo/redo boundary a user asked for by name:
+        // "undo cho tới khi ảnh vừa được import vào" — history starts over
+        // for whichever photo is open now, not bleeding in from the last one.
+        undoStack.removeAll()
+        redoStack.removeAll()
         guard let shot = activeShot else {
             activeEditState = EditState()
             lastSavedEditState = nil

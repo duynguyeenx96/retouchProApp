@@ -36,19 +36,25 @@ public final class EditorChrome {
         }
     }
 
-    /// The macOS toolbar's four tool icons. Only `pan` does anything today;
-    /// heal and brush are Phase 5 (`docs/PLAN.md` §Phase 5) and undo is not
-    /// implemented, so they are shown selected-but-inert rather than hidden —
-    /// the same rule as the locked slider groups.
+    /// The macOS toolbar's three tool icons. Only `pan` does anything today;
+    /// heal and brush are Phase 5 (`docs/PLAN.md` §Phase 5), so they are shown
+    /// selected-but-inert rather than hidden — the same rule as the locked
+    /// slider groups.
+    ///
+    /// **Undo used to be a fourth case here and never worked** — a mode you
+    /// "selected" like pan/heal/brush, which is the wrong shape for it: undo
+    /// is a momentary action, not a persistent tool, and picking it did
+    /// nothing. It moved out to its own button
+    /// (``EditorToolbar/historyButtons``) once it had a real implementation
+    /// to call (2026-09-22, user request — see `EditorModel.undo()`).
     public enum MacTool: String, CaseIterable, Hashable, Sendable {
-        case pan, heal, brush, undo
+        case pan, heal, brush
 
         public var title: String {
             switch self {
             case .pan: "Bàn tay"
             case .heal: "Tẩy vết"
             case .brush: "Cọ"
-            case .undo: "Hoàn tác"
             }
         }
 
@@ -57,7 +63,6 @@ public final class EditorChrome {
             case .pan: "hand.raised"
             case .heal: "bandage"
             case .brush: "paintbrush"
-            case .undo: "arrow.uturn.backward"
             }
         }
 
@@ -132,10 +137,12 @@ public final class EditorChrome {
     /// paints the mask instead of panning the picture.
     ///
     /// A *mode*, which is why it is a boolean here rather than a value in
-    /// ``activeGroupKey``: the user keeps whichever slider panel they were on,
-    /// because the point of painting a mask is to narrow what those sliders
-    /// touch. Leaving the editor turns it off (see ``tab``); moving between
-    /// slider groups does not.
+    /// ``activeGroupKey``. Leaving the editor turns it off (see ``tab``); so
+    /// does picking a different rail item (2026-09-22 — a user reported the
+    /// brush and a slider group both showing active in the rail at once as a
+    /// bug, which is what letting the two coexist necessarily looked like). To
+    /// paint for a different group now, arm the brush again after switching —
+    /// see ``selectRailItem(_:)``.
     public var isBrushing = false
     /// Size / hardness / flow / add-or-erase. Chrome, not document —
     /// ``ManualMaskBrushSettings`` says why at length.
@@ -177,10 +184,13 @@ public final class EditorChrome {
     /// at a locked section is stopped by ``selectGroup(_:)`` for the same
     /// reason, so the view layer needs no conditional of its own.
     ///
-    /// An item that opens a screen ("Mẫu" → the preset library) **only** opens
-    /// it: `activeGroupKey` stays where it was, so closing the library puts the
-    /// user back on the panel they were using. The same holds for the brush,
-    /// which is a mode on top of whatever panel is open — see ``isBrushing``.
+    /// An item that opens a screen ("Preset" → the preset library) takes over
+    /// the panel slot, the same way the brush takes over the canvas: the two
+    /// are mutually exclusive with each other and with a slider group, so
+    /// exactly one is ever "the open panel" — never two rail items lit up at
+    /// once. `activeGroupKey` itself is untouched either way, so closing the
+    /// library or putting the brush away puts the user back on the slider
+    /// group they were using, not on some default.
     ///
     /// A **locked** item does nothing at all, including a locked presentation:
     /// with `RPEngineFeatureFlags.manualMask` off there is no session to paint
@@ -197,12 +207,20 @@ public final class EditorChrome {
         if let child = item.defaultChild { return selectRailItem(child) }
         switch item.presentation {
         case .presetLibrary(let kind):
+            // Exclusive with the brush, the same reason the brush branch below
+            // is exclusive with this: two rail items lit up at once (the bug a
+            // user reported 2026-09-22 — brush *and* "Màu" both active) read as
+            // "which one is actually on?", so at most one mode is ever live.
+            isBrushing = false
             presetLibrary = kind
         case .manualMaskBrush:
             // A second tap puts the brush away, the same "tap it again to undo
             // it" rule the face chips and the filmstrip's ratings follow.
+            presetLibrary = nil
             isBrushing.toggle()
         case nil:
+            isBrushing = false
+            presetLibrary = nil
             if let key = item.sectionKey { selectGroup(key) }
         }
     }
@@ -227,6 +245,10 @@ public final class EditorChrome {
     /// the Mac rail cannot disagree about what is active.
     public func isRailItemActive(_ item: RailItemDescriptor) -> Bool {
         if case .manualMaskBrush = item.presentation { return isBrushing }
+        if case .presetLibrary = item.presentation { return presetLibrary != nil }
+        // A slider group cannot be "the open panel" while the brush or the
+        // preset panel has taken the panel slot over — see ``selectRailItem``.
+        guard !isBrushing, presetLibrary == nil else { return false }
         return item.opensPanel(activeGroupKey)
     }
 

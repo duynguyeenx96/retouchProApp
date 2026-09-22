@@ -404,8 +404,14 @@ public enum RailLayout {
         // `sectionKey`; the Looks picker is the same screen with a different
         // ``PresetLibraryKind`` and is reached from inside it, because the
         // canvas's rail has no Looks entry to unlock.
+        // Labelled "Preset" (not "Mẫu") since 2026-09-22 — a user report that
+        // the rail's icon-only items gave no clue what they opened, and this
+        // one specifically was mistaken for something else entirely. The kind
+        // switcher *inside* the screen still says "Mẫu" / "Looks" — that is a
+        // different distinction (whole template vs. colour-only Look) and
+        // reusing "Preset" there would blur it.
         RailItemDescriptor(
-            id: "templates", label: "Mẫu", systemImage: "square.stack",
+            id: "templates", label: "Preset", systemImage: "square.stack",
             presentation: .presetLibrary(.templates)),
         // One-tap auto retouch: a fixed preset formula, not a new node — the
         // formula has to be agreed first (docs/PLAN.md §Phase 6).

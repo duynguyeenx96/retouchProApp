@@ -1,75 +1,87 @@
 import RPCore
 import SwiftUI
 
-/// The preset library — the screen behind the rail's "Mẫu" item and, with a
-/// different ``PresetLibraryKind``, behind the Looks picker
-/// (docs/PLAN.md §Phase 3: *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset
-/// thay vì xây UI preset riêng"*).
+/// The preset library — the panel behind the rail's "Preset" item.
 ///
-/// One view for both kinds, because the plan says the two differ only in which
-/// sections they carry — templates take everything a `Preset` may hold, Looks
-/// are colour-only. Everything else (the three tabs, the stores, favourites,
-/// apply, auto-apply) is shared, so there is one body and a kind switcher at the
-/// top rather than two screens that drift apart.
+/// **One flat, unified list (2026-09-22).** It used to switch between two
+/// pickers — "Mẫu" (whole looks) and "Looks" (colour-only) — behind a pair of
+/// header pills, with a separate "Áp cho" scope row and an "Áp dụng" button in
+/// the footer. A user asked for all of that gone: *"tao đâu có yêu cầu tách 2
+/// tab là Mẫu và Looks, Preset bấm vô chỉ là list các preset … bỏ cái Áp dụng
+/// cho đi, thay vào đó là thanh trượt Cường độ"*. Both kinds now live in one
+/// list (``presetList``); which sections a given preset is allowed to touch —
+/// what the two pickers used to fix by which tab was open — is inferred from
+/// the preset's own `group` (``Preset/inferredKind``), so applying still
+/// cannot let a colour-only Look reach into skin work. Selecting a row
+/// previews it immediately at full strength; the "Cường độ" slider in the
+/// footer (``EditorModel/selectPresetForApply(_:)`` and friends) dials the
+/// strength and commits on release, the same "drag previews, release commits"
+/// contract every slider in this app already follows — no separate apply
+/// button needed.
+///
+/// **Grouped, not tabbed.** "Hệ thống" (built-in) and "Của tôi" (saved/imported)
+/// are two headed groups in the same scroll, not tabs to click between — see
+/// ``presetList``.
+///
+/// **A side panel, not a floating dialog (2026-09-22).** It used to be
+/// `MacPresetLibraryDialog`/`PhonePresetLibrarySheet`, a modal over a scrim —
+/// which covered the canvas, so nothing about a preset was visible until
+/// committed. A user asked for it to sit "ở vị trí side panel tương tự các
+/// chức năng khác" instead, the same slot every slider group already occupies
+/// (``SliderPanelView``, the phone tool sheet) — the canvas stays on screen,
+/// which is what makes selecting a row show something real.
 ///
 /// **Reading vs writing.** ``PresetLibraryModel`` owns the two stores (the
 /// app-bundle built-ins and the user's cross-project library) and favourites;
 /// ``EditorModel`` owns the project, the `EditState` and the live preview, so
-/// every apply goes through `EditorModel.applyPreset(_:replacingSections:scope:)`.
-/// This view holds nothing but the selection and the transient status line.
-///
-/// The mockup's tab labels were "Cho bạn / Của tôi / Yêu thích"; the first ships
-/// as **"Nổi bật"** (decided 2026-09-11, `docs/design/SPEC.md` §Turn 3 "Tab
-/// rename") because the list is static and curated for everyone — see
-/// ``PresetLibraryTab``.
+/// every apply goes through `EditorModel.selectPresetForApply(_:)` /
+/// ``EditorModel/commitPresetApply()``. This view holds nothing but the
+/// selection and the transient status line.
 struct PresetLibraryView: View {
     @Bindable var model: EditorModel
     @Bindable var library: PresetLibraryModel
-    /// Which kind the rail asked for. The switcher writes back through
-    /// ``setKind`` so ``EditorChrome/presetLibrary`` stays the one authority on
-    /// what is open.
-    let kind: PresetLibraryKind
-    let setKind: (PresetLibraryKind) -> Void
     let dismiss: () -> Void
 
-    /// Compact layouts (the iPhone sheet) drop the scope row's labels to icons
-    /// and use a two-column grid.
-    var isCompact = false
-
     @State private var selectedID: PresetID?
-    @State private var scope: PresetApplyScope = .activeShot
     @State private var status: String?
     @State private var isNamingPreset = false
     @State private var newPresetName = ""
+    /// Group titles the user has collapsed (2026-09-22, user request —
+    /// folder-imported groups need this most, but every group gets it for
+    /// the same reason "Hệ thống" does). Expanded is the default for a title
+    /// never seen before, which is why this holds the *collapsed* set rather
+    /// than the expanded one.
+    @State private var collapsedGroups: Set<String> = []
 
     private var selected: Preset? {
         guard let selectedID else { return nil }
-        return library.visiblePresets.first { $0.id == selectedID }
+        return (library.allFeatured + library.mine).first { $0.id == selectedID }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(RPTheme.hairlineDialog).frame(height: 1)
-            controls
-            presetGrid
+            presetList
             Rectangle().fill(RPTheme.hairlineDialog).frame(height: 1)
             footer
         }
-        .background(RPTheme.dialog)
-        .task(id: kind) {
-            library.kind = kind
+        .background(RPTheme.chrome)
+        .task {
             selectedID = nil
             await library.reload()
         }
+        // Belt-and-suspenders: if the screen goes away with a preset still
+        // mid-preview (dismissing with a shortcut before the slider was
+        // touched, say), the canvas must not get stuck showing a look nobody
+        // committed.
+        .onDisappear { model.cancelPresetApply() }
         .alert("Lưu preset", isPresented: $isNamingPreset) {
             TextField("Tên preset", text: $newPresetName)
             Button("Huỷ", role: .cancel) {}
             Button("Lưu") { save() }
         } message: {
-            Text(
-                "Lưu thiết lập của ảnh đang mở thành preset \(kind.title.lowercased()) trong \"Của tôi\"."
-            )
+            Text("Lưu thiết lập của ảnh đang mở thành preset trong \"Của tôi\".")
         }
     }
 
@@ -77,32 +89,25 @@ struct PresetLibraryView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(kind.title)
+            Text("Preset")
                 .font(RPTheme.text(16, weight: .bold))
                 .foregroundStyle(RPTheme.textPrimary)
 
-            // The canvas's rail has no Looks entry, so the only way into the
-            // colour-only picker is from inside this screen.
-            HStack(spacing: 6) {
-                ForEach(PresetLibraryKind.allCases) { value in
-                    RPChoicePill(
-                        title: value.title, isSelected: value == kind, fontSize: 11.5,
-                        horizontalPadding: 10, verticalPadding: 4
-                    ) {
-                        setKind(value)
-                    }
-                }
-            }
-
             Spacer(minLength: 8)
 
+            // Text, not just the icon (2026-09-22, alongside the rail's own
+            // rename): a bare "✕" was exactly the "toàn icon, không biết mục
+            // đích" complaint, one screen over.
             Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(RPTheme.textSecondary)
-                    .frame(width: 26, height: 26)
-                    .background(RPTheme.fillNeutralSoft, in: RoundedRectangle(cornerRadius: 7))
-                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                    Text("Đóng").font(RPTheme.text(12))
+                }
+                .foregroundStyle(RPTheme.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RPTheme.fillNeutralSoft, in: RoundedRectangle(cornerRadius: 7))
+                .contentShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Đóng thư viện preset")
@@ -112,111 +117,115 @@ struct PresetLibraryView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: - Tabs + scope
+    // MARK: - List
 
-    private var controls: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                ForEach(PresetLibraryTab.allCases) { tab in
-                    RPChoicePill(
-                        title: tab.title, isSelected: library.tab == tab, fontSize: 12,
-                        horizontalPadding: 12, verticalPadding: 5
-                    ) {
-                        library.tab = tab
-                        selectedID = nil
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 6) {
-                Text("Áp cho")
-                    .font(RPTheme.text(11.5))
-                    .foregroundStyle(RPTheme.textTertiary)
-                ForEach(PresetApplyScope.allCases) { value in
-                    RPChoicePill(
-                        title: value == .allShots
-                            ? "\(value.title) · \(model.project.shots.count)" : value.title,
-                        isSelected: scope == value, fontSize: 11.5,
-                        horizontalPadding: 10, verticalPadding: 4
-                    ) {
-                        scope = value
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Grid
-
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: isCompact ? 132 : 150), spacing: 10)]
-    }
-
-    private var presetGrid: some View {
+    /// A plain list of rows (Lightroom's own preset panel shape), grouped
+    /// under collapsible headers instead of tab pills you have to click
+    /// between (2026-09-22, user request, against the Lightroom screenshot
+    /// they sent: *"gom nhóm lại ví dụ 'Hệ thống', 'Imported'"*) — everything
+    /// is visible at once, scrolled to rather than switched to. "Hệ thống"
+    /// is one group; "Của tôi" is one *or more* — a whole folder of `.xmp`
+    /// sidecars imported together lands as its own named group instead of
+    /// flattened in (``PresetLibraryModel/mineGroupedByCollection``, *"nếu
+    /// import folder thì sẽ tạo 1 group"*). Every group can collapse
+    /// (*"phải cho phép collapse/expand các group này"*) — see
+    /// ``groupHeader(title:count:)``.
+    ///
+    /// A row is **only the name**, truncated with `lineLimit(1)` rather than
+    /// wrapped or dropped — the section summary, the "Dựng sẵn"/"Của tôi" tag
+    /// and the star all used to sit on every row and were called out by name
+    /// as clutter nobody asked for. Favouriting still exists — it moved to
+    /// the footer, next to "Xoá", so it only appears once a preset is
+    /// selected.
+    ///
+    /// The old grid's "Thêm" tile is still gone: tapping it silently saved the
+    /// **currently-open photo's edits**, which read as "add/import a preset"
+    /// and was not; that action lives only as the clearly-labelled "Lưu
+    /// preset" button in the footer now, and this list is a pure browser.
+    private var presetList: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
-                // The mockup's "Thêm" add card, only where a new preset can
-                // actually land: the built-ins are read-only and "Yêu thích" is
-                // a view over the other two.
-                if library.tab == .mine {
-                    addCard
+            LazyVStack(alignment: .leading, spacing: 6) {
+                group(title: "Hệ thống", presets: library.allFeatured)
+                ForEach(library.mineGroupedByCollection) { mineGroup in
+                    group(title: mineGroup.title, presets: mineGroup.presets)
                 }
-                ForEach(library.visiblePresets) { preset in
-                    PresetCard(
-                        preset: preset,
-                        isSelected: preset.id == selectedID,
-                        isFavorite: library.isFavorite(preset),
-                        isAutoApply: model.isAutoApply(preset),
-                        isBuiltIn: library.isBuiltIn(preset),
-                        toggleFavorite: { library.toggleFavorite(preset) }
-                    )
-                    .onTapGesture { selectedID = preset.id }
+                if library.mine.isEmpty {
+                    Text("Chưa có preset nào. Dùng \"Lưu preset\" hoặc nhập từ .xmp bên dưới.")
+                        .font(RPTheme.text(11.5))
+                        .foregroundStyle(RPTheme.textTertiary)
+                        .padding(.top, 2)
+                        .padding(.bottom, 6)
                 }
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
 
-            if let message = library.emptyMessage {
-                Text(message)
-                    .font(RPTheme.text(12))
-                    .foregroundStyle(RPTheme.textTertiary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 28)
-            }
+            // Always here — every preset in this list is browsable now,
+            // "Nhập từ .xmp…" always writes a Look the same way regardless.
+            XMPImportRow(model: model, library: library)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 14)
         }
         .scrollIndicators(.visible)
         .frame(minHeight: 120)
     }
 
-    private var addCard: some View {
-        Button {
-            beginSaving()
+    /// One group: a collapsible caption, then its rows while expanded —
+    /// empty groups draw nothing rather than an empty header.
+    @ViewBuilder
+    private func group(title: String, presets: [Preset]) -> some View {
+        if !presets.isEmpty {
+            groupHeader(title: title, count: presets.count)
+            if !collapsedGroups.contains(title) {
+                ForEach(presets) { preset in
+                    PresetRow(
+                        preset: preset, isSelected: preset.id == selectedID,
+                        isAutoApply: model.isAutoApply(preset)
+                    )
+                    .onTapGesture {
+                        selectedID = preset.id
+                        // Selecting previews immediately at full strength —
+                        // the live feedback hovering used to give, folded
+                        // into selection since the "Cường độ" slider below
+                        // needs a selection before it means anything anyway.
+                        model.selectPresetForApply(preset)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The caption itself: a chevron, the (uppercased) title, a count, and
+    /// the whole row toggles ``collapsedGroups`` — expanded is the default
+    /// for any title not in that set yet.
+    private func groupHeader(title: String, count: Int) -> some View {
+        let isCollapsed = collapsedGroups.contains(title)
+        return Button {
+            if isCollapsed {
+                collapsedGroups.remove(title)
+            } else {
+                collapsedGroups.insert(title)
+            }
         } label: {
-            VStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .medium))
-                Text("Thêm")
-                    .font(RPTheme.text(11.5, weight: .medium))
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                Text(title.uppercased())
+                Text("\(count)")
+                    .foregroundStyle(RPTheme.textMuted.opacity(0.7))
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(RPTheme.textSecondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: PresetCard.height)
-            .background(RPTheme.fillFaint, in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(
-                        RPTheme.hairlineDialog, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .font(RPTheme.text(10.5, weight: .semibold))
+            .foregroundStyle(RPTheme.textMuted)
+            .padding(.top, 4)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Thêm preset từ ảnh đang mở")
+        .accessibilityLabel("\(title), \(count) preset")
+        .accessibilityHint(isCollapsed ? "Đang thu gọn — bấm để mở" : "Đang mở — bấm để thu gọn")
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Footer
@@ -232,6 +241,28 @@ struct PresetLibraryView: View {
                     .lineLimit(2)
             }
 
+            // Replaces "Áp cho" + "Áp dụng" (2026-09-22, user request). Drag
+            // previews live on the canvas already selecting the row started;
+            // release writes it — no separate apply button, the same contract
+            // every slider in this app follows. Self-healing against
+            // `model.presetApply` having been cleared by an earlier commit:
+            // touching the slider again just starts a fresh preview from
+            // wherever the photo now stands.
+            if let preset = selected {
+                RPSliderRow(
+                    label: "Cường độ",
+                    value: model.presetApply?.presetID == preset.id
+                        ? model.presetApply!.intensity : 100,
+                    range: Slider.range,
+                    onChange: { value in
+                        if model.presetApply?.presetID != preset.id {
+                            model.selectPresetForApply(preset)
+                        }
+                        model.setPresetApplyIntensity(value)
+                    },
+                    onCommit: { Task { await model.commitPresetApply() } })
+            }
+
             HStack(spacing: 8) {
                 RPSecondaryButton(title: "Lưu preset", isEnabled: model.activeShot != nil) {
                     beginSaving()
@@ -243,6 +274,29 @@ struct PresetLibraryView: View {
                         selectedID = nil
                         status = "Đã xoá \"\(preset.name)\"."
                     }
+                }
+
+                // Moved off the row (2026-09-22, alongside removing the
+                // summary and the "Dựng sẵn"/"Của tôi" tag) — it only makes
+                // sense once something is selected anyway.
+                if let preset = selected {
+                    Button {
+                        library.toggleFavorite(preset)
+                    } label: {
+                        Image(systemName: library.isFavorite(preset) ? "star.fill" : "star")
+                            .font(.system(size: 13))
+                            .foregroundStyle(
+                                library.isFavorite(preset) ? RPTheme.star : RPTheme.starEmpty)
+                            .frame(width: 30, height: 30)
+                            .background(RPTheme.fillNeutral, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .help(
+                        library.isFavorite(preset)
+                            ? "Bỏ yêu thích \(preset.name)" : "Đánh dấu yêu thích \(preset.name)")
+                    .accessibilityLabel(
+                        library.isFavorite(preset)
+                            ? "Bỏ yêu thích \(preset.name)" : "Đánh dấu yêu thích \(preset.name)")
                 }
 
                 Spacer(minLength: 0)
@@ -272,13 +326,6 @@ struct PresetLibraryView: View {
                     .accessibilityAddTraits(
                         model.isAutoApply(preset) ? [.isButton, .isSelected] : .isButton)
                 }
-
-                RPPrimaryButton(
-                    title: "Áp dụng", horizontalPadding: 18, verticalPadding: 7,
-                    isEnabled: selected != nil && model.activeShot != nil
-                ) {
-                    Task { await apply() }
-                }
             }
         }
         .padding(.horizontal, 18)
@@ -306,16 +353,6 @@ struct PresetLibraryView: View {
             : "Đã lưu \"\(preset.name)\"."
     }
 
-    private func apply() async {
-        guard let preset = selected else { return }
-        let count = await model.applyPreset(
-            preset, replacingSections: kind.sectionNames, scope: scope)
-        status =
-            count == 0
-            ? "Không có ảnh nào thay đổi."
-            : "Đã áp \"\(preset.name)\" cho \(count) ảnh."
-    }
-
     private func toggleAutoApply(_ preset: Preset) async {
         if model.isAutoApply(preset) {
             await model.clearAutoApplyPreset()
@@ -327,122 +364,50 @@ struct PresetLibraryView: View {
     }
 }
 
-/// One preset in the grid: name, which groups it carries, its star, and whether
-/// it is the project's auto-apply preset.
+/// One preset in the list: **its name, and nothing else** — grouped under
+/// "Hệ thống" / "Của tôi" headers (``PresetLibraryView/group(title:presets:)``)
+/// rather than carrying a section summary, a "Dựng sẵn"/"Của tôi" tag and a
+/// star, which a user explicitly asked to have removed (2026-09-22, sent
+/// alongside a Lightroom screenshot: *"mày thêm cái 'không đổi gì' với 'Dựng
+/// sẵn' với cái rating kia làm méo gì thế?"*). Favouriting still exists; it
+/// moved to the footer. The one thing kept on the row is the auto-apply wand
+/// — not named in that complaint, and the only one of the four that answers a
+/// question about *this project* rather than describing the preset itself.
 ///
-/// There is **no thumbnail**. The mockup draws one per template, but rendering a
-/// preview of every preset against the open photo means a full render graph pass
-/// each — measured work that Phase 3 has no budget for and that would make the
-/// screen's cost scale with the library. The section summary is the honest
-/// substitute, the same one `PresetBarView` already uses.
-private struct PresetCard: View {
+/// **No thumbnail image** — that would mean a full render-graph pass per row,
+/// real work with no budget (docs history). Hovering the row instead shows the
+/// real thing, live, on the canvas next to this panel (``PresetLibraryView/presetList``).
+private struct PresetRow: View {
     let preset: Preset
     let isSelected: Bool
-    let isFavorite: Bool
-    let isAutoApply: Bool
-    let isBuiltIn: Bool
-    let toggleFavorite: () -> Void
-
-    static let height: CGFloat = 72
-
-    /// "Da · Mắt · Màu", in the panel's own group order. Matched per slider, not
-    /// per namespace, so the two panels sharing `eyesTeeth` are named separately.
-    private var summary: String {
-        let names = SliderPanelLayout.sections(touchedBy: preset.sections).map(\.title)
-        return names.isEmpty ? "không đổi gì" : names.joined(separator: " · ")
-    }
+    var isAutoApply: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text(preset.name)
-                    .font(RPTheme.text(12.5, weight: .semibold))
-                    .foregroundStyle(RPTheme.textPrimary)
-                    .lineLimit(1)
-                if isAutoApply {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 10))
-                        .foregroundStyle(RPTheme.accent)
-                }
-                Spacer(minLength: 2)
-                Button(action: toggleFavorite) {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 11))
-                        .foregroundStyle(isFavorite ? RPTheme.star : RPTheme.starEmpty)
-                        .frame(width: 20, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    isFavorite
-                        ? "Bỏ yêu thích \(preset.name)" : "Đánh dấu yêu thích \(preset.name)")
+        HStack(spacing: 6) {
+            Text(preset.name)
+                .font(RPTheme.text(13))
+                .foregroundStyle(RPTheme.textPrimary)
+                .lineLimit(1)
+            if isAutoApply {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 10))
+                    .foregroundStyle(RPTheme.accent)
             }
-
-            Text(summary)
-                .font(RPTheme.text(10.5))
-                .foregroundStyle(RPTheme.textTertiary)
-                .lineLimit(2)
-
             Spacer(minLength: 0)
-
-            Text(isBuiltIn ? "Dựng sẵn" : "Của tôi")
-                .font(RPTheme.mono(9.5))
-                .foregroundStyle(RPTheme.textMuted)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: Self.height)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(
             isSelected ? RPTheme.accentPill : RPTheme.fillNeutralSoft,
-            in: RoundedRectangle(cornerRadius: 10)
+            in: RoundedRectangle(cornerRadius: 8)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(isSelected ? RPTheme.accent : RPTheme.hairlineDialog, lineWidth: 1)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(preset.name) — \(summary)")
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(preset.name)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-// MARK: - Presentations
-
-/// The macOS presentation: the same in-window dialog treatment as
-/// ``MacExportDialog`` (2d), over the scrim.
-struct MacPresetLibraryDialog: View {
-    @Bindable var model: EditorModel
-    @Bindable var library: PresetLibraryModel
-    let kind: PresetLibraryKind
-    let setKind: (PresetLibraryKind) -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        PresetLibraryView(
-            model: model, library: library, kind: kind, setKind: setKind, dismiss: dismiss
-        )
-        .frame(width: 560, height: 460)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14).strokeBorder(RPTheme.hairlineDialog, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.6), radius: 40, y: 30)
-    }
-}
-
-/// The iPhone presentation: a sheet, like the export sheet (2b).
-struct PhonePresetLibrarySheet: View {
-    @Bindable var model: EditorModel
-    @Bindable var library: PresetLibraryModel
-    let kind: PresetLibraryKind
-    let setKind: (PresetLibraryKind) -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        PresetLibraryView(
-            model: model, library: library, kind: kind, setKind: setKind, dismiss: dismiss,
-            isCompact: true
-        )
     }
 }

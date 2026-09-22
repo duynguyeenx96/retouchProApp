@@ -48,7 +48,7 @@ struct RailLayoutTests {
     /// outside the scroll view, at the trailing end (see
     /// ``colorItemIsPinnedAndSeparate``).
     private static let expectedTopLevel = [
-        "Mặt", "Da", "Mẫu", "Tự động", "Trang điểm", "Cơ thể", "Tóc", "Khoá nền",
+        "Mặt", "Da", "Preset", "Tự động", "Trang điểm", "Cơ thể", "Tóc", "Khoá nền",
         "Cọ mask",
     ]
 
@@ -92,11 +92,12 @@ struct RailLayoutTests {
         "Sửa da",
     ]
 
-    /// The one item that opens a **screen** instead of a slider group: "Mẫu" was
-    /// unlocked in Phase 3 as the preset library (docs/PLAN.md §Phase 3, *"dùng
-    /// lại UI rail 'Mẫu' đã khoá … làm màn preset"*). It is unlocked but has no
-    /// `sectionKey`, which is why the two rules below are stated separately.
-    private static let screenLabels: Set<String> = ["Mẫu"]
+    /// The one item that opens a **screen** instead of a slider group: "Mẫu"
+    /// (now labelled "Preset", 2026-09-22) was unlocked in Phase 3 as the
+    /// preset library (docs/PLAN.md §Phase 3, *"dùng lại UI rail 'Mẫu' đã khoá
+    /// … làm màn preset"*). It is unlocked but has no `sectionKey`, which is
+    /// why the two rules below are stated separately.
+    private static let screenLabels: Set<String> = ["Preset"]
 
     /// Every label in the tree, parents included.
     private static var everyLabel: [String] {
@@ -179,15 +180,16 @@ struct RailLayoutTests {
     /// The restructuring regrouped a known set: every canvas member is still
     /// somewhere in the tree except the two documented removals, with "Mặt"
     /// surviving as the parent label, its old panel now called "Hình dáng mặt",
-    /// and labels the canvas never had — the "Da" group header, "Khoá nền" and
-    /// "Cọ mask".
-    @Test("The tree is the canvas's membership, minus two, plus three, with one renamed")
+    /// "Mẫu" now called "Preset" (2026-09-22, a user could not tell an
+    /// icon-only rail apart), and labels the canvas never had — the "Da" group
+    /// header, "Khoá nền" and "Cọ mask".
+    @Test("The tree is the canvas's membership, minus two, plus three, with two renamed")
     func membershipAgainstTheCanvas() {
         #expect(
             Set(Self.everyLabel)
                 == Set(Self.canvasLabels)
-                .subtracting(["Xoá vật thể", "Bọng mắt"])
-                .union(["Hình dáng mặt", "Da", "Khoá nền", "Cọ mask"]))
+                .subtracting(["Xoá vật thể", "Bọng mắt", "Mẫu"])
+                .union(["Hình dáng mặt", "Da", "Khoá nền", "Cọ mask", "Preset"]))
         #expect(
             Set(RailLayout.leafItems.map(\.id)) == [
                 "face", "smooth", "shine", "eyes", "teeth", "head", "contour", "plump",
@@ -283,13 +285,13 @@ struct RailLayoutTests {
         }
         // The pinned Màu chip is an active item too, and comes last — it is
         // drawn after the scrolling nine in both shells, because colour is the
-        // user's last step. "Mẫu" is active as well from Phase 3, but as a
+        // user's last step. "Preset" is active as well from Phase 3, but as a
         // screen rather than a section, so it carries no key.
         #expect(
             RailLayout.activeItems.map(\.label) == RailLayout.leafItems.map(\.label).filter {
                 Self.activeLabels.contains($0) || Self.screenLabels.contains($0)
             } + ["Màu"])
-        #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Mẫu"])
+        #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Preset"])
         }
     }
 
@@ -763,18 +765,17 @@ struct RailLayoutTests {
                 == ["backgroundLock", "manualMask"])
     }
 
-    // MARK: - "Mẫu" — the one item that opens a screen
+    // MARK: - "Preset" — the one item that opens a screen
 
-    /// Phase 3 unlocked "Mẫu" as the preset library. Tapping it must open the
-    /// library **without**
-    /// moving the slider panel: closing the library has to put the user back on
-    /// the group they were editing.
+    /// Phase 3 unlocked "Mẫu" (now "Preset") as the preset library. Tapping it
+    /// must open the library **without** moving the slider panel: closing the
+    /// library has to put the user back on the group they were editing.
     @MainActor
-    @Test("Tapping Mẫu opens the preset library and leaves the slider panel alone")
+    @Test("Tapping Preset opens the preset library and leaves the slider panel alone")
     func tappingTemplatesOpensThePresetLibrary() throws {
         let byLabel = Dictionary(
             uniqueKeysWithValues: RailLayout.leafItems.map { ($0.label, $0) })
-        let templates = try #require(byLabel["Mẫu"])
+        let templates = try #require(byLabel["Preset"])
 
         #expect(templates.presentation == .presetLibrary(.templates))
         #expect(templates.sectionKey == nil)

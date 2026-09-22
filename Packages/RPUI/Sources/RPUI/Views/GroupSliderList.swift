@@ -321,8 +321,17 @@ struct RailChildStrip: View {
     }
 }
 
-/// The macOS far-right rail: the same top-level tools as 40×40 icon buttons, the
-/// active one on a faint mint pill.
+/// The macOS far-right rail: the same top-level tools as icon-and-label
+/// buttons, the active one on a faint mint pill.
+///
+/// **The label was missing** until 2026-09-22 — a user could not tell which
+/// button did what from an icon alone (*"text label ở dưới các button
+/// features của tao đâu, sao tao biết cái nào là chức năng nào?"*), the same
+/// complaint that renamed "Mẫu" to "Preset" and put text on the preset
+/// panel's own buttons. This is the one surface that had not caught up: every
+/// other rail in the app (``GroupTabRow``, the phone's, and
+/// ``RailChildStrip``) already draws an icon with its label underneath — this
+/// one now matches instead of being the odd one out.
 ///
 /// It scrolls vertically, as it did when the rail was a flat nineteen — the
 /// hierarchy made it shorter, not fixed-height.
@@ -337,7 +346,7 @@ struct GroupIconRail: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(.vertical) {
-                VStack(spacing: 4) {
+                VStack(spacing: 2) {
                     ForEach(RailLayout.items) { railItem in
                         item(railItem)
                     }
@@ -360,24 +369,33 @@ struct GroupIconRail: View {
         }
     }
 
-    /// One 40×40 icon button, used both for the pinned Màu item and for the
-    /// scrolling ones.
+    /// One icon-over-label button, used both for the pinned Màu item and for
+    /// the scrolling ones — the same shape ``GroupTabRow``'s own item draws,
+    /// just stacked in a narrower column instead of a horizontal row.
     @ViewBuilder
     private func item(_ item: RailItemDescriptor) -> some View {
         let isActive = chrome.isRailItemActive(item)
         Button {
             chrome.selectRailItem(item)
         } label: {
-            Image(systemName: item.systemImage)
-                .font(.system(size: 17))
-                .foregroundStyle(isActive ? RPTheme.accent : RPTheme.textMuted)
-                .frame(width: 40, height: 40)
-                .background(
-                    isActive ? RPTheme.accentRail : .clear,
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .opacity(item.isLocked ? RPTheme.lockedOpacity : 1)
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+            VStack(spacing: 3) {
+                Image(systemName: item.systemImage)
+                    .font(.system(size: 16))
+                    .frame(height: 20)
+                Text(item.label)
+                    .font(RPTheme.text(9, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(isActive ? RPTheme.accent : RPTheme.textMuted)
+            .frame(width: RPTheme.Metrics.macRailWidth - 8)
+            .padding(.vertical, 6)
+            .background(
+                isActive ? RPTheme.accentRail : .clear,
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .opacity(item.isLocked ? RPTheme.lockedOpacity : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(item.isLocked)
