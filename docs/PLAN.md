@@ -1186,6 +1186,51 @@ chân dung 3Q6A0510.jpg: mở rail → Áp dụng (canvas đổi, 4 key ghi đú
 bản xuất trước khi áp (mean |Δ| ≈ 4/255). **Chưa chạy trên iPhone thật** — chiều cao 400 pt của panel trong
 tool sheet là số tạm, cần nhìn trên máy.
 
+**6.5b — Tự động bằng Apple Intelligence: phân tích ảnh → đề xuất thông số (chốt 2026-09-23, làm tuần 2026-09-28)**
+
+User (2026-09-23): "không thể áp dụng tự động với các config cứng như thế được". Công thức cố định 30/20/15/40 của
+6.5 chỉ là giá trị tạm. Thông số phải do một model **nhìn ảnh rồi đề xuất**. Quyết định của user: **trước tiên chỉ
+làm Apple Intelligence**; API cloud (Gemini/Claude qua key) **pending**, chưa làm, và quyết định "AI on-device only"
+(§Context) vẫn giữ nguyên.
+
+- **Cơ sở kỹ thuật (đã kiểm tra trong SDK Xcode trên máy, macOS 27 SDK)**: `FoundationModels.framework` có
+  `Transcript.ImageAttachment` / `Attachment<ImageAttachmentContent>` nhận `CGImage`/`CIImage`/`CVPixelBuffer`/URL.
+  Guided generation (`@Generable` + `@Guide`) ép output thành struct Swift có kiểu, có khoảng giá trị. Đây là con
+  đường chính thức để "xem ảnh → trả về bộ slider", không phải parse text tự do.
+- **Giữ nguyên phần 6.5 đã ship** (panel Tự động, thanh Cường độ tổng, "Áp cho N ảnh", undo 1 bước/lần thả,
+  `AutoRetouch.preset(strength:)`). Chỉ thay **nguồn** của 4 con số (sau này có thể nhiều hơn): tách protocol
+  `AutoRetouchSuggesting`. Bản 1 là `FixedRecipeSuggester` (30/20/15/40 hiện có, fallback). Bản 2 là
+  `AppleIntelligenceSuggester`. Nếu sau này user mở khoá cloud, chỉ cần cắm thêm một conformance, không phải viết lại.
+- **Đầu vào cho model**: ảnh preview đã giảm cỡ **kèm số đo thật** do app tự tính. Model không đoán con số từ
+  pixel một mình, vì model ngôn ngữ không biết "Mịn da 30" trong engine này trông ra sao. Số đo lấy từ pipeline có
+  sẵn:
+  - histogram (thiếu/dư sáng, cháy vùng sáng);
+  - trong mask da (BiSeNet): độ gồ ghề texture, độ lệch màu và đỏ;
+  - độ sáng lòng trắng mắt so với da;
+  - lệch màu da so với trung tính (gợi ý WB).
+
+  Ghi kèm vào prompt định nghĩa và khoảng của từng slider được phép đề xuất.
+- **Phạm vi output v1**: nhóm Da + Color (+ Mắt nhẹ), **không đụng Mặt/reshape** (cùng lý do an toàn của 6.5).
+  Mỗi trường trong struct `@Generable` có `@Guide` giới hạn khoảng. Model trả thêm 1 câu lý do ngắn, hiện dưới nút
+  trong panel để user biết vì sao ra số đó.
+- **Khả dụng và fallback**: chỉ có trên máy bật Apple Intelligence (Mac M-series, iPhone 15 Pro+), OS 27+ (app vẫn
+  deploy macOS 15 / iOS 18, nên gate bằng `@available` + `SystemLanguageModel.default.isAvailable`). Không khả dụng
+  thì dùng `FixedRecipeSuggester` và nói rõ lý do trong panel, không im lặng.
+- **Spike đo trước khi ship (measure before ship), ~2-3 ngày**, trên ~20 ảnh chân dung thật của user (có sẵn các ảnh
+  đã chỉnh tay trong project làm đối chứng):
+  1. **Ổn định**: cùng ảnh chạy 5 lần, độ lệch từng slider.
+  2. **Độ trễ**: ms/ảnh trên Mac, và trên iPhone nếu build được.
+  3. **Chất lượng**: so với thông số user chỉnh tay trên cùng ảnh, và user xem bằng mắt.
+
+  Ghi số vào `Research/bench/`. Go/no-go dựa trên số đo; không ổn thì ghi lý do và cân nhắc hướng "chỉ số đo +
+  luật", không ship bừa.
+- **Ghi lại chỉnh tay sau khi auto** (nguồn dữ liệu cho 6.6 cá nhân hoá): khi user sửa lại sau Tự động, lưu cặp
+  (đề xuất, giá trị cuối) vào project. Chỉ lưu, chưa dùng.
+- **Việc dọn còn treo từ 2026-09-23, làm cùng tuần**: (1) test `UndoRedoTests` thứ tự ghi fail chập chờn khi chạy
+  full `xcodebuild test` (chạy riêng 5/5 pass); (2) `AppTests.FaceAnalysisRenderBridgeTests.renderScale` so sánh số
+  thực bằng `==`; (3) 4 file Xcode do Xcode tự ghi lại (entitlements macOS có App Group, Info.plist, pbxproj,
+  scheme) vẫn chưa commit, **chờ user xác nhận** đã làm bước App Groups và có giữ App Group trên bản Mac hay không.
+
 **6.6 — Tự động v2: cá nhân hoá theo khuôn mặt đã nhận diện (mới, đề xuất 2026-09-11)**
 
 Ý của user: nếu khuôn mặt trong ảnh đang sửa **trùng với một khuôn mặt đã từng được chỉnh trước đó** (nhận
