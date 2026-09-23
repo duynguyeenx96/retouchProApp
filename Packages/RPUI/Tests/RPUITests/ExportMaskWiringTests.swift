@@ -6,52 +6,26 @@ import RPCore
 import RPEngine
 @testable import RPUI
 
-/// 2026-09-23 — exported files carry the canvas's whole-frame masks.
+/// 2026-09-23 — exported files carry the canvas's whole-frame masks, and the
+/// brush travels as **strokes** (docs/ADR-0019 addendum, docs/ADR-0025).
 ///
-/// The pixel-level proof (a brush at preview size gating a full-size export)
-/// is `RPEngineTests/ExportMasksTests`. This file pins the plumbing only the UI
-/// can get wrong:
+/// The pixel-level proof (strokes recorded on a preview gating a full-size
+/// export, rasterised at render size) is `RPEngineTests/ExportMasksTests`. This
+/// file pins the plumbing only the UI can get wrong:
 ///
-/// 1. **Persistence** — the brush is saved to `masks/<shot>/brush.png` after
-///    each stroke/undo/redo, deleted when the session empties, and reloaded
-///    when the shot is reopened.
-/// 2. **Open shot** — the export takes the canvas's own masks, at the canvas's
-///    reference size.
-/// 3. **Non-open shots** — ``PreviewMaskSource`` rebuilds them from disk and
-///    from the canvas's subject provider, behind the same flags and switches.
-/// 4. **Controller** — every job carries its shot's masks.
+/// 1. **Persistence** — a finished stroke lands in `edits/<shot>.strokes.json`
+///    through `EditorModel`, "Xoá mask" removes the file, and no PNG is written.
+/// 2. **Canvas** — reopening replays the document's strokes; the canvas's
+///    export masks carry no brush raster (the brush goes as strokes).
+/// 3. **Non-open shots** — ``PreviewMaskSource`` reads the strokes from disk
+///    and builds subject masks behind the same flags and switches.
+/// 4. **Controller** — every job carries its shot's masks; the open shot's
+///    brush is the document in memory.
 @Suite("Export carries the canvas's masks (wiring)", .serialized)
 @MainActor
 struct ExportMaskWiringTests {
 
     // MARK: - Fakes
-
-    final class MemoryMaskStore: ManualMaskStoring, @unchecked Sendable {
-        private let lock = NSLock()
-        private var storage: Data?
-        private var savesStorage = 0
-        private var deletesStorage = 0
-
-        init(_ initial: Data? = nil) { storage = initial }
-
-        var data: Data? { lock.withLock { storage } }
-        var saves: Int { lock.withLock { savesStorage } }
-        var deletes: Int { lock.withLock { deletesStorage } }
-
-        func loadManualMask() throws -> Data? { lock.withLock { storage } }
-        func saveManualMask(_ png: Data) throws {
-            lock.withLock {
-                storage = png
-                savesStorage += 1
-            }
-        }
-        func deleteManualMask() throws {
-            lock.withLock {
-                storage = nil
-                deletesStorage += 1
-            }
-        }
-    }
 
     /// Returns a fixed 16×12 subject mask on whatever preview it is handed, and
     /// records the content hashes it was asked about.
@@ -103,140 +77,135 @@ struct ExportMaskWiringTests {
         }
     }
 
-    static func brushPNG(width: Int = 20, height: Int = 20) throws -> (Data, [UInt8]) {
-        var values = [UInt8](repeating: 0, count: width * height)
-        for i in 0..<(width * height / 3) { values[i] = 255 }
-        return (try ManualMaskSession.pngData(values: values, width: width, height: height), values)
+    static let stroke = ManualMaskStroke(
+        radius: 0.05, hardness: 0.5, flow: 1, mode: .add,
+        points: [.init(x: 0.2, y: 0.3), .init(x: 0.7, y: 0.4)])
+
+    /// A finished stroke in the canvas's own units (mask pixels).
+    static func pixelStroke() -> BrushStroke {
+        BrushStroke(
+            radius: 12, hardness: 0.5, flow: 1, mode: .add,
+            points: [
+                BrushPoint(location: CGPoint(x: 8, y: 10)),
+                BrushPoint(location: CGPoint(x: 30, y: 12)),
+            ])
     }
 
-    // MARK: - 1. Storage path
+    // MARK: - 1. Storage path (no GPU)
 
-    @Test("ProjectManualMaskStore writes masks/<shot id>/brush.png and deletes it")
-    func projectStoreRoundTrip() throws {
+    @Test("A recorded stroke is saved as edits/<shot>.strokes.json; Xoá mask removes it; no PNG")
+    func modelPersistsStrokes() async throws {
         let temp = try TempProject(shots: 1)
         defer { temp.cleanUp() }
-        let shot = temp.project.shots[0]
-        let store = ProjectManualMaskStore(store: temp.store, shotID: shot.id)
-        #expect(try store.loadManualMask() == nil)
-
-        let (png, _) = try Self.brushPNG()
-        try store.saveManualMask(png)
-        let url = temp.store.bundleURL.appendingPathComponent(
-            "masks/\(shot.id.rawValue)/brush.png")
-        #expect(FileManager.default.fileExists(atPath: url.path))
-        #expect(try store.loadManualMask() == png)
-
-        try store.deleteManualMask()
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let shot = try #require(model.activeShot)
+        let url = temp.store.manualMaskStrokesURL(for: shot.id)
         #expect(!FileManager.default.fileExists(atPath: url.path))
-        #expect(throws: Never.self) { try store.deleteManualMask() }
+
+        model.recordBrushStroke(Self.pixelStroke(), maskSize: CGSize(width: 40, height: 40))
+        await model.flushPendingWrites()
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        let onDisk = try temp.store.loadManualMaskStrokes(for: shot.id)
+        #expect(onDisk.count == 1)
+        #expect(onDisk[0] == Self.pixelStroke().normalized(imageSize: CGSize(width: 40, height: 40)))
+        #expect(abs(onDisk[0].radius - 12.0 / 40) < 1e-12)
+        // No raster anywhere in the bundle.
+        #expect(!FileManager.default.fileExists(
+            atPath: temp.store.bundleURL.appendingPathComponent("masks").path))
+
+        model.clearBrushStrokes()
+        await model.flushPendingWrites()
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(model.activeStrokes.isEmpty)
     }
 
-    // MARK: - 1 & 2. The canvas saves, reloads and hands over its brush (GPU)
+    // MARK: - 2. The canvas replays the document (GPU)
 
-    @Test("Strokes are saved, an emptied session deletes the file, reopening reloads it")
-    func canvasPersistsAndReloadsTheBrush() async throws {
+    @Test("Opening a shot replays its stored strokes; its export masks carry no brush raster")
+    func canvasReplaysTheDocument() async throws {
         guard let context = MetalContext.shared else { return }
         try await Self.withFlags(manualMask: true) {
             let (decoded, url) = try ManualMaskBrushWiringTests.decodedFixture()
             defer { try? FileManager.default.removeItem(at: url) }
-            let store = MemoryMaskStore()
             let controller = LivePreviewController(
                 renderer: try LivePreviewRenderer(context: context))
+
             await controller.open(
-                decoded, contentHash: "persist", editState: EditState(), manualMaskStore: store)
+                decoded, contentHash: "persist", editState: EditState(),
+                manualMaskStrokes: [Self.stroke])
+            #expect(controller.hasManualMask)
+            #expect(controller.manualMaskStrokeCount == 1)
+            #expect(controller.renderRequest.gateMasks.count == 1)
+            // Denormalised onto this preview.
+            let replayed = try #require(controller.manualMaskStrokes.first)
+            #expect(abs(replayed.radius - 0.05 * Double(decoded.pixelSize.width)) < 1e-9)
 
-            // Nothing painted, nothing on disk, nothing for the export.
-            #expect(controller.exportMasks(forContentHash: "persist")?.manualMask == nil)
-
-            controller.beginManualMaskStroke(
-                at: CGPoint(x: 60, y: 60), settings: ManualMaskBrushSettings())
-            controller.extendManualMaskStroke(to: CGPoint(x: 160, y: 100))
-            controller.endManualMaskStroke()
-            await controller.flushManualMaskWrites()
-            let saved = try #require(store.data)
-            #expect(store.saves == 1)
-
-            // The export gets the canvas's own coverage, at the preview's size.
             let masks = try #require(controller.exportMasks(forContentHash: "persist"))
+            #expect(masks.brushStrokes.isEmpty)
             #expect(masks.referenceSize == decoded.pixelSize)
-            let manual = try #require(masks.manualMask)
-            #expect(manual.width == Int(decoded.pixelSize.width))
-            #expect(manual.maskToImage == .identity)
-            #expect(manual.values.contains(255))
-            // …and it is byte-identical to what went to disk.
-            #expect(try ExportMasks.manualMask(fromPNG: saved).values == manual.values)
-            // Another shot's hash gets nothing from this canvas.
             #expect(controller.exportMasks(forContentHash: "other") == nil)
 
-            // Undo back to nothing: the file goes, so a batch sees "no mask".
-            controller.undoManualMaskStroke()
-            await controller.flushManualMaskWrites()
-            #expect(store.data == nil)
-            #expect(store.deletes == 1)
-            controller.redoManualMaskStroke()
-            await controller.flushManualMaskWrites()
-            #expect(store.data == saved)
-
-            // Reopen (another shot, then this one): the saved mask is back as
-            // the baseline, so the canvas gates with it again.
+            // Another shot with no strokes, then this one again with none.
             let (other, otherURL) = try ManualMaskBrushWiringTests.decodedFixture()
             defer { try? FileManager.default.removeItem(at: otherURL) }
             await controller.open(other, contentHash: "elsewhere", editState: EditState())
             #expect(!controller.hasManualMask)
             await controller.open(
-                decoded, contentHash: "persist", editState: EditState(), manualMaskStore: store)
-            #expect(controller.hasManualMask)
-            #expect(controller.renderRequest.gateMasks.count == 1)
-            #expect(
-                controller.exportMasks(forContentHash: "persist")?.manualMask?.values
-                    == manual.values)
-
-            // "Xoá mask" deletes it.
-            controller.clearManualMask()
-            await controller.flushManualMaskWrites()
-            #expect(store.data == nil)
+                decoded, contentHash: "persist", editState: EditState(),
+                manualMaskStrokes: [Self.stroke, Self.stroke])
+            #expect(controller.manualMaskStrokeCount == 2)
         }
     }
 
     // MARK: - 3. Non-open shots
 
-    @Test("A non-open shot's saved brush is read from disk, at the PNG's own size")
-    func previewMaskSourceReadsTheSavedBrush() async throws {
+    @Test("A non-open shot's strokes are read from disk")
+    func previewMaskSourceReadsTheStrokes() async throws {
         try await Self.withFlags(manualMask: true) {
             let temp = try TempProject(shots: 2)
             defer { temp.cleanUp() }
-            let (png, values) = try Self.brushPNG(width: 30, height: 20)
-            try ProjectManualMaskStore(store: temp.store, shotID: temp.project.shots[1].id)
-                .saveManualMask(png)
+            try temp.store.saveManualMaskStrokes([Self.stroke], for: temp.project.shots[1].id)
             let source = PreviewMaskSource(store: temp.store)
 
             let painted = try await source.masks(
                 for: temp.project.shots[1],
                 originalURL: temp.store.originalURL(for: temp.project.shots[1]),
                 editState: EditState())
-            #expect(painted.masks.referenceSize == CGSize(width: 30, height: 20))
-            #expect(painted.masks.manualMask?.values == values)
+            #expect(painted.masks.brushStrokes == [Self.stroke])
             #expect(painted.masks.subjectMask == nil)
 
             let untouched = try await source.masks(
                 for: temp.project.shots[0],
                 originalURL: temp.store.originalURL(for: temp.project.shots[0]),
                 editState: EditState())
-            #expect(untouched.masks == .none)
+            #expect(untouched.masks.isEmpty)
         }
     }
 
-    @Test("With the brush flag off a saved PNG is not applied — the canvas has no session either")
+    @Test("With the brush flag off saved strokes are not applied — the canvas has no session either")
     func previewMaskSourceRespectsTheBrushFlag() async throws {
         try await Self.withFlags(manualMask: false) {
             let temp = try TempProject(shots: 1)
             defer { temp.cleanUp() }
             let shot = temp.project.shots[0]
-            try ProjectManualMaskStore(store: temp.store, shotID: shot.id)
-                .saveManualMask(try Self.brushPNG().0)
+            try temp.store.saveManualMaskStrokes([Self.stroke], for: shot.id)
             let result = try await PreviewMaskSource(store: temp.store).masks(
                 for: shot, originalURL: temp.store.originalURL(for: shot), editState: EditState())
             #expect(result.masks.isEmpty)
+        }
+    }
+
+    @Test("A corrupt strokes file exports without the brush, with a note, rather than failing")
+    func previewMaskSourceToleratesACorruptFile() async throws {
+        try await Self.withFlags(manualMask: true) {
+            let temp = try TempProject(shots: 1)
+            defer { temp.cleanUp() }
+            let shot = temp.project.shots[0]
+            try Data("{ not json".utf8).write(to: temp.store.manualMaskStrokesURL(for: shot.id))
+            let result = try await PreviewMaskSource(store: temp.store).masks(
+                for: shot, originalURL: temp.store.originalURL(for: shot), editState: EditState())
+            #expect(result.masks.brushStrokes.isEmpty)
+            #expect(result.notes.count == 1)
         }
     }
 
@@ -246,8 +215,7 @@ struct ExportMaskWiringTests {
             let temp = try TempProject(shots: 1)
             defer { temp.cleanUp() }
             let shot = temp.project.shots[0]
-            try ProjectManualMaskStore(store: temp.store, shotID: shot.id)
-                .saveManualMask(try Self.brushPNG(width: 20, height: 20).0)
+            try temp.store.saveManualMaskStrokes([Self.stroke], for: shot.id)
             let provider = FakeSubjectProvider()
             let source = PreviewMaskSource(store: temp.store, subjectProvider: provider)
             let url = temp.store.originalURL(for: shot)
@@ -256,18 +224,17 @@ struct ExportMaskWiringTests {
             let off = try await source.masks(for: shot, originalURL: url, editState: EditState())
             #expect(provider.asked.isEmpty)
             #expect(off.masks.subjectMask == nil)
+            #expect(off.masks.brushStrokes == [Self.stroke])
 
-            // Switch on: asked once under the shot's content hash, and the brush
-            // is mapped onto the same preview grid (the original is 40 px square).
+            // Switch on: asked once under the shot's content hash; the strokes
+            // ride along unchanged (they are normalised).
             var locked = EditState()
             BackgroundLock(isOn: true).write(into: &locked)
             let on = try await source.masks(for: shot, originalURL: url, editState: locked)
             #expect(provider.asked == [shot.contentHash ?? shot.id.rawValue])
             #expect(on.masks.referenceSize == CGSize(width: 40, height: 40))
             #expect(on.masks.subjectMask != nil)
-            let manual = try #require(on.masks.manualMask)
-            let corner = CGPoint(x: 20, y: 20).applying(manual.maskToImage)
-            #expect(corner == CGPoint(x: 40, y: 40))
+            #expect(on.masks.brushStrokes == [Self.stroke])
         }
     }
 
@@ -278,9 +245,7 @@ struct ExportMaskWiringTests {
         let harness = try await BatchQueueTests.Harness()
         defer { harness.cleanUp() }
         let names = harness.model.shots.map(\.originalFileName)
-        let brush = RenderMask(
-            width: 4, height: 3, values: [UInt8](repeating: 255, count: 12), maskToImage: .identity)
-        let expected = ExportMasks(referenceSize: CGSize(width: 4, height: 3), manualMask: brush)
+        let expected = ExportMasks(referenceSize: .zero, brushStrokes: [Self.stroke])
         let controller = ExportController(
             runner: harness.runner, thermal: BatchQueueTests.ScriptedThermal([.nominal]),
             faceSource: harness.faces, maskSource: FakeMaskSource([names[1]: expected]))
@@ -295,25 +260,27 @@ struct ExportMaskWiringTests {
         #expect(jobs[2].masks == .none)
     }
 
-    @Test("Without an override the controller reads the saved brush for a non-open shot")
+    @Test("Without an override: disk strokes for other shots, the document's for the open one")
     func controllerDefaultSourceReadsDisk() async throws {
         try await Self.withFlags(manualMask: true) {
             let harness = try await BatchQueueTests.Harness()
             defer { harness.cleanUp() }
             let shots = harness.model.shots
-            let (png, values) = try Self.brushPNG(width: 30, height: 20)
-            try ProjectManualMaskStore(store: harness.temp.store, shotID: shots[2].id)
-                .saveManualMask(png)
+            try harness.temp.store.saveManualMaskStrokes([Self.stroke], for: shots[2].id)
+            // The open shot (the first) has a stroke only in memory so far —
+            // the export must still see it (flushed or not).
+            harness.model.recordBrushStroke(
+                Self.pixelStroke(), maskSize: CGSize(width: 40, height: 40))
             var options = harness.options
             options.scope = .allShots
             await harness.controller.export(scope: .allShots, of: harness.model, options: options)
 
             let jobs = harness.runner.jobs
             #expect(jobs.count == 3)
-            #expect(jobs[0].masks.isEmpty)
+            #expect(jobs[0].masks.brushStrokes == harness.model.activeStrokes)
+            #expect(jobs[0].masks.brushStrokes.count == 1)
             #expect(jobs[1].masks.isEmpty)
-            #expect(jobs[2].masks.manualMask?.values == values)
-            #expect(jobs[2].masks.referenceSize == CGSize(width: 30, height: 20))
+            #expect(jobs[2].masks.brushStrokes == [Self.stroke])
         }
     }
 }

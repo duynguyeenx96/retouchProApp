@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import Metal
+import RPCore
 
 /// One shot's hand-painted mask while it is being painted: the stroke list, the
 /// coverage texture the strokes are rasterised into, and undo
@@ -27,14 +28,13 @@ import Metal
 /// "rasterise all 43 from scratch" agree bit for bit. `ManualMaskTests`
 /// asserts it (`liveDragMatchesAReplay`), because the whole design rests on it.
 ///
-/// ## The baseline
+/// ## No baseline: the strokes are the document (2026-09-23)
 ///
-/// A mask loaded from `masks/<shot id>/<mask id>.png` has no strokes behind it —
-/// it was painted in an earlier session, possibly on another machine. Those
-/// pixels become ``baseline``: the state a replay starts from, and the floor
-/// undo can walk back to. Undo does not reach into a previous session's strokes,
-/// which is the same thing every raster editor does with a document it just
-/// opened.
+/// Until 2026-09-23 a mask reopened from `masks/<shot id>/brush.png` became a
+/// pixel *baseline* that undo could not walk past. The project now stores the
+/// strokes themselves (docs/ADR-0019 addendum, docs/ADR-0025), so reopening a
+/// shot is ``replaceStrokes(_:)`` — a replay from nothing — and there is no
+/// state in this session that the stroke list does not describe.
 ///
 /// ## Threading
 ///
@@ -59,9 +59,6 @@ public final class ManualMaskSession: @unchecked Sendable {
     /// The stroke the finger is currently drawing, if any.
     private var active: BrushStroke?
     private var stamper: BrushStroke.Stamper?
-    /// Coverage a replay starts from — a mask loaded from disk. `nil` means
-    /// "start from nothing painted".
-    private var baseline: [UInt8]?
 
     /// Bumped whenever the painted pixels change. A canvas redraws when it
     /// moves; nothing compares mask pixels.
@@ -125,13 +122,13 @@ public final class ManualMaskSession: @unchecked Sendable {
         return active != nil
     }
 
-    /// `true` when nothing has ever been painted — no strokes this session and
-    /// no mask loaded from disk. A caller uses it to decide whether the shot
-    /// needs a `masks/<shot id>/<mask id>.png` at all.
+    /// `true` when there is no finished stroke and none in flight — the test
+    /// the canvas uses to decide whether this mask gates a render at all
+    /// (an all-zero gate would switch every mask-driven slider off, ADR-0019 §5).
     public var isEmpty: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return committed.isEmpty && active == nil && baseline == nil
+        return committed.isEmpty && active == nil
     }
 
     // MARK: - Drawing
@@ -236,63 +233,64 @@ public final class ManualMaskSession: @unchecked Sendable {
         return true
     }
 
-    /// Throws away every stroke **and** the loaded baseline: the mask goes back
-    /// to nothing painted, which is what the "Xoá mask" control means. Not
-    /// undoable — the caller deletes the PNG at the same time.
+    /// Throws away every stroke: the mask goes back to nothing painted. The
+    /// app's "Xoá mask" goes through ``replaceStrokes(_:)`` with `[]` instead,
+    /// so the document's history can undo it (docs/ADR-0025).
     public func clearAll() {
         lock.lock()
         committed.removeAll()
         undone.removeAll()
         active = nil
         stamper = nil
-        baseline = nil
         lock.unlock()
         try? clearCoverage()
     }
 
-    // MARK: - Storage (docs/PLAN.md §6.1 — the PNG, not the JSON)
-
-    /// The mask as an 8-bit grayscale PNG, for
-    /// ``RPCore/ProjectStore/saveMask(_:for:maskID:fileManager:)``.
-    public func pngData() throws -> Data {
-        try coverage.pngData()
+    /// Makes `strokes` the whole mask and re-rasterises it from nothing.
+    ///
+    /// This is how the app drives the session since the stroke list became the
+    /// document (2026-09-23): reopening a shot, and every undo / redo / clear,
+    /// hand the session the list the document now says, rather than asking the
+    /// session to keep its own history. A stroke in flight is dropped (a
+    /// document change mid-drag wins), and this session's own redo list is
+    /// cleared because it no longer describes anything.
+    ///
+    /// Waits for the GPU, like every replay. Cost is linear in stamps and, since
+    /// stamps are dispatched over their own bounding box
+    /// (``ManualMaskRasteriser``), proportional to the painted area rather than
+    /// to the whole frame — see ADR-0019's 2026-09-23 addendum for the numbers.
+    public func replaceStrokes(_ strokes: [BrushStroke]) throws {
+        lock.lock()
+        committed = strokes.filter { !$0.isEmpty }
+        undone.removeAll()
+        active = nil
+        stamper = nil
+        lock.unlock()
+        try replay()
     }
 
-    /// The raw coverage, for a caller that wants both the PNG and an on-screen
-    /// overlay out of one read-back (the read-back is the expensive half).
+    // MARK: - Read-back
+
+    /// The raw coverage, for a caller that needs it on the CPU (a test, a
+    /// bench). Stalls the GPU; not for the interaction path.
     public func readValues() throws -> [UInt8] {
         try coverage.readValues()
     }
 
-    /// Encodes coverage from ``readValues()`` as the same 8-bit device-gray PNG
-    /// ``pngData()`` writes — split out so a caller can read back on the thread
-    /// that owns the session and encode on another.
-    public static func pngData(values: [UInt8], width: Int, height: Int) throws -> Data {
-        try ManualMaskImage.pngData(values: values, width: width, height: height)
-    }
-
-    /// Adopts a saved mask as the ``baseline`` and drops the stroke history.
+    /// Rasterises a stored stroke list at `width` × `height` into a fresh
+    /// coverage — the export's path (docs/ADR-0019 addendum 2026-09-23): the
+    /// brush is drawn at the render's own resolution from its metadata rather
+    /// than a preview-sized mask being upsampled.
     ///
-    /// The history is dropped rather than kept because it no longer describes
-    /// these pixels: undoing a stroke from *this* session on top of a mask
-    /// loaded from disk is meaningful, undoing past the load is not — there is
-    /// nothing behind it to go back to.
-    public func load(pngData data: Data) throws {
-        let decoded = try ManualMaskImage.decode(pngData: data)
-        guard decoded.width == width, decoded.height == height else {
-            throw ManualMaskError.sizeMismatch(
-                expected: CGSize(width: width, height: height),
-                found: CGSize(width: decoded.width, height: decoded.height))
-        }
-        lock.lock()
-        committed.removeAll()
-        undone.removeAll()
-        active = nil
-        stamper = nil
-        baseline = decoded.values
-        lock.unlock()
-        try coverage.upload(decoded.values)
-        bump()
+    /// - Throws: ``RPEngineFeatureDisabled`` while `manualMask` is off, like
+    ///   every other producer of a painted mask.
+    public static func rasterize(
+        _ strokes: [ManualMaskStroke], width: Int, height: Int, context: MetalContext
+    ) throws -> ManualMaskCoverage {
+        let session = try ManualMaskSession(context: context, width: width, height: height)
+        let size = CGSize(width: width, height: height)
+        try session.replaceStrokes(strokes.map { BrushStroke($0, imageSize: size) })
+        return session.coverage
     }
 
     // MARK: - Rasterising
@@ -314,23 +312,17 @@ public final class ManualMaskSession: @unchecked Sendable {
         bump()
     }
 
-    /// Re-rasterises the whole stroke list from the baseline, in **one** command
-    /// buffer: clear, then every stroke's stamps in order.
+    /// Re-rasterises the whole stroke list from nothing, in **one** command
+    /// buffer after the clear: every stroke's stamps in order.
     ///
     /// Waits, unlike ``splat(_:of:)``: undo is a discrete action, not a drag
-    /// frame, and the caller immediately reads the result back to write the PNG
-    /// and refresh the on-screen overlay.
+    /// frame, and an export reads the result straight back.
     private func replay() throws {
         lock.lock()
         let strokes = committed
-        let base = baseline
         lock.unlock()
 
-        if let base {
-            try coverage.upload(base)
-        } else {
-            try clearCoverage()
-        }
+        try clearCoverage()
 
         guard !strokes.isEmpty else {
             bump()

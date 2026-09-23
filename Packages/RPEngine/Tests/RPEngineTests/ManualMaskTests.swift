@@ -20,7 +20,9 @@ import Testing
 ///    is defined as "replay the stroke list from the start" (docs/PLAN.md §6.1),
 ///    so if incremental stamping drifted from a replay, every undo would change
 ///    pixels the user did not undo.
-/// 3. **The PNG round-trips exactly**, because the PNG *is* the document.
+/// 3. **Replaying the stored strokes rebuilds the painted mask exactly**,
+///    because since 2026-09-23 the strokes *are* the document (the PNG this
+///    item used to check is gone; see `ManualMaskStrokeStorageTests`).
 /// 4. **The gate is a narrowing and nothing else**: `SkinRenderNode` with no
 ///    manual mask is bit-identical to its pre-6.1 self, and with one it is
 ///    bit-identical to the source wherever the brush did not paint.
@@ -70,7 +72,7 @@ struct ManualMaskTests {
         // difference against the CPU reference).
         #expect(MemoryLayout<ManualMaskClearParams>.stride == 16)  // uint2, float, pad
         #expect(MemoryLayout<ManualMaskStamp>.stride == 16)  // float2, float, pad
-        #expect(MemoryLayout<ManualMaskSplatParams>.stride == 24)  // uint2, 2 float, 2 uint
+        #expect(MemoryLayout<ManualMaskSplatParams>.stride == 32)  // uint2, 2 float, 2 uint, uint2
         // uint2, uint2, then two float3 at 16-byte alignment, then a float.
         #expect(MemoryLayout<ManualMaskModulateParams>.stride == 64)
     }
@@ -244,37 +246,24 @@ struct ManualMaskTests {
 
     // MARK: - 3. Storage
 
-    @Test("The PNG round-trips the coverage byte for byte")
-    func pngRoundTripIsExact() throws {
+    @Test("replaceStrokes rebuilds exactly what painting the same strokes built")
+    func replaceStrokesMatchesPainting() throws {
         guard let context = SpikeS3Support.context else { return }
         try Self.withManualMask {
-            let session = try ManualMaskSession(
+            let painted = try ManualMaskSession(
                 context: context, width: Self.width, height: Self.height)
             try Self.draw(
-                Self.diagonalStroke(radius: 20, hardness: 0.3, flow: 0.7), in: session)
-            let painted = try session.readValues()
-            let png = try session.pngData()
-
+                Self.diagonalStroke(radius: 20, hardness: 0.3, flow: 0.7), in: painted)
+            try Self.draw(Self.horizontalStroke(radius: 10), in: painted)
             let reopened = try ManualMaskSession(
                 context: context, width: Self.width, height: Self.height)
-            try reopened.load(pngData: png)
-            #expect(try reopened.readValues() == painted)
-            // A loaded mask has no stroke history — there is nothing behind it to
-            // undo to — but it is not "empty" either.
-            #expect(reopened.canUndo == false)
-            #expect(reopened.isEmpty == false)
-        }
-    }
-
-    @Test("A mask of the wrong size is refused rather than stretched")
-    func loadingAWrongSizedMaskThrows() throws {
-        guard let context = SpikeS3Support.context else { return }
-        try Self.withManualMask {
-            let small = try ManualMaskSession(context: context, width: 32, height: 24)
-            let png = try small.pngData()
-            let large = try ManualMaskSession(
-                context: context, width: Self.width, height: Self.height)
-            #expect(throws: ManualMaskError.self) { try large.load(pngData: png) }
+            try reopened.replaceStrokes(painted.strokes)
+            #expect(try reopened.readValues() == painted.readValues())
+            #expect(reopened.strokeCount == 2)
+            #expect(!reopened.isEmpty)
+            try reopened.replaceStrokes([])
+            #expect(reopened.isEmpty)
+            #expect(try reopened.readValues().allSatisfy { $0 == 0 })
         }
     }
 

@@ -205,25 +205,29 @@ struct ManualMaskBrushBar: View {
         .padding(.top, 12)
     }
 
+    /// "Hoàn tác" / "Làm lại" here are the **shot's** undo and redo — the same
+    /// one timeline as the toolbar's buttons and ⌘Z (docs/ADR-0025), so a
+    /// slider moved from the list below undoes from here too, in the order it
+    /// happened. "Xoá mask" is one undoable step.
     private var historyRow: some View {
         HStack(spacing: 8) {
             historyButton(
                 title: "Hoàn tác", systemImage: "arrow.uturn.backward",
-                isEnabled: live?.canUndoManualMask ?? false
+                isEnabled: model.canUndo
             ) {
-                live?.undoManualMaskStroke()
+                Task { await model.undo() }
             }
             historyButton(
                 title: "Làm lại", systemImage: "arrow.uturn.forward",
-                isEnabled: live?.canRedoManualMask ?? false
+                isEnabled: model.canRedo
             ) {
-                live?.redoManualMaskStroke()
+                Task { await model.redo() }
             }
             historyButton(
                 title: "Xoá mask", systemImage: "trash",
-                isEnabled: live?.hasManualMask ?? false
+                isEnabled: !model.activeStrokes.isEmpty
             ) {
-                live?.clearManualMask()
+                model.clearBrushStrokes()
             }
         }
         .padding(.top, 4)
@@ -291,12 +295,9 @@ struct ManualMaskBrushHeader: View {
     }
 
     private var strokeCountText: String {
-        let count = model.live?.manualMaskStrokeCount ?? 0
-        // A mask reopened from `masks/<shot>/brush.png` has pixels but no
-        // strokes behind it (it is the session's baseline) — "no strokes yet"
-        // would be a lie about a mask that is visibly gating the sliders.
-        let hasSaved = model.live?.hasManualMask ?? false
-        if count > 0 { return "\(count) nét" }
-        return hasSaved ? "mask đã lưu" : "chưa có nét nào"
+        // The document's count: a reopened shot has its strokes back
+        // (docs/ADR-0025), so there is no "saved mask without strokes" state.
+        let count = model.activeStrokes.count
+        return count > 0 ? "\(count) nét" : "chưa có nét nào"
     }
 }

@@ -814,7 +814,8 @@ cuối, không phải nhật ký từng đợt):
   sửa 1 race thật: nhiều lệnh ghi bắn song song qua `Task { }` không await (`resetAllSliders`/`setToggle`…) có
   thể cùng đọc `lastSavedEditState` cũ và đẩy trùng 1 mục undo — sửa bằng cách gán `lastSavedEditState` **trước**
   khi await ghi đĩa thay vì sau. Lịch sử **trong bộ nhớ theo từng ảnh**, đổi ảnh là reset (đúng yêu cầu "undo
-  cho tới khi ảnh vừa được import vào"). Nút "Hoàn tác"/"Làm lại"/"Đặt lại" thêm vào toolbar Mac, có chữ kèm
+  cho tới khi ảnh vừa được import vào"). *(Đã thay 2026-09-23, ADR-0025: lịch sử giờ **lưu vào project theo từng
+  ảnh** — `history/<shot id>.json` — đổi ảnh/mở lại project vẫn undo lùi tiếp được; không còn reset khi đổi ảnh.)* Nút "Hoàn tác"/"Làm lại"/"Đặt lại" thêm vào toolbar Mac, có chữ kèm
   icon; bỏ hẳn case `.undo` cũ trong `EditorChrome.MacTool` (từng là 1 "tool" chọn được như bàn tay/cọ nhưng
   không làm gì — sai hình dạng cho 1 hành động tức thời).
 - **Rail bên phải (Mac) thêm chữ dưới icon** (`GroupIconRail`, theo đúng hình `GroupTabRow` điện thoại đã có),
@@ -922,6 +923,36 @@ theo GPU memory, thermal-aware" ở trên giờ đã ship; dialog xuất không 
   chỉ xảy ra khi bật flag, chưa gộp; (3) PNG cọ khác cỡ preview hiện tại (nếu cỡ preview đổi giữa các phiên bản)
   ⇒ canvas bỏ qua + log, còn export vẫn stretch toàn khung ⇒ lệch trong ca hiếm đó; (4) chưa chạy trên iPhone
   thật (đường ghi `masks/` trong sandbox iOS chưa ai xác nhận).
+
+**Cập nhật (2026-09-23, chiều) — "project = phiên làm việc": nét cọ thành metadata, lịch sử undo + vị trí phiên
+lưu vào project** (docs/ADR-0025, addendum cuối ADR-0019)
+- **Luật user chốt**: `.rpproj` là 1 phiên làm việc tự chứa (như catalog Lightroom / project CapCut) — gốc, preview
+  và **metadata chỉnh sửa** của từng ảnh; mở lại là về đúng như lúc rời. Chỉnh sửa là metadata, không bao giờ nướng
+  pixel; dữ liệu dẫn xuất được cache nhưng phải tính lại được. File xuất ra là thành phẩm, không link ngược
+  (đã kiểm: export chỉ ghi ảnh + chất lượng, không metadata).
+- **Cọ = nét, không còn PNG**: bỏ `masks/<shot>/brush.png` của commit sáng nay. Nét lưu ở
+  `edits/<shot id>.strokes.json` (JSON gọn, `formatVersion` 1, `AtomicFileWriter`), toạ độ **chuẩn hoá 0–1** (x theo
+  rộng, y theo cao), **bán kính theo cạnh dài**. Mở lại ảnh ⇒ replay nét ở cỡ preview, **trùng từng byte** với lúc vẽ
+  (0/73 926 byte lệch). Export **rasterize nét ở đúng cỡ xuất** thay vì phóng mask 2048 px: cọ cứng biên 10–90 %
+  0,80 px so với 2,42 px kiểu cũ (cọ mềm mặc định như nhau ~57 px vì biên mềm vốn rộng). Kèm tối ưu đã ghi ở
+  ADR-0019 §7: dispatch theo **bounding box** từng lô stamp ⇒ replay 19 nét 405 ms → **17,4 ms**, vẽ 0,168 →
+  0,051 ms/điểm, raster 20 nét dài ở 6000×4000 204 ms. Không có project nào trên máy có `brush.png` (thư mục
+  `masks/` của project test rỗng) ⇒ không cần dọn; `masks/` không còn được tạo.
+- **Lịch sử undo/redo lưu theo từng ảnh**, `history/<shot id>.json`: **1 dòng thời gian** chung cho slider và nét cọ
+  (⌘Z, nút toolbar, nút Hoàn tác trong thanh cọ cùng gọi `EditorModel.undo`), "Xoá mask" giờ undo được. Mỗi bước
+  là thao tác nghịch; bước "thêm nét" không chép lại nét (chỉ `removeLastStroke`). Giới hạn **100 bước/ảnh**. Dán
+  thiết lập / áp preset cho ảnh không mở cũng ghi 1 bước vào lịch sử ảnh đó.
+- **Vị trí phiên** `session.json`: ảnh đang mở, nhiều ảnh đang chọn, zoom/pan, tab Thư viện/Chỉnh sửa. Ghi
+  **debounce 600 ms** (không ghi mỗi frame khi zoom) + ghi ngay khi rời editor/app ra nền/⌘Q.
+- File hỏng/phiên bản mới hơn ⇒ log và coi như rỗng, project vẫn mở.
+- **Bấm thật trên app Mac** (build Debug riêng, project "Shoot 2026-09-07 2", đã backup + khôi phục nguyên trạng):
+  ⌘-chọn 2 ảnh, mở DSC01660 ở tab Chỉnh sửa, zoom 100 % + pan, kéo "Sáng da" 2 lần (70, 97), vẽ 2 nét cứng ⇒ ⌘Q
+  ⇒ mở lại: đúng ảnh, tab, 2 ảnh chọn, 100 %, "2 nét" (log `manual mask replayed: 2 stroke(s) in 2.5 ms`); Hoàn tác
+  lùi 2 nét → 2 lần đổi chọn mặt → 97 → 70 → 0, Làm lại tiến lại đủ. Xuất TIFF 16-bit 6000×4000: log `brush: 2
+  stroke(s) rasterised at 6000×4000 in 10 ms`; so với bản xuất sau "Xoá mask": trong nét 0 px khác, vòng ngoài nét
+  12 418 px khác, biên dốc **0,34 px**.
+- Test: RPCore 128, RPEngine 352, RPUI 307 — xanh; build app Debug macOS xanh.
+- **Còn treo**: chưa chạy trên iPhone thật (file mới trong sandbox iOS chưa xác nhận); chưa có UI xem lịch sử.
 
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 

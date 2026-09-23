@@ -79,6 +79,9 @@ struct RPManualMaskSplatParams {
     uint stampCount;
     /// 0 = add (max), 1 = subtract (min against 1 - coverage).
     uint subtract;
+    /// Top-left of the dispatched region (the batch's bounding box); the grid
+    /// covers only that region since 2026-09-23 (ADR-0019 addendum).
+    uint2 origin;
 };
 
 kernel void rp_manual_mask_splat(
@@ -86,8 +89,9 @@ kernel void rp_manual_mask_splat(
     texture2d<float, access::write> destination [[texture(1)]],
     constant RPManualMaskStamp *stamps [[buffer(0)]],
     constant RPManualMaskSplatParams &prm [[buffer(1)]],
-    uint2 gid [[thread_position_in_grid]])
+    uint2 local [[thread_position_in_grid]])
 {
+    uint2 gid = local + prm.origin;
     if (gid.x >= prm.size.x || gid.y >= prm.size.y) { return; }
     float existing = source.read(gid).r;
 

@@ -296,7 +296,7 @@ struct ManualMaskBrushWiringTests {
     /// The whole feature in one test: an armed brush gates nothing, a painted
     /// stroke gates exactly one node input, undo takes it back out, and the
     /// canvas is told to redraw each time.
-    @Test("A painted stroke becomes exactly one gate; undo and clear take it away")
+    @Test("A painted stroke becomes exactly one gate; the document taking it back removes it")
     func paintingAddsAGateAndUndoRemovesIt() async throws {
         guard let context = MetalContext.shared else { return }
         try await Self.withManualMask(true) {
@@ -334,19 +334,22 @@ struct ManualMaskBrushWiringTests {
             #expect(gates.first?.isGateEnabled == true)
             #expect(gates.first?.gateWidth == Int(decoded.pixelSize.width))
 
-            #expect(controller.canUndoManualMask)
-            controller.undoManualMaskStroke()
+            // Undo / redo / "Xoá mask" are the document's (EditorModel's one
+            // history, docs/ADR-0025); what reaches the canvas is the stroke
+            // list the document now says.
+            let stored = controller.manualMaskDocument
+            #expect(stored.count == 1)
+            controller.setManualMaskStrokes([])
             #expect(!controller.hasManualMask)
-            #expect(controller.canRedoManualMask)
             #expect(controller.renderRequest.gateMasks.isEmpty)
 
-            controller.redoManualMaskStroke()
+            controller.setManualMaskStrokes(stored)
             #expect(controller.renderRequest.gateMasks.count == 1)
+            #expect(controller.manualMaskStrokes[0].points.count == 3)
 
-            controller.clearManualMask()
+            controller.setManualMaskStrokes([])
             #expect(!controller.hasManualMask)
             #expect(controller.renderRequest.gateMasks.isEmpty)
-            #expect(!controller.canUndoManualMask)
         }
     }
 

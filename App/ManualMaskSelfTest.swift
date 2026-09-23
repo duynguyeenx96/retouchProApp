@@ -140,8 +140,10 @@ enum ManualMaskSelfTest {
             live.beginManualMaskStroke(at: points[0], settings: settings)
             for point in points.dropFirst(60) { live.extendManualMaskStroke(to: point) }
             live.endManualMaskStroke()
+            // Undo is the document handing the canvas the list minus its last
+            // stroke (docs/ADR-0025) — the same replay `EditorModel.undo` drives.
             let undoStart = CFAbsoluteTimeGetCurrent()
-            live.undoManualMaskStroke()
+            live.setManualMaskStrokes(Array(live.manualMaskDocument.dropLast()))
             let undoMilliseconds = (CFAbsoluteTimeGetCurrent() - undoStart) * 1000
 
             AppLog.write(
@@ -160,7 +162,7 @@ enum ManualMaskSelfTest {
 
             // The mask this self-test painted must not be what the user sees
             // when the canvas opens their first shot.
-            live.clearManualMask()
+            live.setManualMaskStrokes([])
         } catch {
             AppLog.write("brush selftest: FAILED on \(url.lastPathComponent): \(error)")
         }

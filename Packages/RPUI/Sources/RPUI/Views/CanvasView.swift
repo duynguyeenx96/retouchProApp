@@ -409,7 +409,12 @@ struct CanvasView: View {
 
     private func endStroke(live: LivePreviewController) {
         guard let stroke = liveStroke else { return }
-        live.endManualMaskStroke()
+        // The finished stroke becomes part of the shot's document — saved to
+        // `edits/<id>.strokes.json` and one step of the shot's history
+        // (docs/ADR-0025) — not something the canvas keeps to itself.
+        if let finished = live.endManualMaskStroke(), let size = live.manualMaskPixelSize {
+            model.recordBrushStroke(finished, maskSize: size)
+        }
         live.logManualMaskStroke(
             points: stroke.points.count, paintMilliseconds: strokePaintMilliseconds)
         liveStroke = nil
@@ -563,7 +568,7 @@ struct CanvasView: View {
                 decoded,
                 contentHash: shot.contentHash ?? shot.id.rawValue,
                 editState: model.activeEditState,
-                manualMaskStore: ProjectManualMaskStore(store: model.store, shotID: shot.id))
+                manualMaskStrokes: model.activeStrokes)
         } catch {
             guard !Task.isCancelled else { return }
             original = nil

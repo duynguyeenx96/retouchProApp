@@ -275,6 +275,11 @@ public final class ExportRenderer: @unchecked Sendable {
             masks, editState: job.editState, width: source.width, height: source.height)
         request.bodySkinMask = resolvedMasks.bodySkinMask
         request.gateMasks += resolvedMasks.gateMasks
+        if let brushMs = resolvedMasks.brushRasterMilliseconds {
+            notes.append(
+                "brush: \(job.masks.brushStrokes.count) stroke(s) rasterised at "
+                    + "\(source.width)×\(source.height) in \(String(format: "%.0f", brushMs)) ms")
+        }
         let destination = try SpikeTextureIO.makeTexture(
             width: source.width, height: source.height, device: context.device,
             pixelFormat: .rgba16Float, usage: [.shaderRead, .shaderWrite, .renderTarget])

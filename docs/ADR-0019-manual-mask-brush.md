@@ -480,3 +480,61 @@ Everything above is unchanged; this records what filled in §8 "Still not done" 
   its reference size; `ExportRenderer` scales it per axis to the render and applies it only while
   `RPEngineFeatureFlags.manualMask` is on. Measured in `ExportMasksTests` and on the real Mac app (docs/PLAN.md
   Phase 3, 2026-09-23).
+
+---
+
+## Addendum 2026-09-23 (later the same day) — strokes, not a PNG; §8 and the addendum above are superseded
+
+Everything above is left as written. This section **supersedes §8 ("Storage: PNG in the bundle")** and the
+2026-09-23 addendum directly above it, following the rule the user set that day: a `.rpproj` is a self-contained
+work session. Edits are metadata, never baked pixels. Derived data may be cached but has to be recomputable
+(docs/ADR-0025).
+
+* **The brush is stored as its strokes**, in `edits/<shot id>.strokes.json` (`RPCore.ManualMaskStrokeDocument`,
+  `formatVersion` 1, written with `AtomicFileWriter` as compact sorted-key JSON; no file means nothing is painted).
+  Each stroke is `RPCore.ManualMaskStroke`: radius, hardness, flow, mode, and the points as one flat
+  `[x, y, pressure, …]` array.
+  * **Coordinates are normalised.** `x` is a fraction of the image width and `y` a fraction of the height (per axis,
+    origin top-left, y down), which is the same per-axis whole-frame mapping `ExportMasks` uses. The **radius is a
+    fraction of the long edge**: one scalar has to stay a circle, and the long edge is what `RenderQuality` sizes
+    previews by. Stamp spacing is a fraction of the radius, so the stamp count is the same at 2048 px and at 6000 px.
+  * It is a sibling file, not a field in `edits/<id>.json`. §8's two reasons still hold for a few hundred KB of
+    points: that file is rewritten on every slider release, and `EditState` is hashed on the interaction path.
+* **No PNG is written or read any more.** `ProjectManualMaskStore`, `ManualMaskSession.load(pngData:)` / `pngData()`,
+  the session's pixel *baseline*, `ManualMaskCoverage.load/pngData`, `ManualMaskImage`,
+  `ExportMasks.manualMask(fromPNG:)` and `RenderMask.wholeFrame` are removed. `masks/` is no longer created. The RPCore
+  `saveMask` API stays only so `removeShot` still clears `masks/<id>/` in bundles written in between (no dev bundle
+  on this machine had a `brush.png`; the test project's `masks/` folder was empty).
+* **Reopening = replay.** `LivePreviewController.open(…, manualMaskStrokes:)` replays the document onto the preview
+  session with `ManualMaskSession.replaceStrokes(_:)`. Same size ⇒ **byte-identical** to the live painting (0 of
+  73 926 bytes differ after paint → normalise → JSON → replay, `ManualMaskStrokeStorageTests`). §2's max/min property
+  is what makes that exact.
+* **Undo reaches the earlier session's strokes.** The stroke list is owned by `EditorModel.activeStrokes`, and undo /
+  redo / "Xoá mask" go through the shot's one persisted history (ADR-0025). "Xoá mask" is now undoable.
+* **Export rasterises at export resolution.** `ExportMasks.brushStrokes` carries the strokes, and
+  `ExportMaskResolver` draws them with the same splat kernel at the render's own size
+  (`ManualMaskSession.rasterize`), instead of upsampling a 2048 px mask. This also removes the "saved PNG size ≠
+  preview size" edge case.
+* **Bounding-box dispatch (§7's recorded fix), now in.** Each 64-stamp batch is dispatched over its stamps' bounding
+  box (plus 1 px), and that region is blitted back onto the front texture. No ping-pong swap is needed, and the result
+  is bit-identical to the whole-mask dispatch (pixels outside every disc get `existing` written back).
+  `RPManualMaskSplatParams` gained `origin` (stride 24 → 32).
+
+**Measured** (M1 Pro, Release, `Research/bench/p6-manual-mask-strokes-macos.json` and `p6-manual-mask-macos-bbox.json`):
+
+| | before | after |
+|---|---|---|
+| §7 deep replay, 19 strokes @ 2048 px (= reopening such a shot) | 405 ms | **17.4 ms** |
+| 20 long default-brush strokes (5160 stamps) @ 2048 px | — | 32.4 ms |
+| same 20 strokes rasterised @ 6000×4000 (export) | — | 204 ms (19 deep strokes: 96 ms) |
+| paint, main thread per touch event | 0.168 ms | 0.051 ms |
+| gated SkinRenderNode ms/frame (control 4.62) | 4.69 | 5.05 (noise-level) |
+| hard brush (h = 1) edge, 10–90 % rise in export px: native vs 2048→6000 bilinear | 2.42 px | **0.80 px** |
+| default brush (h = 0.5) edge rise | 57.35 px | 57.25 px (mean diff in band 0.001) |
+
+Sharper edges only show on hard brushes. A soft brush's falloff is ~60 export px wide, which upsampling could not
+blur any further. On the real Mac app, an export of DSC01660 (6000×4000, TIFF 16-bit) with 2 hard strokes
+rasterised them at 6000×4000 in 10 ms. Compared with the same export after "Xoá mask": 0 px differ inside the strokes,
+12 418 of 112 940 px differ in the 3–40 px ring outside (the skin effect the brush removes there), and the edge rises
+over **0.34 px** measured on the exported pixels. The GPU cost is two r8 textures at render size (48 MB at 24 MP),
+held for one export.

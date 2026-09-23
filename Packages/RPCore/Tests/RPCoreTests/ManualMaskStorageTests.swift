@@ -6,6 +6,10 @@ import Testing
 /// Phase 6.1 — where a hand-painted mask lives, and how a document points at it
 /// (docs/PLAN.md §6.1, docs/ADR-0019).
 ///
+/// **Superseded 2026-09-23** for the brush, which is now stored as strokes
+/// (`ProjectSessionFilesTests`). The generic `masks/` API these tests pin is
+/// kept for `removeShot`'s clean-up and has no writer in the app.
+///
 /// The pixels are RPEngine's problem (`ManualMaskTests` measures the brush).
 /// This suite is only about the two halves of the *storage* decision:
 ///

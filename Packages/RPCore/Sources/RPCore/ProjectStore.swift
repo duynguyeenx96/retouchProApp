@@ -321,7 +321,12 @@ public struct ProjectStore: Sendable {
         }
     }
 
-    // MARK: - Hand-painted masks (docs/PLAN.md §6.1)
+    // MARK: - Hand-painted mask PNGs (docs/PLAN.md §6.1) — superseded
+    //
+    // ADR-0019 §8's raster store. Since 2026-09-23 the app stores the brush as
+    // strokes (`ProjectStore+Session.swift`) and nothing calls `saveMask`; the
+    // API stays for `removeShot`'s clean-up of bundles written in between and
+    // for a future mask type that genuinely has no metadata form.
 
     /// `masks/<shot id>/` — every hand-painted mask of one shot.
     public func masksURL(for shotID: ShotID) -> URL {
@@ -487,6 +492,8 @@ public struct ProjectStore: Sendable {
         // useless once the shot is gone; `try?` because failing to delete a mask
         // must not abort the removal the user asked for.
         try? deleteMasks(for: shotID, fileManager: fileManager)
+        // Its brush strokes and undo history (docs/ADR-0025) — same reasoning.
+        deleteSessionFiles(for: shotID, fileManager: fileManager)
         if let preview = shot.previewRelativePath {
             let previewURL = url(forRelativePath: preview)
             if fileManager.fileExists(atPath: previewURL.path) {

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import RPCore
 import RPEngine
 
 /// The canvas's half of "Cọ mask thủ công" (docs/PLAN.md §6.1, docs/ADR-0019):
@@ -29,6 +30,16 @@ import RPEngine
 /// It is an extension in its own file so the paint surface can grow without
 /// growing `LivePreviewController.swift`, which several Phase 6 features write
 /// into.
+///
+/// ## Who owns the strokes (2026-09-23)
+///
+/// Not this class. The **document** is `EditorModel.activeStrokes` — stored as
+/// `edits/<shot id>.strokes.json`, undone through the shot's one history
+/// (docs/ADR-0025). A finished stroke comes out of ``endManualMaskStroke()`` in
+/// mask pixels and the canvas hands it to `EditorModel.recordBrushStroke`; undo,
+/// redo and "Xoá mask" go the other way, through ``setManualMaskStrokes(_:)``.
+/// The session here is the rasterised view of that list and keeps no history of
+/// its own that anything reads.
 extension LivePreviewController {
 
     // MARK: - State the brush UI reads
@@ -42,8 +53,11 @@ extension LivePreviewController {
     /// only it knows where the finger is between two events.
     public var manualMaskStrokes: [BrushStroke] { observingPaint { manualMask?.strokes ?? [] } }
 
-    public var canUndoManualMask: Bool { observingPaint { manualMask?.canUndo ?? false } }
-    public var canRedoManualMask: Bool { observingPaint { manualMask?.canRedo ?? false } }
+    /// Pixel size of the open shot's mask (the decoded preview), or `nil` when
+    /// there is no session — the size a finished stroke is normalised against.
+    public var manualMaskPixelSize: CGSize? {
+        manualMask.map { CGSize(width: $0.width, height: $0.height) }
+    }
     /// `true` once anything is painted — the same condition that decides whether
     /// a gate reaches `RenderRequest.gateMasks`.
     public var hasManualMask: Bool {
@@ -89,19 +103,23 @@ extension LivePreviewController {
         paint { $0.extendStroke(to: BrushPoint(location: point)) }
     }
 
-    /// Ends the in-flight stroke.
+    /// Ends the in-flight stroke and returns it, in mask pixels, for the
+    /// document (`EditorModel.recordBrushStroke`).
     ///
     /// This one redraws even though the **pixels** did not move — the last stamp
     /// was already painted by the final `extendStroke` — because what moved is
-    /// the *history*: the stroke went onto the undo stack, so "Hoàn tác" has to
-    /// light up and the overlay has to start drawing the stroke from the session
-    /// instead of from the view's in-flight copy.
+    /// the stroke list: the overlay has to start drawing the stroke from the
+    /// session instead of from the view's in-flight copy.
     @discardableResult
     public func endManualMaskStroke() -> BrushStroke? {
         guard let manualMask else { return nil }
         let finished = manualMask.endStroke()
         invalidate()
-        if finished != nil { persistManualMask() }
+        if let finished {
+            manualMaskDocument.append(
+                finished.normalized(
+                    imageSize: CGSize(width: manualMask.width, height: manualMask.height)))
+        }
         return finished
     }
 
@@ -112,69 +130,17 @@ extension LivePreviewController {
         paint { $0.cancelStroke() }
     }
 
-    public func undoManualMaskStroke() {
-        if paint({ _ = $0.undo() }) { persistManualMask() }
-    }
-
-    public func redoManualMaskStroke() {
-        if paint({ _ = $0.redo() }) { persistManualMask() }
-    }
-
-    /// "Xoá mask": every stroke **and** any mask loaded from disk — the saved
-    /// PNG is deleted too. Not undoable; the session says so.
-    public func clearManualMask() {
-        if paint({ $0.clearAll() }) { persistManualMask() }
-    }
-
-    // MARK: - Saving (masks/<shot id>/brush.png — ManualMaskPersistence.swift)
-
-    /// Writes the session's current state to ``manualMaskStore``: the PNG when
-    /// anything is painted, a delete when the session is empty.
-    ///
-    /// The GPU read-back happens here, on the main actor that owns the session
-    /// (≈ 1 ms for 2.8 MB, and ordered after every splat already committed on
-    /// the queue); the PNG encode and the atomic write happen off it, chained
-    /// behind the previous write so strokes land on disk in order.
-    func persistManualMask() {
-        guard let store = manualMaskStore, let session = manualMask else { return }
-        let values: [UInt8]?
-        if session.isEmpty {
-            values = nil
-        } else {
-            do {
-                values = try session.readValues()
-            } catch {
-                Self.log.error(
-                    "manual mask read-back failed: \(String(describing: error), privacy: .public)")
-                return
-            }
-        }
-        let width = session.width
-        let height = session.height
-        let previous = manualMaskWrite
-        manualMaskWrite = Task.detached(priority: .utility) {
-            await previous?.value
-            do {
-                if let values {
-                    let png = try ManualMaskSession.pngData(
-                        values: values, width: width, height: height)
-                    try store.saveManualMask(png)
-                    Self.log.log("manual mask saved: \(png.count, privacy: .public) B")
-                } else {
-                    try store.deleteManualMask()
-                    Self.log.log("manual mask deleted")
-                }
-            } catch {
-                Self.log.error(
-                    "manual mask save failed: \(String(describing: error), privacy: .public)")
-            }
-        }
-    }
-
-    /// Waits for every queued mask write — called before an export reads
-    /// masks from disk, so a shot painted a moment ago is exported with it.
-    public func flushManualMaskWrites() async {
-        await manualMaskWrite?.value
+    /// Makes `strokes` (the document's stored form) the whole mask and
+    /// re-rasterises it — undo, redo, "Xoá mask", and a shot's strokes arriving
+    /// after its picture. A no-op, and no redraw, when the session already
+    /// shows exactly this list.
+    public func setManualMaskStrokes(_ strokes: [ManualMaskStroke]) {
+        guard strokes != manualMaskDocument else { return }
+        manualMaskDocument = strokes
+        guard let manualMask else { return }
+        let before = manualMask.generation
+        replayManualMaskDocument(into: manualMask)
+        if manualMask.generation != before { invalidate() }
     }
 
     /// One line per finished stroke, for the device console.

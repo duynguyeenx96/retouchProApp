@@ -244,7 +244,10 @@ extension EditorModel {
                     let updated = current.applying(preset, mode: .replace)
                     guard updated != current else { continue }
                     do {
-                        try store.saveEditState(updated, for: id)
+                        // An undo step in *that* shot's history too
+                        // (docs/ADR-0025) — its history is on disk now.
+                        try store.saveEditStateRecordingHistory(
+                            updated, replacing: current, for: id)
                         count += 1
                     } catch {
                         continue

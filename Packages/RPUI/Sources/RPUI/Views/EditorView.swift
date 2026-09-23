@@ -4,6 +4,10 @@ import RPCore
 import RPEngine
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 /// One open project, in whichever of the approved layouts fits the window.
 ///
 /// * wide (macOS, or any window ≥ ``EditorLayout/threePaneMinimumWidth``) —
@@ -37,12 +41,15 @@ public struct EditorView: View {
     @State private var isPickingFiles = false
     @State private var isPickingPhotos = false
     @State private var pickedPhotos: [PhotosPickerItem] = []
+    @Environment(\.scenePhase) private var scenePhase
 
     /// - Parameter opensInEditor: start on the editor (1a / 1b) instead of the
     ///   project's library (2a / 2c). The Share Extension hand-off passes
     ///   `true`: "Mở với RetouchPro" promises the canvas, not a grid with one
     ///   thumbnail in it (docs/ADR-0017). Everything else leaves it `false`,
-    ///   which is the behaviour opening a project has always had.
+    ///   which is the behaviour opening a project has always had — unless the
+    ///   project's `session.json` says the editor was showing when it was last
+    ///   left (docs/ADR-0025), in which case it reopens there.
     @MainActor
     public init(
         model: EditorModel,
@@ -54,7 +61,11 @@ public struct EditorView: View {
         self.cache = cache
         self.close = close
         let chrome = EditorChrome()
-        if opensInEditor { chrome.tab = .edit }
+        if opensInEditor {
+            chrome.tab = .edit
+        } else if let restored = model.restoredTab {
+            chrome.tab = restored
+        }
         _chrome = State(initialValue: chrome)
     }
 
@@ -70,6 +81,22 @@ public struct EditorView: View {
         .background(RPTheme.canvas)
         .preferredColorScheme(.dark)
         .tint(RPTheme.accent)
+        // "A project is a session" (docs/ADR-0025): the tab goes into
+        // `session.json` with the selection and the zoom, and the pending
+        // (debounced) write is forced out whenever there may be no "later" —
+        // leaving the project, the app going to the background, the app quitting.
+        .onChange(of: chrome.tab, initial: true) { _, tab in model.noteTab(tab) }
+        .onDisappear { model.saveSessionPositionNow() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { model.saveSessionPositionNow() }
+        }
+        #if os(macOS)
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            ) { _ in
+                model.saveSessionPositionNow()
+            }
+        #endif
         // The screen draws its own top row (the mockup's 46 pt toolbar with the
         // tool group, the tab switcher and "Xuất"; the phone's back / Nhập / Fit
         // / Xuất bar), so the iOS navigation bar has to go.

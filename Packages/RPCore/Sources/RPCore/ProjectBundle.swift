@@ -4,13 +4,30 @@ import Foundation
 ///
 /// ```
 /// Wedding 2026-09-04.rpproj/
-///   manifest.json          project metadata + ordered shot list
-///   originals/             imported files, immutable, never rewritten
-///   previews/              derived JPEG/HEIF previews, safe to delete
-///   edits/<shot id>.json   one EditState per shot
+///   manifest.json                 project metadata + ordered shot list
+///   session.json                  where the user left off: open shot, selection,
+///                                 zoom, tab (docs/ADR-0025) — optional
+///   originals/                    imported files, immutable, never rewritten
+///   previews/                     derived JPEG/HEIF previews, safe to delete
+///   edits/<shot id>.json          one EditState per shot (slider document)
+///   edits/<shot id>.strokes.json  the shot's brush strokes, normalised
+///                                 (docs/ADR-0019 addendum 2026-09-23) — optional
+///   history/<shot id>.json        the shot's undo/redo timeline (docs/ADR-0025)
+///                                 — optional
 ///   presets/<preset id>.json
-///   masks/<shot id>/<mask id>.png   hand-painted masks (Phase 6.1)
 /// ```
+///
+/// **A project is a self-contained work session** (docs/ADR-0025): the
+/// originals, their derived previews, and every shot's editing *metadata* —
+/// sliders, brush strokes, history — plus where the user was. Opening it
+/// restores that session. Nothing in it is baked pixels: every mask is
+/// re-rasterised from metadata at whatever resolution is needed, and anything
+/// derived (previews, face/subject analysis) must be recomputable.
+///
+/// `masks/` (ADR-0019 §8's PNG store) is no longer created or written: the
+/// brush is stored as strokes. A `masks/` folder in a bundle written on
+/// 2026-09-23 before that change is ignored; ``ProjectStore/removeShot(id:from:fileManager:)``
+/// still clears `masks/<shot id>/` when it exists.
 ///
 /// It is a plain directory. Whether Finder shows it as a single opaque document
 /// is a *presentation* choice that depends on a document type declared in the
@@ -23,20 +40,23 @@ public enum ProjectBundle {
     public static let previewsDirectory = "previews"
     public static let editsDirectory = "edits"
     public static let presetsDirectory = "presets"
-    /// Hand-painted masks, one **subdirectory per shot** (docs/PLAN.md §6.1).
-    ///
-    /// Bitmaps deliberately do not live in `edits/<shot id>.json`: a 2048 px mask
-    /// is megabytes of pixels, JSON would have to base64 it, and every slider
-    /// release rewrites that file. So the document keeps only a mask *id*
-    /// (`EditState.perImage["manualMask"]`, see ``ManualMaskReference``) and the
-    /// pixels live here as a compressed 8-bit grayscale PNG — the same split
-    /// Lightroom and Photoshop make.
+    /// Hand-painted mask **PNGs**, one subdirectory per shot — ADR-0019 §8's
+    /// storage, **superseded 2026-09-23** by strokes in
+    /// ``manualMaskStrokesSuffix`` files. Kept only so a shot removal still
+    /// cleans up a bundle written in between; nothing writes here and it is no
+    /// longer created with the bundle.
     public static let masksDirectory = "masks"
+    /// Per-shot undo/redo timelines, `history/<shot id>.json` (docs/ADR-0025).
+    public static let historyDirectory = "history"
+    /// `session.json` — where the user left off (docs/ADR-0025).
+    public static let sessionFileName = "session.json"
+    /// `edits/<shot id>` + this: the shot's brush strokes.
+    public static let manualMaskStrokesSuffix = ".strokes.json"
 
     /// Directories created by ``ProjectStore/create(name:in:)`` and re-created
     /// on load if a user deleted one.
     public static let directories = [
-        originalsDirectory, previewsDirectory, editsDirectory, presetsDirectory, masksDirectory,
+        originalsDirectory, previewsDirectory, editsDirectory, presetsDirectory, historyDirectory,
     ]
 
     /// File extensions adopted when a file appears in `originals/` without a

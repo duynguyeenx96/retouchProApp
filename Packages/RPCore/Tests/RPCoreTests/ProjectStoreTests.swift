@@ -28,7 +28,9 @@ struct ProjectStoreTests {
         #expect(store.bundleURL.pathExtension == ProjectBundle.pathExtension)
         #expect(
             try temp.entries(at: "Wedding 2026.rpproj")
-                == ["edits", "manifest.json", "masks", "originals", "presets", "previews"])
+                // `history/` since 2026-09-23 (docs/ADR-0025); `masks/` is no
+                // longer created — the brush is stored as strokes.
+                == ["edits", "history", "manifest.json", "originals", "presets", "previews"])
         #expect(project.name == "Wedding 2026")
         #expect(project.shots.isEmpty)
     }

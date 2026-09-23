@@ -151,16 +151,17 @@ public final class LivePreviewController {
     /// only the ownership.
     public private(set) var manualMask: ManualMaskSession?
 
-    /// Where the open shot's brush mask is saved (`masks/<shot id>/brush.png`),
-    /// or `nil` when the caller gave none (tests, previews) — then the mask
-    /// lives only as long as the shot is open, the pre-2026-09-23 behaviour.
-    /// Written by the paint API in `LivePreviewController+ManualMask.swift`.
+    /// The stroke list the session was last told is the document
+    /// (``open(_:contentHash:editState:manualMaskStrokes:)`` /
+    /// ``setManualMaskStrokes(_:)``), normalised — kept so a session rebuilt for
+    /// a new preview size replays the same strokes.
+    ///
+    /// Since 2026-09-23 this class does not *own* the brush document: the
+    /// stroke list lives in ``EditorModel`` (`activeStrokes`), is persisted as
+    /// `edits/<shot id>.strokes.json`, and undo walks it through the shot's
+    /// history. The session here is the rasterised, derived view of it.
     @ObservationIgnored
-    var manualMaskStore: (any ManualMaskStoring)?
-    /// The last queued mask write. Each write awaits the one before it, so two
-    /// quick strokes can never land on disk out of order.
-    @ObservationIgnored
-    var manualMaskWrite: Task<Void, Never>?
+    public internal(set) var manualMaskDocument: [ManualMaskStroke] = []
 
     /// `true` once ``prepareShotMasks(for:contentHash:)`` has finished for the
     /// open shot (including the fast "both flags off" return), i.e. once
@@ -253,15 +254,19 @@ public final class LivePreviewController {
     ///   `RenderRequest.faces` documents ("the graph does not scale them
     ///   itself") cannot happen here.
     ///
-    /// - Parameter manualMaskStore: where this shot's brush mask is loaded from
-    ///   and saved to. `nil` keeps the mask in memory only.
+    /// - Parameter manualMaskStrokes: the shot's stored brush strokes
+    ///   (`EditorModel.activeStrokes`), replayed onto the new session at the
+    ///   preview's size — reopening a shot shows exactly the mask it was left with.
     public func open(
         _ image: PreviewImage, contentHash: String, editState: EditState,
-        manualMaskStore: (any ManualMaskStoring)? = nil
+        manualMaskStrokes: [ManualMaskStroke] = []
     ) async {
         self.editState = editState
+        manualMaskDocument = manualMaskStrokes
         guard openContentHash != contentHash || sourceSize != image.pixelSize else {
-            // Same shot, new edits: keep the texture and the faces.
+            // Same shot, new edits: keep the texture and the faces — and bring
+            // the brush in line with the document it was handed.
+            setManualMaskStrokes(manualMaskStrokes)
             invalidate()
             return
         }
@@ -290,7 +295,6 @@ public final class LivePreviewController {
         // Synchronous and before the analyses: the brush is user input, so the
         // canvas has to be paintable the moment the picture is on screen rather
         // than after a 36 ms Core ML pass the brush does not depend on.
-        self.manualMaskStore = manualMaskStore
         prepareManualMask(for: image)
         invalidate()
 
@@ -329,7 +333,7 @@ public final class LivePreviewController {
         faceAnalysisRan = false
         detectionNotices = [:]
         clearShotMasks()
-        manualMaskStore = nil
+        manualMaskDocument = []
         invalidate()
     }
 
@@ -486,8 +490,8 @@ public final class LivePreviewController {
     /// is `nil` for it: user input cannot fail to be detected).
     ///
     /// The previous shot's session is dropped first, so a painted mask never
-    /// leaks onto the next picture — masks are per shot (ADR-0019 §8:
-    /// `masks/<shot id>/<mask id>.png`).
+    /// leaks onto the next picture — masks are per shot
+    /// (`edits/<shot id>.strokes.json`, docs/ADR-0019 addendum 2026-09-23).
     private func prepareManualMask(for image: PreviewImage) {
         manualMask = nil
         guard RPEngineFeatureFlags.manualMask else { return }
@@ -500,7 +504,7 @@ public final class LivePreviewController {
             manualMask = session
             Self.log.log(
                 "manual mask session: \(width, privacy: .public)x\(height, privacy: .public)")
-            loadSavedManualMask(into: session)
+            replayManualMaskDocument(into: session)
         } catch {
             // Not a canvas failure: every node keeps working, there is just
             // nothing to paint with.
@@ -509,23 +513,26 @@ public final class LivePreviewController {
         }
     }
 
-    /// Reopens the shot's saved brush mask as the session's baseline.
+    /// Replays ``manualMaskDocument`` onto `session` at the session's size.
     ///
-    /// Synchronous, like the session it fills: one small PNG read and decode
-    /// (≈ 0.1 MB for a typical mask at 2048 px) once per shot, and the canvas
-    /// must not show the photo unmasked for a frame and then snap. A PNG of
-    /// the wrong size (a preview size that changed between versions) or an
-    /// unreadable one is logged and ignored: the shot opens, unmasked, and the
-    /// file stays on disk untouched until the user paints again.
-    private func loadSavedManualMask(into session: ManualMaskSession) {
-        guard let store = manualMaskStore else { return }
+    /// Synchronous, like the session it fills: the canvas must not show the
+    /// photo unmasked for a frame and then snap. The cost is the replay ADR-0019
+    /// §7 measured, cut by the bounding-box dispatch that landed with stroke
+    /// storage — see `Research/bench/p6-manual-mask-strokes-macos.json`.
+    func replayManualMaskDocument(into session: ManualMaskSession) {
+        let size = CGSize(width: session.width, height: session.height)
+        let started = CFAbsoluteTimeGetCurrent()
         do {
-            guard let data = try store.loadManualMask() else { return }
-            try session.load(pngData: data)
-            Self.log.log("manual mask loaded: \(data.count, privacy: .public) B")
+            try session.replaceStrokes(manualMaskDocument.map { BrushStroke($0, imageSize: size) })
+            if !manualMaskDocument.isEmpty {
+                let ms = String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - started) * 1000)
+                Self.log.log(
+                    "manual mask replayed: \(self.manualMaskDocument.count, privacy: .public) stroke(s) in \(ms, privacy: .public) ms"
+                )
+            }
         } catch {
             Self.log.error(
-                "manual mask load failed: \(String(describing: error), privacy: .public)")
+                "manual mask replay failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -612,10 +619,11 @@ public final class LivePreviewController {
     /// those same filters against the document it renders, which is the one
     /// captured when the button was pressed.
     ///
-    /// * The brush is always taken from here when a session exists: it is the
-    ///   freshest copy (the PNG on disk may still be in the write queue), and a
-    ///   read-back is ~1 ms. Empty session ⇒ `nil`, the rule ``renderRequest``
-    ///   applies.
+    /// * **No brush here.** The brush travels as its strokes
+    ///   (`ExportMasks.brushStrokes`), which the caller takes from the document
+    ///   (`EditorModel.activeStrokes`) and the export rasterises at render size
+    ///   (docs/ADR-0019 addendum 2026-09-23) — this session's preview-sized
+    ///   coverage is exactly what the export must *not* upsample.
     /// * `subjectMask`/`bodySkinMask` are only reported once ``shotMasksReady``;
     ///   the caller reads that flag to tell "no person found" (`nil`, final)
     ///   from "not computed yet" and builds its own in the second case.
@@ -623,21 +631,8 @@ public final class LivePreviewController {
         guard openContentHash == contentHash, sourceSize.width > 0, sourceSize.height > 0 else {
             return nil
         }
-        var manual: RenderMask?
-        if let manualMask, !manualMask.isEmpty {
-            do {
-                manual = RenderMask(
-                    width: manualMask.width, height: manualMask.height,
-                    values: try manualMask.readValues(), maskToImage: .identity)
-            } catch {
-                Self.log.error(
-                    "manual mask read-back for export failed: \(String(describing: error), privacy: .public)"
-                )
-            }
-        }
         return ExportMasks(
             referenceSize: sourceSize,
-            manualMask: manual,
             subjectMask: shotMasksReady ? subjectMask : nil,
             bodySkinMask: shotMasksReady ? bodySkinMask : nil)
     }

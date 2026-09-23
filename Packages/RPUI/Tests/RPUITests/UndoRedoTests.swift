@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -107,19 +108,172 @@ struct UndoRedoTests {
         #expect(!model.canRedo)
     }
 
-    @Test("Switching shots clears the history — undo stops at 'as this photo was opened'")
-    func switchingShotsClearsHistory() async throws {
+    /// 2026-09-23 (docs/ADR-0025) — replaces "switching shots clears the
+    /// history": each shot keeps its own history, on disk.
+    @Test("Each shot keeps its own history across a shot switch")
+    func switchingShotsKeepsEachShotsHistory() async throws {
         let temp = try TempProject()
         defer { temp.cleanUp() }
         let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
-        model.setSlider(ColorSliders.Key.exposure, in: EditState.SectionKey.color, to: 20)
+        let exposure = (ColorSliders.Key.exposure, EditState.SectionKey.color)
+        model.setSlider(exposure.0, in: exposure.1, to: 20)
         await model.commitEditState()
         #expect(model.canUndo)
 
         await model.selectNextShot()
-
+        // The next shot has none of the first shot's history.
         #expect(!model.canUndo)
         #expect(!model.canRedo)
+
+        await model.selectPreviousShot()
+        #expect(model.canUndo)
+        await model.undo()
+        #expect(model.slider(exposure.0, in: exposure.1) == 0)
+        #expect(model.canRedo)
+    }
+
+    @Test("Slider steps and brush strokes share one timeline, and survive reopening the project")
+    func historyPersistsAcrossReopen() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let exposure = (ColorSliders.Key.exposure, EditState.SectionKey.color)
+        let size = CGSize(width: 40, height: 40)
+        do {
+            let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+            model.setSlider(exposure.0, in: exposure.1, to: 10)
+            await model.commitEditState()
+            model.recordBrushStroke(ExportMaskWiringTests.pixelStroke(), maskSize: size)
+            model.setSlider(exposure.0, in: exposure.1, to: 30)
+            await model.commitEditState()
+            model.recordBrushStroke(ExportMaskWiringTests.pixelStroke(), maskSize: size)
+            await model.flushPendingWrites()
+            #expect(model.activeStrokes.count == 2)
+        }
+
+        // A fresh model on the same bundle — the app relaunched.
+        let reopened = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        #expect(reopened.activeStrokes.count == 2)
+        #expect(reopened.slider(exposure.0, in: exposure.1) == 30)
+        #expect(reopened.canUndo)
+
+        // Undo walks back past the reopen, newest first, interleaved.
+        await reopened.undo()
+        #expect(reopened.activeStrokes.count == 1)
+        #expect(reopened.slider(exposure.0, in: exposure.1) == 30)
+        await reopened.undo()
+        #expect(reopened.slider(exposure.0, in: exposure.1) == 10)
+        #expect(reopened.activeStrokes.count == 1)
+        await reopened.undo()
+        #expect(reopened.activeStrokes.isEmpty)
+        await reopened.undo()
+        #expect(reopened.slider(exposure.0, in: exposure.1) == 0)
+        #expect(!reopened.canUndo)
+
+        // …and what it undid is on disk, redo included.
+        await reopened.flushPendingWrites()
+        let id = try #require(reopened.activeShot?.id)
+        #expect(try temp.store.loadManualMaskStrokes(for: id).isEmpty)
+        #expect(try temp.store.loadEditState(for: id).isDefault)
+        #expect(try temp.store.loadShotHistory(for: id).redoSteps.count == 4)
+
+        await reopened.redo()
+        await reopened.redo()
+        #expect(reopened.activeStrokes.count == 1)
+        #expect(reopened.slider(exposure.0, in: exposure.1) == 10)
+    }
+
+    @Test("Pasting onto a shot that is not open is an undo step in that shot's history")
+    func batchWriteIsUndoableOnTheTargetShot() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let exposure = (ColorSliders.Key.exposure, EditState.SectionKey.color)
+        let ids = model.shots.map(\.id)
+        // Shot 1 has an edit of its own first.
+        await model.select(shotID: ids[1])
+        model.setSlider(exposure.0, in: exposure.1, to: 5)
+        await model.commitEditState()
+        // Back on shot 0: copy a look and paste it onto shot 1 (not open).
+        await model.select(shotID: ids[0])
+        model.setSlider(exposure.0, in: exposure.1, to: 50)
+        await model.commitEditState()
+        await model.copySettingsFromActiveShot()
+        _ = await model.pasteCopiedSettings(to: [ids[1]])
+
+        await model.select(shotID: ids[1])
+        #expect(model.slider(exposure.0, in: exposure.1) == 50)
+        await model.undo()
+        // The paste comes off first, back to shot 1's own edit — not past it.
+        #expect(model.slider(exposure.0, in: exposure.1) == 5)
+        await model.undo()
+        #expect(model.slider(exposure.0, in: exposure.1) == 0)
+    }
+
+    @Test("\"Xoá mask\" is one undoable step that brings every stroke back")
+    func clearingStrokesIsUndoable() async throws {
+        let temp = try TempProject(shots: 1)
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let size = CGSize(width: 40, height: 40)
+        for _ in 0..<3 {
+            model.recordBrushStroke(ExportMaskWiringTests.pixelStroke(), maskSize: size)
+        }
+        model.clearBrushStrokes()
+        #expect(model.activeStrokes.isEmpty)
+        await model.undo()
+        #expect(model.activeStrokes.count == 3)
+        await model.redo()
+        #expect(model.activeStrokes.isEmpty)
+    }
+
+    @Test("History is capped at ShotHistory.maximumSteps, oldest dropped")
+    func historyIsCapped() async throws {
+        let temp = try TempProject(shots: 1)
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let size = CGSize(width: 40, height: 40)
+        for _ in 0..<(ShotHistory.maximumSteps + 5) {
+            model.recordBrushStroke(ExportMaskWiringTests.pixelStroke(), maskSize: size)
+        }
+        await model.flushPendingWrites()
+        let id = try #require(model.activeShot?.id)
+        let onDisk = try temp.store.loadShotHistory(for: id)
+        #expect(onDisk.undoSteps.count == ShotHistory.maximumSteps)
+        var undone = 0
+        while model.canUndo {
+            await model.undo()
+            undone += 1
+        }
+        #expect(undone == ShotHistory.maximumSteps)
+        // The five oldest strokes are past the cap: still painted, not undoable.
+        #expect(model.activeStrokes.count == 5)
+    }
+
+    @Test("A corrupt history or strokes file does not stop the shot from opening")
+    func corruptSideFilesAreTolerated() async throws {
+        let temp = try TempProject(shots: 1)
+        defer { temp.cleanUp() }
+        let id = temp.project.shots[0].id
+        var state = EditState()
+        state.setSlider(ColorSliders.Key.exposure, in: EditState.SectionKey.color, to: 25)
+        try temp.store.saveEditState(state, for: id)
+        try FileManager.default.createDirectory(
+            at: temp.store.historyURL, withIntermediateDirectories: true)
+        try Data("garbage".utf8).write(to: temp.store.historyURL(for: id))
+        try Data(#"{"formatVersion": 99, "strokes": []}"#.utf8)
+            .write(to: temp.store.manualMaskStrokesURL(for: id))
+
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        #expect(model.activeShot?.id == id)
+        #expect(model.slider(ColorSliders.Key.exposure, in: EditState.SectionKey.color) == 25)
+        #expect(model.activeStrokes.isEmpty)
+        #expect(!model.canUndo)
+        #expect(model.lastErrorMessage == nil)
+        // The next real edit replaces the unreadable history with a good one.
+        model.setSlider(ColorSliders.Key.exposure, in: EditState.SectionKey.color, to: 30)
+        await model.commitEditState()
+        await model.flushPendingWrites()
+        #expect(try temp.store.loadShotHistory(for: id).undoSteps.count == 1)
     }
 
     @Test("\"Đặt lại\" clears every slider and is itself an undo point")

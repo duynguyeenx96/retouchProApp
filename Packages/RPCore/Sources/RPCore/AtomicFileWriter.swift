@@ -129,6 +129,16 @@ public enum RPJSON {
         return encoder
     }
 
+    /// Same configuration without pretty-printing, for documents that are
+    /// mostly long number arrays (brush strokes, undo history): one number per
+    /// line would triple their size for no reader's benefit. Still
+    /// `sortedKeys`, so two saves of one value are byte-identical.
+    public static var compactEncoder: JSONEncoder {
+        let encoder = encoder
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return encoder
+    }
+
     public static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in

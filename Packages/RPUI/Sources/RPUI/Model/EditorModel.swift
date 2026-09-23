@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import OSLog
 import Observation
 import RPCore
 import RPEngine
@@ -29,10 +30,41 @@ public final class EditorModel {
     /// `EditState` of the active shot, loaded from `edits/<id>.json`.
     /// Phase 2's sliders mutate this; Phase 1 only reads it.
     public private(set) var activeEditState: EditState = EditState()
+    /// The active shot's brush strokes, oldest first, normalised to the frame
+    /// — the brush **document** (`edits/<id>.strokes.json`, docs/ADR-0019
+    /// addendum 2026-09-23). The canvas's `ManualMaskSession` is rasterised
+    /// from this; undo/redo/"Xoá mask" change this and push it to the canvas.
+    public private(set) var activeStrokes: [ManualMaskStroke] = []
 
-    public var selection = FilmstripSelection()
-    public var viewport = CanvasViewport()
+    /// The filmstrip's selection. Every change schedules a (debounced)
+    /// `session.json` write — see ``scheduleSessionPositionSave()``.
+    public var selection = FilmstripSelection() {
+        didSet { if selection != oldValue { scheduleSessionPositionSave() } }
+    }
+    /// The canvas zoom / pan. Mutated per frame during a pinch or scroll, which
+    /// is exactly why the `session.json` write it triggers is debounced rather
+    /// than immediate.
+    public var viewport = CanvasViewport() {
+        didSet { if viewport != oldValue { scheduleSessionPositionSave() } }
+    }
     public var beforeAfter = BeforeAfterState()
+
+    // MARK: Session position storage (`EditorModel+SessionPosition.swift`)
+
+    /// The "Thư viện" / "Chỉnh sửa" tab `session.json` said was showing when
+    /// the project was last left, for `EditorView` to start on. `nil` when the
+    /// project has no session yet.
+    public internal(set) var restoredTab: EditorChrome.Tab?
+    /// The tab currently showing, as last reported by the view
+    /// (``noteTab(_:)``); written into `session.json`.
+    @ObservationIgnored var sessionTab: EditorChrome.Tab?
+    /// The pending debounced `session.json` write, if any.
+    @ObservationIgnored var sessionSaveTask: Task<Void, Never>?
+    /// When the session position last changed — the debounce measures from it.
+    @ObservationIgnored var lastSessionChange: ContinuousClock.Instant?
+    /// Set while ``restoreSessionPosition()`` applies what it read, so applying
+    /// it does not schedule a write of the same thing straight back.
+    @ObservationIgnored var isRestoringSession = false
     /// True while ``mutate(_:)`` has a write in flight, for a progress
     /// indicator.
     ///
@@ -150,6 +182,7 @@ public final class EditorModel {
         let model = EditorModel(
             session: session, store: opened.0, project: opened.1, renderer: renderer, live: live,
             importer: importer)
+        await model.restoreSessionPosition()
         await model.loadActiveEditState()
         await model.reloadPresets()
         return model
@@ -306,8 +339,8 @@ public final class EditorModel {
     ///
     /// Safe to call often: it is a no-op when the state has not changed since
     /// the last write. Every real write is also an undo point (2026-09-22,
-    /// user request) — the state being replaced goes on ``undoStack`` and
-    /// ``redoStack`` is cleared, because a new edit is exactly what makes
+    /// user request) — the state being replaced is recorded in the shot's
+    /// ``history`` and redo is cleared, because a new edit is exactly what makes
     /// whatever was in redo stale. This is the **one** place every committing
     /// action funnels through — slider release, preset apply, "Đặt lại",
     /// paste settings — so undo covers all of them without each call site
@@ -316,8 +349,8 @@ public final class EditorModel {
         guard activeShot != nil else { return }
         guard lastSavedEditState != activeEditState else { return }
         if let previous = lastSavedEditState {
-            undoStack.append(previous)
-            redoStack.removeAll()
+            history.record(.edit(previous))
+            persistHistory()
         }
         let state = activeEditState
         // Set *before* the write, not after (see `persistToDisk`'s own doc
@@ -330,42 +363,115 @@ public final class EditorModel {
         await persistToDisk(state)
     }
 
-    /// Steps ``undoStack`` back one entry, writing it to disk immediately —
-    /// unlike a slider, undo has nothing left to "release", so there is no
-    /// preview-only half. The state undo moves *away from* goes onto
-    /// ``redoStack`` so ``redo()`` can step forward again.
+    /// Steps the shot's history back one entry — a slider edit **or** a brush
+    /// stroke, whichever came last: one timeline per shot (docs/ADR-0025).
+    /// Whatever it changes is written immediately — unlike a slider, undo has
+    /// nothing left to "release", so there is no preview-only half.
     public func undo() async {
-        guard let previous = undoStack.popLast() else { return }
-        redoStack.append(activeEditState)
-        activeEditState = previous
-        live?.update(editState: activeEditState)
-        lastSavedEditState = previous
-        await persistToDisk(previous)
+        await stepHistory { history, snapshot in history.undo(&snapshot) }
     }
 
     /// The exact inverse of ``undo()``.
     public func redo() async {
-        guard let next = redoStack.popLast() else { return }
-        undoStack.append(activeEditState)
-        activeEditState = next
-        live?.update(editState: activeEditState)
-        lastSavedEditState = next
-        await persistToDisk(next)
+        await stepHistory { history, snapshot in history.redo(&snapshot) }
     }
 
-    /// `true` while there is a state to undo back to. Reset by
-    /// ``loadActiveEditState()`` — history does not follow a shot switch; it
-    /// runs out exactly at "the photo as it was when this session opened it",
-    /// which is the boundary a user asked for by name ("undo cho tới khi ảnh
-    /// vừa được import vào").
-    public var canUndo: Bool { !undoStack.isEmpty }
-    public var canRedo: Bool { !redoStack.isEmpty }
+    /// `true` while there is a step to undo. The history is **per shot and
+    /// persisted** (`history/<shot id>.json`, docs/ADR-0025): switching shots
+    /// and reopening the project both bring a shot's history back, so undo walks
+    /// back past the reopen, as far as ``ShotHistory/maximumSteps``.
+    public var canUndo: Bool { history.canUndo }
+    public var canRedo: Bool { history.canRedo }
 
-    /// In-memory only, per shot — cleared by ``loadActiveEditState()``. A
-    /// crash loses the history, the same guarantee a lost drag already gives;
-    /// what disk always has is the last state actually committed.
-    private var undoStack: [EditState] = []
-    private var redoStack: [EditState] = []
+    /// The active shot's undo/redo timeline.
+    private var history = ShotHistory()
+
+    private func stepHistory(
+        _ step: (inout ShotHistory, inout ShotSnapshot) -> Bool
+    ) async {
+        guard activeShot != nil else { return }
+        var snapshot = ShotSnapshot(editState: activeEditState, strokes: activeStrokes)
+        let before = snapshot
+        guard step(&history, &snapshot) else { return }
+        persistHistory()
+        if snapshot.strokes != before.strokes {
+            activeStrokes = snapshot.strokes
+            live?.setManualMaskStrokes(activeStrokes)
+            persistStrokes()
+        }
+        if snapshot.editState != before.editState {
+            activeEditState = snapshot.editState
+            live?.update(editState: activeEditState)
+            lastSavedEditState = snapshot.editState
+            await persistToDisk(snapshot.editState)
+        }
+    }
+
+    // MARK: - Brush strokes (the document half the canvas paints)
+
+    /// A stroke the canvas just finished (in mask pixels of a `maskSize`
+    /// preview) becomes part of the shot's document: appended to
+    /// ``activeStrokes``, saved, and made one undo step.
+    public func recordBrushStroke(_ stroke: BrushStroke, maskSize: CGSize) {
+        guard activeShot != nil, !stroke.isEmpty else { return }
+        activeStrokes.append(stroke.normalized(imageSize: maskSize))
+        history.record(.removeLastStroke)
+        live?.setManualMaskStrokes(activeStrokes)
+        persistStrokes()
+        persistHistory()
+    }
+
+    /// "Xoá mask": every stroke goes, **undoably** — the whole list is the one
+    /// history step that has to carry data, because it exists nowhere else
+    /// afterwards.
+    public func clearBrushStrokes() {
+        guard activeShot != nil, !activeStrokes.isEmpty else { return }
+        history.record(.replaceStrokes(activeStrokes))
+        activeStrokes = []
+        live?.setManualMaskStrokes([])
+        persistStrokes()
+        persistHistory()
+    }
+
+    // MARK: - Side-file writes (strokes, history, session position)
+
+    /// Writes queued in order, each after the one before it, off the main
+    /// actor. Two quick strokes can never land on disk out of order.
+    @ObservationIgnored private var pendingWrite: Task<Void, Never>?
+    nonisolated static let log = Logger(subsystem: "com.duynguyen.RetouchPro", category: "project")
+
+    private func enqueueWrite(_ label: String, _ body: @escaping @Sendable () throws -> Void) {
+        let previous = pendingWrite
+        pendingWrite = Task.detached(priority: .utility) {
+            await previous?.value
+            do {
+                try body()
+            } catch {
+                Self.log.error(
+                    "\(label, privacy: .public) write failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    /// Waits for every queued side-file write — an export reads other shots'
+    /// strokes from disk, and a test reads what was written.
+    public func flushPendingWrites() async {
+        await pendingWrite?.value
+    }
+
+    private func persistStrokes() {
+        guard let id = activeShot?.id else { return }
+        let store = self.store
+        let strokes = activeStrokes
+        enqueueWrite("strokes") { try store.saveManualMaskStrokes(strokes, for: id) }
+    }
+
+    private func persistHistory() {
+        guard let id = activeShot?.id else { return }
+        let store = self.store
+        let history = self.history
+        enqueueWrite("history") { try store.saveShotHistory(history, for: id) }
+    }
 
     /// The actual file write ``commitEditState()`` and undo/redo all funnel
     /// through, once each has already updated ``lastSavedEditState``
@@ -658,28 +764,63 @@ public final class EditorModel {
         selection.synchronize(with: project.shots)
     }
 
+    /// Loads the active shot's whole snapshot: its slider document, its brush
+    /// strokes and its undo history (docs/ADR-0025).
+    ///
+    /// History is **per shot and persisted** since 2026-09-23: switching to a
+    /// shot brings back the history it was left with, so undo walks back past a
+    /// shot switch and past reopening the project. (Until then history was in
+    /// memory and reset here — the 2026-09-22 note in docs/PLAN.md.)
+    ///
+    /// A missing strokes or history file is the normal empty state; a corrupt
+    /// or future-format one is logged and treated as empty — the shot must
+    /// still open (the next write replaces it).
     public func loadActiveEditState() async {
-        // A shot switch is the undo/redo boundary a user asked for by name:
-        // "undo cho tới khi ảnh vừa được import vào" — history starts over
-        // for whichever photo is open now, not bleeding in from the last one.
-        undoStack.removeAll()
-        redoStack.removeAll()
+        history = ShotHistory()
+        activeStrokes = []
         guard let shot = activeShot else {
             activeEditState = EditState()
             lastSavedEditState = nil
             live?.update(editState: activeEditState)
+            live?.setManualMaskStrokes([])
             return
         }
         let store = self.store
         let id = shot.id
-        do {
-            activeEditState = try await Task.detached { try store.loadEditState(for: id) }.value
-        } catch {
+        // Anything still queued for this shot (a stroke written a moment ago)
+        // must land before it is read back.
+        await flushPendingWrites()
+        let loaded = await Task.detached {
+            () -> (Result<EditState, any Error>, Result<[ManualMaskStroke], any Error>, Result<ShotHistory, any Error>) in
+            (
+                Result { try store.loadEditState(for: id) },
+                Result { try store.loadManualMaskStrokes(for: id) },
+                Result { try store.loadShotHistory(for: id) }
+            )
+        }.value
+        // The selection may have moved again while that ran.
+        guard activeShot?.id == id else { return }
+        switch loaded.0 {
+        case .success(let state): activeEditState = state
+        case .failure(let error):
             activeEditState = EditState()
             lastErrorMessage = "Could not read edits for \(shot.originalFileName): \(error)"
         }
+        switch loaded.1 {
+        case .success(let strokes): activeStrokes = strokes
+        case .failure(let error):
+            Self.log.error(
+                "strokes for \(id.rawValue, privacy: .public) unreadable, opening without: \(String(describing: error), privacy: .public)")
+        }
+        switch loaded.2 {
+        case .success(let history): self.history = history
+        case .failure(let error):
+            Self.log.error(
+                "history for \(id.rawValue, privacy: .public) unreadable, starting empty: \(String(describing: error), privacy: .public)")
+        }
         lastSavedEditState = activeEditState
         live?.update(editState: activeEditState)
+        live?.setManualMaskStrokes(activeStrokes)
     }
 
     public func dismissError() { lastErrorMessage = nil }

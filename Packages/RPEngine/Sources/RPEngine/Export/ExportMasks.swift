@@ -15,12 +15,24 @@ import RPCore
 /// | canvas field                | request slot                | read by                    |
 /// |-----------------------------|-----------------------------|----------------------------|
 /// | `manualMask` (brush)        | `gateMasks` (appended last) | every gated node           |
+///
+/// ## The brush travels as strokes, not pixels (2026-09-23)
+///
+/// ``brushStrokes`` is the shot's stroke list as the project stores it
+/// (`RPCore.ManualMaskStroke`, normalised to the frame), and the renderer
+/// **rasterises it at the render's own resolution** — the same splat kernel the
+/// canvas paints with, at 6000×4000 instead of 2048×1365. An earlier version of
+/// this type carried the preview-sized coverage and let the export upsample it,
+/// which softened every brush edge by the preview-to-export ratio (~3× at
+/// 24 MP). The subject and body masks below are still preview-sized rasters,
+/// because they *are* derived rasters (Vision / a classifier) with no finer
+/// form to redraw from.
 /// | `subjectMask` → gate        | `gateMasks` ("Khoá nền")    | every gated node           |
 /// | `bodySkinMask`              | `bodySkinMask`              | ``SkinRenderNode``         |
 ///
 /// ## Coordinates — the same discipline as `faces` + `faceReferenceSize`
 ///
-/// Every mask here is a ``RenderMask`` whose `maskToImage` maps into an image
+/// Every *raster* mask here (subject, body) is a ``RenderMask`` whose `maskToImage` maps into an image
 /// of ``referenceSize`` pixels — normally the 2048 px preview the canvas
 /// decoded, because that is where all three were built. The renderer maps them
 /// onto whatever it actually renders at with ``scaled(to:)``; the caller never
@@ -48,12 +60,16 @@ import RPCore
 /// exact calls the canvas makes — so the file and the canvas agree on *whether*
 /// a mask applies as well as on its pixels.
 public struct ExportMasks: Sendable, Equatable {
-    /// Pixel size of the image the masks' `maskToImage` maps into.
+    /// Pixel size of the image the raster masks' `maskToImage` maps into.
+    /// Irrelevant to ``brushStrokes``, which are normalised to the frame.
     public var referenceSize: CGSize
-    /// The hand-painted coverage (docs/ADR-0019), or `nil` when nothing is
-    /// painted. **`nil`, never all-zero**: an empty gate would switch every
-    /// mask-driven slider off (ADR-0019 §5).
-    public var manualMask: RenderMask?
+    /// The shot's hand-painted strokes (docs/ADR-0019), oldest first, or empty
+    /// when nothing is painted. **Empty means no gate, never an all-zero
+    /// gate**: an empty gate would switch every mask-driven slider off
+    /// (ADR-0019 §5). A non-empty list that erased everything is still a gate —
+    /// the canvas treats it the same way (`ManualMaskSession.isEmpty` is about
+    /// strokes, not pixels).
+    public var brushStrokes: [ManualMaskStroke]
     /// The person-segmentation mask (docs/ADR-0018), or `nil` when no person was
     /// found or nothing asked for one.
     public var subjectMask: RenderMask?
@@ -62,12 +78,12 @@ public struct ExportMasks: Sendable, Equatable {
 
     public init(
         referenceSize: CGSize,
-        manualMask: RenderMask? = nil,
+        brushStrokes: [ManualMaskStroke] = [],
         subjectMask: RenderMask? = nil,
         bodySkinMask: RenderMask? = nil
     ) {
         self.referenceSize = referenceSize
-        self.manualMask = manualMask
+        self.brushStrokes = brushStrokes
         self.subjectMask = subjectMask
         self.bodySkinMask = bodySkinMask
     }
@@ -75,7 +91,10 @@ public struct ExportMasks: Sendable, Equatable {
     /// No masks at all — the pre-2026-09-23 export.
     public static let none = ExportMasks(referenceSize: .zero)
 
-    public var isEmpty: Bool { manualMask == nil && subjectMask == nil && bodySkinMask == nil }
+    public var isEmpty: Bool { brushStrokes.isEmpty && !hasRasterMasks }
+
+    /// `true` when a mask needs ``referenceSize`` to be placed.
+    public var hasRasterMasks: Bool { subjectMask != nil || bodySkinMask != nil }
 
     /// Tolerance of the aspect check, in **reference** pixels: rounding a
     /// 6000×4000 frame to a 2048 px preview moves an edge by at most half a
@@ -88,8 +107,11 @@ public struct ExportMasks: Sendable, Equatable {
     /// Only the transforms move — the coverage bytes are not resampled, for the
     /// reason ``RenderMask/scaled(by:)`` gives: the sampling happens once, on
     /// the GPU, with the bilinear filter every mask consumer already uses.
+    ///
+    /// ``brushStrokes`` pass through untouched — they are normalised, so they
+    /// need no transform and no reference size.
     public func scaled(to renderSize: CGSize) throws -> ExportMasks {
-        guard !isEmpty else { return self }
+        guard hasRasterMasks else { return self }
         guard referenceSize.width > 0, referenceSize.height > 0 else {
             throw ExportMaskError.missingReferenceSize
         }
@@ -114,42 +136,9 @@ public struct ExportMasks: Sendable, Equatable {
         }
         return ExportMasks(
             referenceSize: renderSize,
-            manualMask: map(manualMask),
+            brushStrokes: brushStrokes,
             subjectMask: map(subjectMask),
             bodySkinMask: map(bodySkinMask))
-    }
-
-    /// A saved brush mask (`masks/<shot id>/<mask id>.png`, docs/ADR-0019 §8)
-    /// as a ``RenderMask`` in its own pixels.
-    ///
-    /// The PNG is painted on the preview and covers the whole frame, so its own
-    /// size *is* its reference size: pair it with `referenceSize = the PNG's
-    /// size`, or map it onto another reference with ``RenderMask/wholeFrame(_:onto:)``.
-    ///
-    /// A PNG whose pixels are all zero is still a mask, not "no mask": the
-    /// canvas treats a session with strokes as a gate even when those strokes
-    /// erased everything (`ManualMaskSession.isEmpty` is about *history*, not
-    /// pixels), and the file has to agree with the canvas. "No mask" is the PNG
-    /// being absent, which is what the app writes when the session is empty.
-    public static func manualMask(fromPNG data: Data) throws -> RenderMask {
-        let decoded = try ManualMaskImage.decode(pngData: data)
-        return RenderMask(
-            width: decoded.width, height: decoded.height, values: decoded.values,
-            maskToImage: .identity)
-    }
-}
-
-extension RenderMask {
-    /// A whole-frame mask in its own pixels, stretched per axis onto an image of
-    /// `size` pixels — for a saved brush mask whose PNG is not exactly the size
-    /// of the preview it is exported against.
-    public static func wholeFrame(_ mask: RenderMask, onto size: CGSize) -> RenderMask {
-        guard mask.width > 0, mask.height > 0 else { return mask }
-        return RenderMask(
-            width: mask.width, height: mask.height, values: mask.values,
-            maskToImage: CGAffineTransform(
-                scaleX: size.width / CGFloat(mask.width),
-                y: size.height / CGFloat(mask.height)))
     }
 }
 
@@ -188,6 +177,8 @@ final class ExportMaskResolver: @unchecked Sendable {
         var bodySkinMask: RenderMask?
         /// Which masks actually reached the request, for the export's notes.
         var applied: [String] = []
+        /// Wall-clock ms of rasterising the brush strokes at render size.
+        var brushRasterMilliseconds: Double?
     }
 
     /// - Parameter masks: already mapped onto the render size (``ExportMasks/scaled(to:)``).
@@ -225,10 +216,17 @@ final class ExportMaskResolver: @unchecked Sendable {
         // Brush last, after the subject gate — the canvas's order. The gates
         // multiply, so the order does not change a pixel, but the same order
         // keeps a side-by-side diff of the two request builders trivial.
-        if RPEngineFeatureFlags.manualMask, let manual = masks.manualMask {
-            let texture = try Self.upload(manual, context: context)
-            resolved.gateMasks.append(
-                TextureGateMask(texture: texture, maskToImage: manual.maskToImage))
+        //
+        // Rasterised here, at the render's own size, from the strokes — not
+        // upsampled from the preview (see the type's note). The coverage is
+        // identity-mapped because it *is* at render size.
+        if RPEngineFeatureFlags.manualMask, !masks.brushStrokes.isEmpty {
+            let started = DispatchTime.now().uptimeNanoseconds
+            let coverage = try ManualMaskSession.rasterize(
+                masks.brushStrokes, width: width, height: height, context: context)
+            resolved.brushRasterMilliseconds =
+                Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+            resolved.gateMasks.append(coverage)
             resolved.applied.append("manualMask")
         }
         return resolved
@@ -249,37 +247,5 @@ final class ExportMaskResolver: @unchecked Sendable {
         let created = try BackgroundLockMaskSource(context: context)
         subjectSource = created
         return created
-    }
-
-    /// The brush coverage as an `r8Unorm` texture at **its own** size (the
-    /// preview's), sampled bilinearly through `maskToImage` by
-    /// `rp_manual_mask_modulate` — the same sampler the canvas uses, so the
-    /// export sees the canvas's mask upsampled rather than a re-painted one.
-    ///
-    /// Private storage via a staging blit, the route `ManualMaskCoverage.upload`
-    /// takes, so it works on every Mac and iPhone GPU.
-    static func upload(_ mask: RenderMask, context: MetalContext) throws -> any MTLTexture {
-        let texture = try SpikeTextureIO.makeTexture(
-            width: mask.width, height: mask.height, device: context.device,
-            pixelFormat: .r8Unorm, usage: [.shaderRead])
-        guard
-            let staging = mask.values.withUnsafeBytes({
-                context.device.makeBuffer(
-                    bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
-            })
-        else { throw RenderGraphError.cannotAllocate(bytes: mask.values.count) }
-        guard let commandBuffer = context.commandQueue.makeCommandBuffer(),
-            let blit = commandBuffer.makeBlitCommandEncoder()
-        else { throw MetalContext.Failure.noCommandQueue }
-        blit.copy(
-            from: staging, sourceOffset: 0, sourceBytesPerRow: mask.width,
-            sourceBytesPerImage: mask.width * mask.height,
-            sourceSize: MTLSize(width: mask.width, height: mask.height, depth: 1),
-            to: texture, destinationSlice: 0, destinationLevel: 0,
-            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-        blit.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        return texture
     }
 }

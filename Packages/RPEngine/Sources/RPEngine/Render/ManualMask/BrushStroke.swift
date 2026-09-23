@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import RPCore
 
 /// What a brush stroke does to the mask.
 ///
@@ -45,10 +46,11 @@ public struct BrushPoint: Sendable, Equatable, Hashable, Codable {
 /// which is what makes undo "replay the list from the start" rather than "keep a
 /// texture snapshot per stroke" (docs/PLAN.md §6.1).
 ///
-/// `Codable` so a future version can persist the stroke list next to the PNG if
-/// the need ever appears. Nothing writes it today, and the plan does not ask for
-/// it: the PNG is the document, the strokes are this session's undo history —
-/// the same trade every raster editor makes.
+/// **Since 2026-09-23 the strokes are the document** (docs/ADR-0019 addendum,
+/// docs/ADR-0025): the project stores every stroke as an `RPCore.ManualMaskStroke`
+/// — this value normalised to the image (``normalized(imageSize:)``) — and the
+/// coverage is re-rasterised from them at whatever size is needed
+/// (``init(_:imageSize:)``). No PNG is written.
 public struct BrushStroke: Sendable, Equatable, Hashable, Codable {
     /// Radius in **mask pixels** at full pressure.
     public var radius: Double
@@ -172,5 +174,65 @@ public struct BrushStamp: Sendable, Equatable, Hashable {
     public init(center: CGPoint, radius: Double) {
         self.center = center
         self.radius = radius
+    }
+}
+
+// MARK: - The stored form (RPCore.ManualMaskStroke)
+
+extension BrushMode {
+    init(_ mode: ManualMaskStroke.Mode) {
+        switch mode {
+        case .add: self = .add
+        case .subtract: self = .subtract
+        }
+    }
+
+    var stored: ManualMaskStroke.Mode {
+        switch self {
+        case .add: .add
+        case .subtract: .subtract
+        }
+    }
+}
+
+extension BrushStroke {
+    /// This stroke — in mask pixels of an image of `imageSize` pixels — as the
+    /// resolution-free form the project stores: points as fractions of the width
+    /// and height, the radius as a fraction of the long edge (see
+    /// `RPCore.ManualMaskStroke` for why each).
+    public func normalized(imageSize: CGSize) -> ManualMaskStroke {
+        let width = max(Double(imageSize.width), 1)
+        let height = max(Double(imageSize.height), 1)
+        let longEdge = max(width, height)
+        return ManualMaskStroke(
+            radius: radius / longEdge, hardness: hardness, flow: flow, mode: mode.stored,
+            points: points.map {
+                ManualMaskStroke.Point(
+                    x: Double($0.location.x) / width, y: Double($0.location.y) / height,
+                    pressure: $0.pressure)
+            })
+    }
+
+    /// A stored stroke replayed onto an image of `imageSize` pixels.
+    ///
+    /// The inverse of ``normalized(imageSize:)``. Round-tripping at the same
+    /// size gives back the same pixels (`x / w * w` is exact to well below the
+    /// `Float` the splat kernel reads — asserted by
+    /// `ManualMaskStrokeStorageTests`), and at another size the stroke scales
+    /// with the picture: every point per axis, the radius with the long edge —
+    /// so the stamp *count* is the same at 2048 px and at 6000 px (spacing is a
+    /// fraction of the radius) and the export is the canvas's mask drawn
+    /// sharper, not a different mask.
+    public init(_ stored: ManualMaskStroke, imageSize: CGSize) {
+        let width = Double(imageSize.width)
+        let height = Double(imageSize.height)
+        let longEdge = max(width, height)
+        self.init(
+            radius: stored.radius * longEdge, hardness: stored.hardness, flow: stored.flow,
+            mode: BrushMode(stored.mode),
+            points: stored.points.map {
+                BrushPoint(
+                    location: CGPoint(x: $0.x * width, y: $0.y * height), pressure: $0.pressure)
+            })
     }
 }

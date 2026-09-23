@@ -113,6 +113,28 @@ public struct FilmstripSelection: Hashable, Sendable {
         return true
     }
 
+    /// Puts back a selection saved in the project's `session.json`
+    /// (docs/ADR-0025). Ids no longer in `shots` are dropped; if the saved
+    /// active shot is gone, the first surviving selected shot becomes active,
+    /// and if nothing survives this is ``synchronize(with:)``'s fresh-open
+    /// state. The invariant holds either way: the active shot is selected.
+    public mutating func restore(
+        activeShotID: ShotID?, selectedShotIDs: Set<ShotID>, in shots: [Shot]
+    ) {
+        let live = Set(shots.map(\.id))
+        let batch = selectedShotIDs.intersection(live)
+        let active =
+            activeShotID.flatMap { live.contains($0) ? $0 : nil }
+            ?? shots.first(where: { batch.contains($0.id) })?.id
+        guard let active, let index = shots.firstIndex(where: { $0.id == active }) else {
+            synchronize(with: shots)
+            return
+        }
+        setActive(active, index: index)
+        self.selectedShotIDs = batch.union([active])
+        anchorShotID = active
+    }
+
     public mutating func select(index: Int, in shots: [Shot]) {
         guard shots.indices.contains(index) else { return }
         select(shots[index].id, in: shots)
