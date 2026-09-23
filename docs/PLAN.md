@@ -1158,6 +1158,34 @@ khi áp công thức mặc định, 1 thanh trượt riêng scale toàn bộ com
 — kỹ thuật là nhân hệ số scale [0,1] vào từng giá trị trong `Preset` trước khi `applying`, không phải slider
 mới trong `EditState` (không lưu riêng, tính lại mỗi lần user kéo). Effort kỹ thuật ~2-3 ngày.
 
+**Cập nhật 2026-09-23 — 6.5 xong (macOS).** Rail "Tự động" đã mở khoá (`RailPresentation.autoRetouch`),
+panel riêng chiếm cùng chỗ với panel slider (Mac: `SliderPanelView`; iPhone: tool sheet), giống cách thư viện
+Preset chiếm chỗ. Công thức map vào đúng key thật, **cả 4 đều đã có sẵn slider + engine**, không thêm render
+node nào: Mịn da 30 → `skin.smooth`, Đều màu da 20 → `skin.evenTone`, Sáng mắt 15 → `eyesTeeth.eyeBrighten`,
+Auto D&B 40 → `color.autoDodgeBurn` ("Dodge & Burn tự động" trong panel Màu, 0…100 một chiều). Code:
+`RPCore/AutoRetouch.swift` (công thức + `EditState.applyingAutoRetouch(strength:)` = `Preset` scale sẵn →
+`applying(_:mode: .merge)`), `RPUI/Model/EditorModel+AutoRetouch.swift`, `RPUI/Views/AutoRetouchView.swift`.
+Quyết định:
+- **Phạm vi theo key, không theo section**: chỉ đúng 4 key của công thức bị ghi đè; mọi slider khác user đã
+  chỉnh (kể cả key khác cùng section như Khử đỏ, Phơi sáng, và toàn bộ nhóm Mặt) giữ nguyên. Khác thư viện
+  Preset (thay nguyên section) vì 4 key không phải một "look" trọn vẹn — áp Tự động mà xoá Phơi sáng của user
+  thì vô lý. Trong 4 key đó công thức là sự thật: cường độ `s` → mỗi key = giá trị × `s`, kể cả `s = 0` (key
+  bị xoá, về 0); giá trị cũ của user ở 4 key đó lấy lại bằng Hoàn tác.
+- **Cường độ tổng không lưu ở đâu**: đọc ngược từ 4 key (`AutoRetouch.strength(in:)`), nên undo/redo/đổi ảnh
+  tự đúng vị trí thanh trượt. Nếu user chỉnh tay 1 trong 4 key sau khi áp, panel báo "Đã chỉnh tay" và thanh
+  nằm ở hệ số gần nhất; kéo lại sẽ đưa cả 4 về công thức. Không dùng lại phiên blend của panel Preset
+  (`PresetIntensityPreview`) vì phiên đó blend từ baseline theo section và phải giữ baseline; ở đây là hàm
+  thuần của vị trí thanh trượt — chỉ dùng chung hợp đồng: kéo = preview RAM/GPU, thả = 1 lần ghi = 1 bước undo.
+- **Undo**: "Áp dụng tự động" = 1 bước; mỗi lần thả thanh Cường độ tổng = 1 bước (lịch sử per-shot, ADR-0025).
+- **"Áp cho N ảnh đã chọn"** có luôn (rẻ): hiện khi filmstrip chọn > 1 ảnh, cùng đường ghi với Dán thiết lập
+  (ảnh đang mở qua `commitEditState`, ảnh khác qua `saveEditStateRecordingHistory` → mỗi ảnh 1 bước undo riêng),
+  áp ở cường độ đang hiển thị (0 thì dùng 100).
+Kiểm chứng: `swift test` RPCore (6 test mới) + RPUI 315/315 pass; click-through app macOS Debug thật trên ảnh
+chân dung 3Q6A0510.jpg: mở rail → Áp dụng (canvas đổi, 4 key ghi đúng, key Màu khác giữ nguyên) → kéo về 50
+(1 bước undo/lần thả) → Hoàn tác ×4 về đúng JSON trước khi áp (canvas lệch 0 px) → Làm lại ×4 → Xuất JPEG khác
+bản xuất trước khi áp (mean |Δ| ≈ 4/255). **Chưa chạy trên iPhone thật** — chiều cao 400 pt của panel trong
+tool sheet là số tạm, cần nhìn trên máy.
+
 **6.6 — Tự động v2: cá nhân hoá theo khuôn mặt đã nhận diện (mới, đề xuất 2026-09-11)**
 
 Ý của user: nếu khuôn mặt trong ảnh đang sửa **trùng với một khuôn mặt đã từng được chỉnh trước đó** (nhận

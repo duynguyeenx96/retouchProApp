@@ -225,6 +225,14 @@ struct PhoneEditorView: View {
                     model: model, library: library,
                     dismiss: { chrome.presetLibrary = nil })
                 .frame(height: 420)
+            } else if chrome.isShowingAutoRetouch {
+                // "Tự động" (docs/PLAN.md §6.5) takes the same slot as the
+                // preset library. Height is a first pass like the library's:
+                // header + four recipe rows + button + one slider row.
+                AutoRetouchView(
+                    model: model, thumbSize: RPTheme.Metrics.phoneSliderThumb,
+                    dismiss: { chrome.isShowingAutoRetouch = false })
+                .frame(height: 400)
             } else {
                 // The second level, when the open panel belongs to a body part:
                 // "Mặt" → Hình dáng mặt · Mịn da · Kiềm dầu · Mắt · Răng · … It

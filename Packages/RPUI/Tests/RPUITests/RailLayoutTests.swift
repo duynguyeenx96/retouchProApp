@@ -97,7 +97,10 @@ struct RailLayoutTests {
     /// preset library (docs/PLAN.md §Phase 3, *"dùng lại UI rail 'Mẫu' đã khoá
     /// … làm màn preset"*). It is unlocked but has no `sectionKey`, which is
     /// why the two rules below are stated separately.
-    private static let screenLabels: Set<String> = ["Preset"]
+    ///
+    /// "Tự động" joined it on 2026-09-23 (docs/PLAN.md §6.5): a one-tap recipe
+    /// panel, also with no `sectionKey`.
+    private static let screenLabels: Set<String> = ["Preset", "Tự động"]
 
     /// Every label in the tree, parents included.
     private static var everyLabel: [String] {
@@ -291,35 +294,37 @@ struct RailLayoutTests {
             RailLayout.activeItems.map(\.label) == RailLayout.leafItems.map(\.label).filter {
                 Self.activeLabels.contains($0) || Self.screenLabels.contains($0)
             } + ["Màu"])
-        #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Preset"])
+        #expect(
+            RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label)
+                == ["Preset", "Tự động"])
         }
     }
 
-    /// Nine locked leaves with the brush switched off, for four different
-    /// reasons: five with no section at all, Trang điểm and Tóc whose sections
+    /// Eight locked leaves with the brush switched off, for four different
+    /// reasons: four with no section at all, Trang điểm and Tóc whose sections
     /// exist but are themselves Phase 5, "Khoá nền", which has a finished
     /// engine and is held back on purpose, and "Cọ mask", which is locked only
     /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
     /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
-    /// in Phase 3; "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
+    /// in Phase 3; "Tự động" was unlocked 2026-09-23 (§6.5); "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
     /// left this list on 2026-09-21** when they got panels — their own flags
     /// being off disables the controls inside those panels instead of locking
     /// the items.)
     @MainActor
-    @Test("The other nine leaves are locked, for the four different reasons")
+    @Test("The other eight leaves are locked, for the four different reasons")
     func lockedItems() async throws {
         try await Self.withManualMask(false) {
         let locked = RailLayout.leafItems.filter(\.isLocked)
-        #expect(locked.count == 9)
+        #expect(locked.count == 8)
         #expect(
             locked.map(\.label) == [
-                "Căng mọng", "Mụn", "Tự động",
+                "Căng mọng", "Mụn",
                 "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền", "Cọ mask",
             ])
 
-        // No section behind it at all and no specific reason: five of the nine.
+        // No section behind it at all and no specific reason: four of the eight.
         let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
-        #expect(unbacked.count == 5)
+        #expect(unbacked.count == 4)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
         // The two Phase 5 groups keep the panel's own wording.
@@ -377,7 +382,7 @@ struct RailLayoutTests {
             uniqueKeysWithValues: RailLayout.leafItems.map { ($0.label, $0) })
         chrome.activeGroupKey = SliderPanelLayout.PanelKey.smooth
 
-        for label in ["Tự động", "Thu gọn", "Trang điểm", "Tóc", "Khoá nền", "Mụn"] {
+        for label in ["Thu gọn", "Trang điểm", "Tóc", "Khoá nền", "Mụn"] {
             chrome.selectRailItem(try #require(byLabel[label]))
             #expect(
                 chrome.activeGroupKey == SliderPanelLayout.PanelKey.smooth,
@@ -780,11 +785,11 @@ struct RailLayoutTests {
         #expect(templates.presentation == .presetLibrary(.templates))
         #expect(templates.sectionKey == nil)
         #expect(!templates.isLocked)
-        // Two presentations now: the library, and the brush mode (§6.1). They
-        // are the two rail entries that are not a slider group.
+        // Three presentations now: the library, the auto panel (§6.5) and the
+        // brush mode (§6.1) — the rail entries that are not a slider group.
         #expect(
             RailLayout.leafItems.filter { $0.presentation != nil }.map(\.id)
-                == ["templates", "manualMask"])
+                == ["templates", "auto", "manualMask"])
 
         let chrome = EditorChrome()
         chrome.activeGroupKey = EditState.SectionKey.face

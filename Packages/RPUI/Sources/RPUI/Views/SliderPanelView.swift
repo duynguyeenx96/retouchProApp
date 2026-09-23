@@ -38,6 +38,10 @@ struct SliderPanelView: View {
                 PresetLibraryView(
                     model: model, library: library,
                     dismiss: { chrome.presetLibrary = nil })
+            } else if chrome.isShowingAutoRetouch {
+                // "Tự động" (docs/PLAN.md §6.5) takes the same slot.
+                AutoRetouchView(
+                    model: model, dismiss: { chrome.isShowingAutoRetouch = false })
             } else {
                 slidersPanel
             }
@@ -135,6 +139,7 @@ struct SliderPanelView: View {
             // two must agree on "exactly one thing is ever open".
             Button {
                 chrome.isBrushing = false
+                chrome.isShowingAutoRetouch = false
                 chrome.presetLibrary = .templates
             } label: {
                 Text("Lưu preset")

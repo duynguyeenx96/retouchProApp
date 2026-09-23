@@ -23,7 +23,7 @@ import RPEngine
 ///   one door per thing. "Cọ mask thủ công" (below) arrived after the hierarchy
 ///   did and is not a body part's sub-feature at all — it stays a top-level leaf.
 /// * **Most entries have nothing behind them.** ``sectionKey`` is `nil` for the
-///   tools with no engine slider at all (Tự động, Thu gọn, Săn chắc,
+///   tools with no engine slider at all (Thu gọn, Săn chắc,
 ///   Căng mọng, Mụn, Khoá nền — deferred to Phase 5/6, see
 ///   `docs/PLAN.md` §Phase 2 "Turn 3 canvas"). They are drawn dimmed and inert
 ///   rather than hidden, the same rule the locked slider groups already follow
@@ -64,11 +64,12 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     public let sectionKey: String?
     /// The screen — or the mode — this item opens instead of a slider group.
     ///
-    /// Two items have one, and neither can be expressed as a ``sectionKey``
-    /// because neither is a set of sliders: "Mẫu" is a **library** (Phase 3,
-    /// docs/PLAN.md §Phase 3 *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset"*)
-    /// and "Cọ mask" is a **mode** that changes what a drag on the canvas does
-    /// (docs/PLAN.md §6.1). An item with a presentation is unlocked as long as
+    /// Three items have one, and none can be expressed as a ``sectionKey``
+    /// because none is a set of sliders: "Mẫu" is a **library** (Phase 3,
+    /// docs/PLAN.md §Phase 3 *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset"*),
+    /// "Cọ mask" is a **mode** that changes what a drag on the canvas does
+    /// (docs/PLAN.md §6.1), and "Tự động" is a **one-tap recipe** over four
+    /// sliders that live in three other panels (docs/PLAN.md §6.5). An item with a presentation is unlocked as long as
     /// the thing behind it is switched on in this build
     /// (``RailPresentation/isAvailable``).
     public let presentation: RailPresentation?
@@ -181,10 +182,9 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
 /// A rail item that opens a **screen or a mode** rather than selecting a slider
 /// group.
 ///
-/// Two cases, and the enum was written for exactly this: the rail items that
+/// Three cases, and the enum was written for exactly this: the rail items that
 /// *do* something rather than *select* something land here instead of growing a
-/// second boolean on ``RailItemDescriptor`` ("Tự động", a one-tap formula, is
-/// the next one, Phase 6.5).
+/// second boolean on ``RailItemDescriptor``.
 public enum RailPresentation: Hashable, Sendable {
     /// The preset library (docs/PLAN.md §Phase 3). The associated value is which
     /// half of it opens — the full template gallery, or the colour-only Looks
@@ -197,6 +197,15 @@ public enum RailPresentation: Hashable, Sendable {
     /// exactly like "Khoá nền" and for the same reason: it narrows what the
     /// other tools do rather than adding a tool of its own.
     case manualMaskBrush
+    /// "Tự động v1" (docs/PLAN.md §6.5): a fixed recipe — Mịn da 30, Đều màu
+    /// da 20, Sáng mắt 15, Dodge & Burn tự động 40 — applied in one tap, plus
+    /// one "Cường độ tổng" slider that scales all four (`RPCore.AutoRetouch`).
+    /// Not a ``RailItemDescriptor/sectionKey``: its four sliders belong to
+    /// three different panels ("Mịn da", "Mắt", "Màu"), and a panel that
+    /// re-listed them would be a second door into each — the exact duplication
+    /// the 2026-09-18 restructuring removed. Takes over the panel slot the way
+    /// the preset library does.
+    case autoRetouch
 
     /// `false` when the feature behind this presentation is switched off in this
     /// build, which makes the item **locked** (dimmed and inert) rather than a
@@ -207,7 +216,7 @@ public enum RailPresentation: Hashable, Sendable {
     /// a case, so an item's lock has to answer the question *now*.
     public var isAvailable: Bool {
         switch self {
-        case .presetLibrary: true
+        case .presetLibrary, .autoRetouch: true
         case .manualMaskBrush: RPEngineFeatureFlags.manualMask
         }
     }
@@ -231,7 +240,7 @@ public enum RailPresentation: Hashable, Sendable {
 /// * **Da** → Mịn da · Kiềm dầu · Sửa da
 /// * **Cơ thể** → Thu gọn · Săn chắc
 /// * everything else stays a top-level leaf, in the relative order it already
-///   had: Mẫu, Tự động, Trang điểm, Tóc, Khoá nền — plus "Cọ mask thủ công",
+///   had: Mẫu, Tự động (unlocked 2026-09-23, §6.5), Trang điểm, Tóc, Khoá nền — plus "Cọ mask thủ công",
 ///   added after the hierarchy landed (docs/PLAN.md §6.1, docs/ADR-0019).
 ///
 /// **"Da" is its own parent, not a sub-feature of "Mặt"** (user's correction,
@@ -413,9 +422,13 @@ public enum RailLayout {
         RailItemDescriptor(
             id: "templates", label: "Preset", systemImage: "square.stack",
             presentation: .presetLibrary(.templates)),
-        // One-tap auto retouch: a fixed preset formula, not a new node — the
-        // formula has to be agreed first (docs/PLAN.md §Phase 6).
-        RailItemDescriptor(id: "auto", label: "Tự động", systemImage: "wand.and.stars"),
+        // One-tap auto retouch — **unlocked 2026-09-23** (docs/PLAN.md §6.5).
+        // A fixed preset formula over existing sliders, not a new node, so it
+        // opens a panel of its own (``RailPresentation/autoRetouch``) rather
+        // than pointing at a slider section.
+        RailItemDescriptor(
+            id: "auto", label: "Tự động", systemImage: "wand.and.stars",
+            presentation: .autoRetouch),
         RailItemDescriptor(
             id: "makeup", label: "Trang điểm", systemImage: "paintbrush.pointed",
             sectionKey: EditState.SectionKey.makeup),

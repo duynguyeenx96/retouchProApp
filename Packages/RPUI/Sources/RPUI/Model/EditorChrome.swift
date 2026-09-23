@@ -144,6 +144,12 @@ public final class EditorChrome {
     /// paint for a different group now, arm the brush again after switching —
     /// see ``selectRailItem(_:)``.
     public var isBrushing = false
+    /// `true` while the "Tự động" panel (docs/PLAN.md §6.5,
+    /// ``RailPresentation/autoRetouch``) has the panel slot. Pure chrome, like
+    /// ``presetLibrary``: the panel writes through ``EditorModel``, and closing
+    /// it changes nothing on disk. Mutually exclusive with the brush and the
+    /// preset library — see ``selectRailItem(_:)``.
+    public var isShowingAutoRetouch = false
     /// Size / hardness / flow / add-or-erase. Chrome, not document —
     /// ``ManualMaskBrushSettings`` says why at length.
     public var brush = ManualMaskBrushSettings()
@@ -212,15 +218,23 @@ public final class EditorChrome {
             // user reported 2026-09-22 — brush *and* "Màu" both active) read as
             // "which one is actually on?", so at most one mode is ever live.
             isBrushing = false
+            isShowingAutoRetouch = false
             presetLibrary = kind
+        case .autoRetouch:
+            // Same exclusivity as the preset library: one panel-slot owner.
+            isBrushing = false
+            presetLibrary = nil
+            isShowingAutoRetouch = true
         case .manualMaskBrush:
             // A second tap puts the brush away, the same "tap it again to undo
             // it" rule the face chips and the filmstrip's ratings follow.
             presetLibrary = nil
+            isShowingAutoRetouch = false
             isBrushing.toggle()
         case nil:
             isBrushing = false
             presetLibrary = nil
+            isShowingAutoRetouch = false
             if let key = item.sectionKey { selectGroup(key) }
         }
     }
@@ -246,9 +260,11 @@ public final class EditorChrome {
     public func isRailItemActive(_ item: RailItemDescriptor) -> Bool {
         if case .manualMaskBrush = item.presentation { return isBrushing }
         if case .presetLibrary = item.presentation { return presetLibrary != nil }
-        // A slider group cannot be "the open panel" while the brush or the
-        // preset panel has taken the panel slot over — see ``selectRailItem``.
-        guard !isBrushing, presetLibrary == nil else { return false }
+        if case .autoRetouch = item.presentation { return isShowingAutoRetouch }
+        // A slider group cannot be "the open panel" while the brush, the
+        // preset panel or the auto panel has taken the panel slot over — see
+        // ``selectRailItem``.
+        guard !isBrushing, presetLibrary == nil, !isShowingAutoRetouch else { return false }
         return item.opensPanel(activeGroupKey)
     }
 
