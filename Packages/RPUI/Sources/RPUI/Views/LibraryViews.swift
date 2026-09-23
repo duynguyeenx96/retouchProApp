@@ -2,6 +2,10 @@ import RPCore
 import RPEngine
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 /// The "NGUỒN" rows of screen 2c's sidebar.
 ///
 /// Every row is a **real** predicate over `Project.shots`, not a placeholder.
@@ -441,6 +445,16 @@ struct MacLibraryView: View {
     let openInEditor: (Shot) -> Void
 
     @State private var source: LibrarySource = .shoot
+    /// The rubber band while a drag is in flight, in the grid's content space.
+    @State private var marquee: CGRect?
+    /// Photos the band currently touches; drawn as selected, written to the
+    /// model only on release so a drag never reloads a document per frame.
+    @State private var marqueeHits: Set<ShotID> = []
+    /// Where each visible cell sits in the grid's content space.
+    @State private var cellFrames: [ShotID: CGRect] = [:]
+    /// The scroll view's visible height, so a drag can start in the empty space
+    /// under a short grid too, not only between cells.
+    @State private var gridViewportHeight: CGFloat = 0
 
     private var sourceShots: [Shot] {
         source.shots(in: model.project, edited: model.isEdited)
@@ -621,10 +635,26 @@ struct MacLibraryView: View {
                                 RPThumbnailCaption(name: shot.originalFileName, rating: shot.rating)
                             }
                             .overlay {
-                                BatchSelectionBorder(model: model, shotID: shot.id, cornerRadius: 6)
+                                if marquee != nil {
+                                    // While the band is out it alone says what
+                                    // will be selected; the old batch borders
+                                    // would only contradict it.
+                                    if marqueeHits.contains(shot.id) {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .strokeBorder(RPTheme.accent, lineWidth: 2)
+                                    }
+                                } else {
+                                    BatchSelectionBorder(model: model, shotID: shot.id, cornerRadius: 6)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: LibraryCellFramesKey.self,
+                                    value: [shot.id: proxy.frame(in: .named(Self.gridSpace))])
+                            })
                         .help(shot.originalFileName)
                         .simultaneousGesture(
                             TapGesture(count: 2).onEnded { openInEditor(shot) }
@@ -633,7 +663,23 @@ struct MacLibraryView: View {
                     }
                 }
                 .padding(18)
+                .frame(maxWidth: .infinity, minHeight: gridViewportHeight, alignment: .top)
+                .overlay(alignment: .topLeading) {
+                    if let marquee {
+                        Rectangle()
+                            .fill(RPTheme.accent.opacity(0.12))
+                            .overlay(Rectangle().strokeBorder(RPTheme.accent.opacity(0.7), lineWidth: 1))
+                            .frame(width: marquee.width, height: marquee.height)
+                            .offset(x: marquee.minX, y: marquee.minY)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .coordinateSpace(name: Self.gridSpace)
+                .contentShape(Rectangle())
+                .onPreferenceChange(LibraryCellFramesKey.self) { cellFrames = $0 }
+                .simultaneousGesture(marqueeDrag)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { gridViewportHeight = $0 }
             .overlay {
                 if shots.isEmpty {
                     Text(
@@ -648,6 +694,38 @@ struct MacLibraryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RPTheme.canvas)
+    }
+
+    // MARK: Marquee
+
+    static let gridSpace = "libraryGrid"
+
+    /// Drag a rubber band over the grid to select every photo it touches —
+    /// Finder/Lightroom grid behaviour. ⌘-drag adds to the current batch. The
+    /// 6 pt minimum keeps a plain click a click. Only the library grid gets
+    /// this: the editor filmstrip is a one-row strip where a drag scrolls.
+    private var marqueeDrag: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.gridSpace))
+            .onChanged { value in
+                let rect = CGRect(
+                    x: min(value.startLocation.x, value.location.x),
+                    y: min(value.startLocation.y, value.location.y),
+                    width: abs(value.location.x - value.startLocation.x),
+                    height: abs(value.location.y - value.startLocation.y))
+                marquee = rect
+                marqueeHits = Set(cellFrames.filter { $0.value.intersects(rect) }.keys)
+            }
+            .onEnded { _ in
+                let hits = marqueeHits
+                marquee = nil
+                marqueeHits = []
+                #if os(macOS)
+                    let adding = NSEvent.modifierFlags.contains(.command)
+                #else
+                    let adding = false
+                #endif
+                Task { await model.selectShots(hits, adding: adding) }
+            }
     }
 
     // MARK: Info panel
@@ -721,5 +799,13 @@ struct MacLibraryView: View {
             Rectangle().fill(Color.white.opacity(0.05)).frame(height: 1)
         }
         .help(help ?? "")
+    }
+}
+
+/// Cell frames of the Mac library grid, for the marquee's hit test.
+private struct LibraryCellFramesKey: PreferenceKey {
+    static let defaultValue: [ShotID: CGRect] = [:]
+    static func reduce(value: inout [ShotID: CGRect], nextValue: () -> [ShotID: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }

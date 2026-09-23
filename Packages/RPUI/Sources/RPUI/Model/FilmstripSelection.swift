@@ -90,6 +90,29 @@ public struct FilmstripSelection: Hashable, Sendable {
         anchorShotID = id
     }
 
+    /// A marquee drag over the library grid: the batch becomes exactly `ids`
+    /// (or `ids` added to what was there, for a ⌘-drag). The open photo stays
+    /// open when it is still in the batch; otherwise the first hit in project
+    /// order opens, so the canvas always shows something that is selected.
+    /// An empty drag with no ⌘ is a no-op, not "select nothing" — this app has
+    /// no "no photo open" state (see ``toggle(_:in:)``).
+    @discardableResult
+    public mutating func selectSet(_ ids: Set<ShotID>, adding: Bool, in shots: [Shot]) -> Bool {
+        let live = Set(shots.map(\.id))
+        let hits = ids.intersection(live)
+        let batch = adding ? selectedShotIDs.union(hits) : hits
+        guard !batch.isEmpty else { return false }
+        if let activeShotID, batch.contains(activeShotID) {
+            selectedShotIDs = batch
+            return true
+        }
+        guard let index = shots.firstIndex(where: { batch.contains($0.id) }) else { return false }
+        setActive(shots[index].id, index: index)
+        selectedShotIDs = batch
+        anchorShotID = shots[index].id
+        return true
+    }
+
     public mutating func select(index: Int, in shots: [Shot]) {
         guard shots.indices.contains(index) else { return }
         select(shots[index].id, in: shots)

@@ -62,6 +62,12 @@ extension EditorModel {
         await changeSelection { selection in selection.selectRange(to: shotID, in: shots) }
     }
 
+    /// End of a marquee drag over the library grid.
+    public func selectShots(_ ids: Set<ShotID>, adding: Bool) async {
+        let shots = project.shots
+        await changeSelection { selection in selection.selectSet(ids, adding: adding, in: shots) }
+    }
+
     public func selectAllShots() async {
         let shots = project.shots
         await changeSelection { selection in selection.selectAll(in: shots) }

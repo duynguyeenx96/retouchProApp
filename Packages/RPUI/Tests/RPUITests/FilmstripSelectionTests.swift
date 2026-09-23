@@ -23,6 +23,40 @@ struct FilmstripSelectionTests {
         #expect(selection.activeShotID == ShotID("shot-0"))
     }
 
+    @Test("A marquee keeps the open photo open when it is inside the band")
+    func marqueeKeepsActive() {
+        let shots = Self.shots(5)
+        var selection = FilmstripSelection()
+        selection.synchronize(with: shots)
+        selection.select(shots[2].id, in: shots)
+        selection.selectSet([shots[1].id, shots[2].id, shots[3].id], adding: false, in: shots)
+        #expect(selection.activeShotID == shots[2].id)
+        #expect(selection.selectedShotIDs == [shots[1].id, shots[2].id, shots[3].id])
+    }
+
+    @Test("A marquee away from the open photo opens its first hit, in project order")
+    func marqueeMovesActive() {
+        let shots = Self.shots(5)
+        var selection = FilmstripSelection()
+        selection.synchronize(with: shots)
+        selection.selectSet([shots[4].id, shots[3].id], adding: false, in: shots)
+        #expect(selection.activeShotID == shots[3].id)
+        #expect(selection.selectedShotIDs == [shots[3].id, shots[4].id])
+    }
+
+    @Test("⌘-marquee adds to the batch; an empty plain marquee changes nothing")
+    func marqueeAddingAndEmpty() {
+        let shots = Self.shots(5)
+        var selection = FilmstripSelection()
+        selection.synchronize(with: shots)
+        selection.selectSet([shots[3].id], adding: true, in: shots)
+        #expect(selection.selectedShotIDs == [shots[0].id, shots[3].id])
+        #expect(selection.activeShotID == shots[0].id)
+        let changed = selection.selectSet([], adding: false, in: shots)
+        #expect(!changed)
+        #expect(selection.selectedShotIDs == [shots[0].id, shots[3].id])
+    }
+
     @Test("An empty project has no selection")
     func emptyProject() {
         var selection = FilmstripSelection()
