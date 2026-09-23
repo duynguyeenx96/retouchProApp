@@ -571,9 +571,21 @@ struct MacLibraryView: View {
                 Text(source.title(project: model.project))
                     .font(RPTheme.text(13, weight: .semibold))
                     .foregroundStyle(RPTheme.textPrimary)
-                Text("\(shots.count) ảnh · \(model.activeShot == nil ? 0 : 1) chọn")
+                Text("\(shots.count) ảnh · \(model.selection.selectedShotIDs.count) chọn")
                     .font(RPTheme.mono(11.5))
                     .foregroundStyle(RPTheme.textTertiary)
+                    .help("⌘-click để chọn thêm từng ảnh, ⇧-click để chọn cả dải")
+                if model.selection.isMultiSelecting {
+                    Button("Bỏ chọn") { Task { await model.collapseSelection() } }
+                        .buttonStyle(.plain)
+                        .font(RPTheme.text(12))
+                        .foregroundStyle(RPTheme.accent)
+                }
+                Button("Chọn tất cả") { Task { await model.selectAllShots() } }
+                    .buttonStyle(.plain)
+                    .font(RPTheme.text(12))
+                    .foregroundStyle(RPTheme.accent)
+                    .disabled(shots.isEmpty)
                 Spacer()
                 RPStarRating(
                     rating: model.activeShot?.rating ?? 0, size: 14,
@@ -596,7 +608,7 @@ struct MacLibraryView: View {
                 ) {
                     ForEach(shots) { shot in
                         Button {
-                            Task { await model.select(shotID: shot.id) }
+                            model.handleShotClick(shot.id)
                         } label: {
                             RPThumbnail(
                                 request: PreviewRequest(
@@ -607,6 +619,9 @@ struct MacLibraryView: View {
                                 formatTag: (ShotDisplay.formatTag(shot), ShotDisplay.isRaw(shot))
                             ) {
                                 RPThumbnailCaption(name: shot.originalFileName, rating: shot.rating)
+                            }
+                            .overlay {
+                                BatchSelectionBorder(model: model, shotID: shot.id, cornerRadius: 6)
                             }
                         }
                         .buttonStyle(.plain)

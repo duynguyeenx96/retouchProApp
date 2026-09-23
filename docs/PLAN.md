@@ -875,6 +875,14 @@ theo GPU memory, thermal-aware" ở trên giờ đã ship; dialog xuất không 
   (2) chiều cao sheet iPhone tăng 430 → 480 pt cho hàng phạm vi, chưa xem trên iPhone thật; (3) gap mask ở trên;
   (4) chưa có ETA/thời gian còn lại trên thẻ tiến trình; (5) test cấp scheme (`xcodebuild test`) vẫn bị chặn bởi
   `RPEngineTests` không build (type-check timeout đã ghi ở mục 2026-09-22).
+- **Sửa cùng ngày sau khi user thử thật báo "không chọn được nhiều ảnh"**: đúng — màn **Thư viện trên Mac** (lưới
+  ảnh, `MacLibraryView`) chưa từng có multi-select (click nào cũng chỉ mở 1 ảnh, dòng đếm ghi cứng "1 chọn"); chỉ
+  filmstrip trong màn Chỉnh sửa có ⌘/⇧-click. Lần báo "xong" trước là sai vì chỉ chạy qua `RP_EXPORT_SELFTEST=batch`
+  (xuất cả project), không ai đi đường chọn ảnh → Xuất trên UI. Đã sửa: lưới Thư viện dùng chung 1 handler click với
+  filmstrip (`EditorModel.handleShotClick`), đếm "N chọn" thật + "Chọn tất cả"/"Bỏ chọn"; viền ảnh chọn thêm rõ hơn
+  (0.8 + dấu tick, bản 0.45 cũ gần như không thấy); nút "Xuất" trên toolbar hiện "Xuất N ảnh" và mở dialog ở phạm vi
+  "Đã chọn". **Đã tự click kiểm tra trên app macOS thật** (cliclick): Thư viện ⌘-click → "2 chọn" → Xuất → dialog
+  "Đã chọn (2)" → "Đã xuất 2/2 ảnh", 2 file JPG có trên đĩa; filmstrip ⌘-click → "3 chọn".
 
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 

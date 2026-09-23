@@ -199,7 +199,12 @@ struct EditorToolbar: View {
                     .foregroundStyle(RPTheme.textTertiary)
             }
 
-            RPPrimaryButton(title: "Xuất", isEnabled: model.activeShot != nil) {
+            RPPrimaryButton(
+                title: model.selection.isMultiSelecting
+                    ? "Xuất \(model.selection.selectedShotIDs.count) ảnh" : "Xuất",
+                isEnabled: model.activeShot != nil
+            ) {
+                if model.selection.isMultiSelecting { chrome.export.scope = .selection }
                 chrome.isShowingExport = true
             }
         }

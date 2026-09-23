@@ -119,28 +119,11 @@ struct FilmstripView: View {
     /// would fight it for every event. ⌘/⇧-click is the whole MVP, which is what
     /// a filmstrip — as opposed to a 2-D grid — gets in Lightroom too.)
     private func click(_ shot: Shot) {
-        #if os(macOS)
-            let flags = NSEvent.modifierFlags
-            if flags.contains(.command) {
-                Task { await model.toggleSelection(shotID: shot.id) }
-                return
-            }
-            if flags.contains(.shift) {
-                Task { await model.extendSelection(toShotID: shot.id) }
-                return
-            }
-        #endif
-        Task { await model.select(shotID: shot.id) }
+        model.handleShotClick(shot.id)
     }
 
-    /// The dimmer border on cells that are in the batch selection but are not
-    /// the open photo — Lightroom's "most selected cell is brighter".
-    @ViewBuilder
     private func batchSelectionBorder(for shot: Shot) -> some View {
-        if shot.id != model.selection.activeShotID, model.selection.isSelected(shot.id) {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(RPTheme.accent.opacity(0.45), lineWidth: 2)
-        }
+        BatchSelectionBorder(model: model, shotID: shot.id, cornerRadius: 4)
     }
 
     @ViewBuilder
@@ -264,5 +247,49 @@ struct RatingControl: View {
 
     var body: some View {
         RPStarRating(rating: rating, size: 10, setRating: setRating)
+    }
+}
+
+extension EditorModel {
+    /// One click on a photo cell, in any Mac grid or strip: plain click opens
+    /// it and collapses the batch, **⌘-click** toggles it in or out of the
+    /// batch, **⇧-click** takes the range from the anchor (Finder/Lightroom).
+    /// Shared by the editor filmstrip and the library grid so the two can never
+    /// disagree about what a click means again.
+    func handleShotClick(_ shotID: ShotID) {
+        #if os(macOS)
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.command) {
+                Task { await toggleSelection(shotID: shotID) }
+                return
+            }
+            if flags.contains(.shift) {
+                Task { await extendSelection(toShotID: shotID) }
+                return
+            }
+        #endif
+        Task { await select(shotID: shotID) }
+    }
+}
+
+/// The dimmer border on cells that are in the batch selection but are not
+/// the open photo — Lightroom's "most selected cell is brighter".
+struct BatchSelectionBorder: View {
+    let model: EditorModel
+    let shotID: ShotID
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        if shotID != model.selection.activeShotID, model.selection.isSelected(shotID) {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(RPTheme.accent.opacity(0.8), lineWidth: 2)
+                .overlay(alignment: .topLeading) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(RPTheme.onAccent, RPTheme.accent)
+                        .padding(4)
+                }
+        }
     }
 }
