@@ -264,6 +264,13 @@ public final class ManualMaskSession: @unchecked Sendable {
         try coverage.readValues()
     }
 
+    /// Encodes coverage from ``readValues()`` as the same 8-bit device-gray PNG
+    /// ``pngData()`` writes — split out so a caller can read back on the thread
+    /// that owns the session and encode on another.
+    public static func pngData(values: [UInt8], width: Int, height: Int) throws -> Data {
+        try ManualMaskImage.pngData(values: values, width: width, height: height)
+    }
+
     /// Adopts a saved mask as the ``baseline`` and drops the stroke history.
     ///
     /// The history is dropped rather than kept because it no longer describes

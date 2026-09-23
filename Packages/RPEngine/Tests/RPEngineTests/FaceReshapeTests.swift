@@ -175,28 +175,31 @@ struct FaceReshapeTests {
 
     // MARK: - Which landmarks each slider touches
 
+    /// Typed up front: the same table written inline in `@Test(arguments:)`
+    /// made the macro's expansion time out in the type checker (Xcode with the
+    /// macOS 27 SDK, 2026-09-22), which kept all of RPEngineTests from building.
+    static let sliderRegionCases: [(String, FaceSliders, Set<Int>)] = [
+        ("slim", FaceSliders(slim: 100), Set(FaceMesh.faceOval)),
+        ("cheekbone", FaceSliders(cheekbone: 100), Set(FaceMesh.faceOval)),
+        ("jaw", FaceSliders(jaw: 100), Set(FaceMesh.faceOval)),
+        ("chin", FaceSliders(chin: 100), Set(FaceMesh.faceOval)),
+        ("forehead", FaceSliders(forehead: 100), Set(FaceMesh.faceOval)),
+        ("temple", FaceSliders(temple: 100), Set(FaceMesh.faceOval)),
+        ("noseShrink", FaceSliders(noseShrink: 100), Set(FaceMesh.nose)),
+        ("noseBridge", FaceSliders(noseBridge: 100), Set(FaceMesh.nose)),
+        ("noseTip", FaceSliders(noseTip: 100), Set(FaceMesh.nose)),
+        ("eyeSize", FaceSliders(eyeSize: 100), FaceReshapeTests.eyeRegion),
+        ("eyeSpacing", FaceSliders(eyeSpacing: 100), FaceReshapeTests.eyeRegion),
+        ("eyeTilt", FaceSliders(eyeTilt: 100), FaceReshapeTests.eyeRegion),
+        ("mouthSize", FaceSliders(mouthSize: 100), FaceReshapeTests.mouthRegion),
+        ("mouthSmile", FaceSliders(mouthSmile: 100), FaceReshapeTests.mouthRegion),
+        ("lipFullness", FaceSliders(lipFullness: 100), FaceReshapeTests.mouthRegion),
+    ]
+
     /// The mapping, stated as a table. A wrong index list still produces a warp —
     /// of the wrong part of the face — with every other number in this project
     /// still green, so it is asserted rather than reviewed.
-    @Test(
-        "Each slider touches exactly its own region",
-        arguments: [
-            ("slim", FaceSliders(slim: 100), Set(FaceMesh.faceOval)),
-            ("cheekbone", FaceSliders(cheekbone: 100), Set(FaceMesh.faceOval)),
-            ("jaw", FaceSliders(jaw: 100), Set(FaceMesh.faceOval)),
-            ("chin", FaceSliders(chin: 100), Set(FaceMesh.faceOval)),
-            ("forehead", FaceSliders(forehead: 100), Set(FaceMesh.faceOval)),
-            ("temple", FaceSliders(temple: 100), Set(FaceMesh.faceOval)),
-            ("noseShrink", FaceSliders(noseShrink: 100), Set(FaceMesh.nose)),
-            ("noseBridge", FaceSliders(noseBridge: 100), Set(FaceMesh.nose)),
-            ("noseTip", FaceSliders(noseTip: 100), Set(FaceMesh.nose)),
-            ("eyeSize", FaceSliders(eyeSize: 100), FaceReshapeTests.eyeRegion),
-            ("eyeSpacing", FaceSliders(eyeSpacing: 100), FaceReshapeTests.eyeRegion),
-            ("eyeTilt", FaceSliders(eyeTilt: 100), FaceReshapeTests.eyeRegion),
-            ("mouthSize", FaceSliders(mouthSize: 100), FaceReshapeTests.mouthRegion),
-            ("mouthSmile", FaceSliders(mouthSmile: 100), FaceReshapeTests.mouthRegion),
-            ("lipFullness", FaceSliders(lipFullness: 100), FaceReshapeTests.mouthRegion),
-        ])
+    @Test("Each slider touches exactly its own region", arguments: sliderRegionCases)
     func eachSliderTouchesItsOwnRegion(name: String, sliders: FaceSliders, region: Set<Int>) {
         let handles = Self.handles(sliders)
         #expect(Self.touched(handles) == region, "\(name) touched the wrong set")

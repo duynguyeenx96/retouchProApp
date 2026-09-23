@@ -31,6 +31,12 @@ public struct ExportJob: Sendable {
     /// replaced by an arithmetic the caller states.)
     public var faces: [FaceRenderInput]
     public var faceReferenceSize: CGSize
+    /// Whole-frame masks — brush, "Khoá nền" subject, body skin — each mapped
+    /// into an image of `masks.referenceSize` (normally the canvas's preview).
+    /// Rescaled per axis to the render size by the renderer, like ``faces``;
+    /// see ``ExportMasks`` for why a missing reference size is an error rather
+    /// than "assume render resolution".
+    public var masks: ExportMasks
     /// Name the template's `{name}` comes from. Defaults to the source's.
     public var originalFileName: String
     /// 1-based position in the run, for `{n}`.
@@ -44,6 +50,7 @@ public struct ExportJob: Sendable {
         editState: EditState = EditState(),
         faces: [FaceRenderInput] = [],
         faceReferenceSize: CGSize = .zero,
+        masks: ExportMasks = .none,
         originalFileName: String? = nil,
         index: Int = 1,
         settings: ExportSettings = ExportSettings(),
@@ -53,6 +60,7 @@ public struct ExportJob: Sendable {
         self.editState = editState
         self.faces = faces
         self.faceReferenceSize = faceReferenceSize
+        self.masks = masks
         self.originalFileName = originalFileName ?? sourceURL.lastPathComponent
         self.index = index
         self.settings = settings
@@ -101,6 +109,10 @@ public struct ExportResult: Sendable, Equatable {
     /// bit-depth request the container cannot hold, a memory cap that forced a
     /// smaller render.
     public var notes: [String]
+    /// Whole-frame masks that actually reached the render graph
+    /// (`manualMask`, `backgroundLock`, `bodySkin`), after the feature flags and
+    /// the document's own switches were applied. Empty for an ungated render.
+    public var appliedMasks: [String] = []
 
     public init(
         url: URL, pixelSize: CGSize, renderedSize: CGSize, byteCount: Int,
@@ -172,10 +184,12 @@ public final class ExportRenderer: @unchecked Sendable {
 
     private let lock = NSLock()
     private var ciContextStorage: CIContext?
+    private let maskResolver: ExportMaskResolver
 
     public init(context: MetalContext, graph: RenderGraph) {
         self.context = context
         self.graph = graph
+        self.maskResolver = ExportMaskResolver(context: context)
     }
 
     /// The renderer the app ships: `RenderGraph.standard`, i.e. exactly the
@@ -251,8 +265,16 @@ public final class ExportRenderer: @unchecked Sendable {
             job.faceReferenceSize.width > 0
             ? renderedSize.width / job.faceReferenceSize.width : 1
         let faces = job.faces.map { $0.scaled(by: scale) }
-        let request = RenderRequest(
+        var request = RenderRequest(
             editState: job.editState, allFaces: faces, quality: .export)
+        // The canvas's whole-frame masks, mapped from the preview they were
+        // built on onto this render, then gated by the same flag/document
+        // checks `LivePreviewController.renderRequest` applies.
+        let masks = try job.masks.scaled(to: renderedSize)
+        let resolvedMasks = try maskResolver.resolve(
+            masks, editState: job.editState, width: source.width, height: source.height)
+        request.bodySkinMask = resolvedMasks.bodySkinMask
+        request.gateMasks += resolvedMasks.gateMasks
         let destination = try SpikeTextureIO.makeTexture(
             width: source.width, height: source.height, device: context.device,
             pixelFormat: .rgba16Float, usage: [.shaderRead, .shaderWrite, .renderTarget])
@@ -276,6 +298,7 @@ public final class ExportRenderer: @unchecked Sendable {
         // textures (384 MB at 24 MP). The picture is in `rendered` now, so
         // nothing needs them until the next export.
         graph.releaseIntermediates()
+        maskResolver.releaseIntermediates()
 
         // ---- resize, then sharpen (never the other way round) ----
         let outputSize = job.settings.resize.outputSize(for: renderedSize)
@@ -328,7 +351,7 @@ public final class ExportRenderer: @unchecked Sendable {
         let written = Self.writtenProperties(of: url)
         timings.total = Self.milliseconds(since: started)
 
-        return ExportResult(
+        var result = ExportResult(
             url: url,
             pixelSize: outputSize,
             renderedSize: renderedSize,
@@ -340,6 +363,8 @@ public final class ExportRenderer: @unchecked Sendable {
             nodes: report.nodes,
             timings: timings,
             notes: notes)
+        result.appliedMasks = resolvedMasks.applied
+        return result
     }
 
     // MARK: - Resize / sharpen / profile

@@ -884,6 +884,45 @@ theo GPU memory, thermal-aware" ở trên giờ đã ship; dialog xuất không 
   "Đã chọn". **Đã tự click kiểm tra trên app macOS thật** (cliclick): Thư viện ⌘-click → "2 chọn" → Xuất → dialog
   "Đã chọn (2)" → "Đã xuất 2/2 ảnh", 2 file JPG có trên đĩa; filmstrip ⌘-click → "3 chọn".
 
+**Cập nhật (2026-09-23) — File xuất giờ giống canvas: mask đi theo vào export.** Đóng gap "Mask — nói thẳng" ở mục
+`BatchQueue` ngay trên:
+- Canvas dùng đúng 3 mask toàn khung (`LivePreviewController.renderRequest`): **cọ mask thủ công** (`gateMasks`),
+  **subject "Khoá nền"** (`gateMasks`, rasterise từ `subjectMask`) và **da toàn thân "Sửa da"** (`bodySkinMask`).
+  `ExportJob` có field mới `masks: ExportMasks` (RPEngine, `Export/ExportMasks.swift`) chở cả 3 dưới dạng
+  `RenderMask` + `referenceSize` (thường là preview 2048 px). Renderer tự scale **theo từng trục** sang cỡ render
+  (mask phủ cả khung; 6000×4000 → 2048×1365 lệch ~⅓ px nếu scale đều), **không đoán**: có mask mà thiếu
+  `referenceSize` ⇒ lỗi, tỉ lệ khung lệch > 1 px (ảnh xoay/sai file) ⇒ lỗi. Flag + công tắc của document vẫn đọc
+  lúc render qua đúng các hàm canvas gọi (`BodySkinSync.mask`, `BackgroundLock`, flag `manualMask`), nên file và
+  canvas đồng ý cả về *có áp* lẫn *áp ở đâu*. `ExportResult.appliedMasks` + log `export [i/N] … masks …`.
+- **Ảnh đang mở**: lấy mask của canvas (`LivePreviewController.exportMasks(forContentHash:)`, chụp lúc bấm nút như
+  EditState); subject/body chỉ lấy khi canvas đã tính xong (`shotMasksReady`), chưa xong thì tự dựng như ảnh không
+  mở. **Ảnh không mở**: `PreviewMaskSource` (RPUI) — cọ đọc từ đĩa; subject qua đúng `SubjectMaskProviding` của
+  canvas trên preview decode cùng cỡ, cùng content hash (kiểu `PreviewFaceSource`); body qua `BodySkinMask.make`.
+  Subject/body chỉ dựng khi flag **và** công tắc document cùng bật — với flag shipping (cả 2 tắt) export không
+  decode thêm gì, chỉ đọc 1 PNG. Không import RPVision/Core ML vào RPEngine.
+- **Đổi format project: mask cọ giờ được lưu** — `masks/<shot id>/brush.png` (PNG 8-bit gray, đúng format
+  ADR-0019 §8 đã chốt, qua `ProjectStore.saveMask` = `AtomicFileWriter`), ghi sau mỗi nét/undo/redo (encode + ghi
+  off main, xếp hàng theo thứ tự), **xoá** khi session rỗng/"Xoá mask"; mở lại ảnh ⇒ PNG nạp làm baseline
+  (undo phiên mới không lùi qua nó; header cọ hiện "mask đã lưu"). **Có file ⇔ canvas có mask**. Cố ý **không** ghi
+  `perImage["manualMask"]` vào `edits/<id>.json`: undo slider (2026-09-22) sẽ lùi reference mà pixel không lùi theo
+  ⇒ canvas và export lệch nhau — đúng loại bug việc này sửa; 1 id cố định/ảnh nên chính file là reference.
+  Nét cọ (stroke list) không lưu.
+- **Đo**: (a) RPEngine `ExportMasksTests` (GPU, cọ vẽ ở lưới ½ cỡ render): trong vùng cọ 1976/1976 px đổi so với
+  bản không chỉnh, lệch so với bản không mask **0.0**; ngoài vùng cọ **0 px** khác bản không chỉnh, trong khi bản
+  không mask đổi 28 172 px ở đó (đối chứng có nghĩa); tắt flag ⇒ bằng đúng bản không mask. Da toàn thân: 35 609 /
+  76 800 px khác bản chỉ-mặt khi công tắc bật, công tắc tắt ⇒ giống từng bit. (b) **App Mac thật**, DSC00657
+  (4000×6000, Sáng da 100), TIFF 16-bit: vùng cọ vẽ kín (65 512 px) **giống từng bit** file xuất không cọ (hiệu ứng
+  Da giữ nguyên), ngoài vùng cọ 175 645 px khác (hiệu ứng Da bị cọ chặn — đúng như canvas). (c) Batch "Cả project"
+  lúc đang mở ảnh *khác*: file DSC00657 (mask đọc từ đĩa, log `(analysed)`) **trùng từng byte** với export 1 ảnh
+  lấy mask từ canvas.
+- Kèm: tách bảng `@Test(arguments:)` trong `FaceReshapeTests.swift` thành hằng có kiểu ⇒ **RPEngineTests build lại
+  được** (gỡ chặn ghi ở mục 2026-09-22). Test: RPEngine 350, RPUI 297 (+7), RPCore 120 — xanh.
+- **Còn treo**: (1) Khoá nền/Sửa da toàn thân chỉ kiểm bằng test GPU + fake provider — cả 2 flag đang tắt mặc định
+  nên chưa bấm được trên UI; (2) batch ảnh không mở mà cần subject/body sẽ decode preview **2 lần** (mặt + mask) —
+  chỉ xảy ra khi bật flag, chưa gộp; (3) PNG cọ khác cỡ preview hiện tại (nếu cỡ preview đổi giữa các phiên bản)
+  ⇒ canvas bỏ qua + log, còn export vẫn stretch toàn khung ⇒ lệch trong ca hiếm đó; (4) chưa chạy trên iPhone
+  thật (đường ghi `masks/` trong sandbox iOS chưa ai xác nhận).
+
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 
 Hướng kỹ thuật và UX đích **đã chốt với user** (`docs/HANDOFF-remaining-features-2026-09-10.md` §4.1) — phần dưới

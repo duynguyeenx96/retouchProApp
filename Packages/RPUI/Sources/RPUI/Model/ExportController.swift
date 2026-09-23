@@ -207,6 +207,129 @@ public struct PreviewFaceSource: ExportFaceSource {
     }
 }
 
+/// Whole-frame masks for a shot, the way the canvas would build them.
+///
+/// The open shot's come from `LivePreviewController` (``LivePreviewController/exportMasks(forContentHash:)``);
+/// this is for every other shot in a batch, and for the open one's
+/// subject/body masks when the canvas has not finished them yet.
+public protocol ExportMaskSource: Sendable {
+    /// - Parameter editState: the document that will be rendered — used only
+    ///   to skip work whose result the export would throw away (a subject mask
+    ///   for a shot whose "Khoá nền" and "Sửa da" switches are both off).
+    func masks(
+        for shot: Shot, originalURL: URL, editState: EditState
+    ) async throws -> ExportMaskResult
+}
+
+public struct ExportMaskResult: Sendable {
+    public var masks: ExportMasks
+    /// Anything that went wrong but did not stop the export (a Vision failure,
+    /// an unreadable mask file) — the canvas's own fallbacks, logged.
+    public var notes: [String]
+
+    public init(masks: ExportMasks, notes: [String] = []) {
+        self.masks = masks
+        self.notes = notes
+    }
+}
+
+/// The shipping ``ExportMaskSource``: exactly the canvas's inputs.
+///
+/// * **Brush**: `masks/<shot id>/brush.png` (``ProjectManualMaskStore``) — the
+///   file the canvas saves after every stroke and reloads on open. Only read
+///   while `RPEngineFeatureFlags.manualMask` is on, the flag the canvas's
+///   session is built under.
+/// * **Subject** ("Khoá nền", and the prior "Sửa da" multiplies in): the 2048 px
+///   preview decoded the way the canvas decodes it, handed to the canvas's own
+///   `SubjectMaskProviding` under the same content hash — so the provider's
+///   cache and quality level (``LivePreviewController/subjectMaskQuality``) are
+///   the canvas's too. The `PreviewFaceSource` pattern.
+/// * **Body skin**: `BodySkinMask.make` over that same preview with that same
+///   subject prior, as `LivePreviewController.prepareShotMasks` runs it.
+///
+/// Subject and body are only built when a flag *and* the document's switch
+/// would let them reach the render; with the shipping flags (both off) this
+/// never decodes a preview at all, it only reads a PNG.
+public struct PreviewMaskSource: ExportMaskSource {
+    public let store: ProjectStore
+    public let subjectProvider: any SubjectMaskProviding
+    public let longEdge: Int
+
+    public init(
+        store: ProjectStore,
+        subjectProvider: any SubjectMaskProviding = NoSubjectMaskProvider(),
+        longEdge: Int = RenderQuality.preview.preferredLongEdge ?? 2048
+    ) {
+        self.store = store
+        self.subjectProvider = subjectProvider
+        self.longEdge = longEdge
+    }
+
+    public func masks(
+        for shot: Shot, originalURL: URL, editState: EditState
+    ) async throws -> ExportMaskResult {
+        var notes: [String] = []
+
+        var manual: RenderMask?
+        if RPEngineFeatureFlags.manualMask {
+            do {
+                if let png = try ProjectManualMaskStore(store: store, shotID: shot.id)
+                    .loadManualMask()
+                {
+                    manual = try ExportMasks.manualMask(fromPNG: png)
+                }
+            } catch {
+                // The canvas logs and opens the shot unmasked on the same
+                // failure (`loadSavedManualMask`); the export does the same.
+                notes.append("brush mask unreadable, exported without it: \(error)")
+            }
+        }
+
+        let wantsBody =
+            RPEngineFeatureFlags.bodySkinSync
+            && BodySkinSync(editState).isOn
+        let wantsLock =
+            RPEngineFeatureFlags.backgroundLock
+            && BackgroundLock(editState).isOn
+        guard wantsBody || wantsLock else {
+            // Only the brush: its PNG is its own reference.
+            guard let manual else { return ExportMaskResult(masks: .none, notes: notes) }
+            return ExportMaskResult(
+                masks: ExportMasks(
+                    referenceSize: CGSize(width: manual.width, height: manual.height),
+                    manualMask: manual),
+                notes: notes)
+        }
+
+        let image = try ImageDecoder.decode(contentsOf: originalURL, maxPixelSize: longEdge)
+        var subject: RenderMask?
+        do {
+            subject = try await subjectProvider.subjectMask(
+                for: image, contentHash: shot.contentHash ?? shot.id.rawValue,
+                quality: LivePreviewController.subjectMaskQuality)
+        } catch {
+            notes.append("subject mask failed, exported without it: \(error)")
+        }
+        var body: RenderMask?
+        if wantsBody {
+            do {
+                body = try BodySkinMask.make(image: image.cgImage, subject: subject).mask
+            } catch {
+                notes.append("body skin mask failed, exported without it: \(error)")
+            }
+        }
+        return ExportMaskResult(
+            masks: ExportMasks(
+                referenceSize: image.pixelSize,
+                // The PNG covers the whole frame; map it onto this decode's
+                // grid so all three share one reference.
+                manualMask: manual.map { RenderMask.wholeFrame($0, onto: image.pixelSize) },
+                subjectMask: subject,
+                bodySkinMask: body),
+            notes: notes)
+    }
+}
+
 /// Runs exports — one photo or a batch — and holds what the sheet and the
 /// dialog draw: is it running (and how far), what did it produce, what went
 /// wrong.
@@ -223,14 +346,14 @@ public struct PreviewFaceSource: ExportFaceSource {
 ///
 /// Each job is the shot's `EditState` (the open shot's is committed first and
 /// taken from memory; every other shot's is read from `edits/<id>.json` when
-/// its turn comes) plus its faces (``ExportFaceSource``). It carries **no**
-/// whole-frame masks — no painted brush mask, no "Khoá nền" subject gate, no
-/// whole-body skin mask — because `ExportJob` has no field for them and the
-/// single-photo export never passed them either. A batch photo therefore
-/// matches exporting that photo alone; both differ from the canvas wherever
-/// one of those masks is active. (The painted mask is not even persisted — it
-/// lives only in the open shot's GPU session — so a non-open shot has none to
-/// give.)
+/// its turn comes) plus its faces (``ExportFaceSource``) plus its whole-frame
+/// masks (2026-09-23): the brush, the "Khoá nền" subject and the "Sửa da" body
+/// mask. The open shot's are the canvas's own
+/// (``LivePreviewController/exportMasks(forContentHash:)``); every other
+/// shot's are rebuilt from the same inputs the canvas uses
+/// (``PreviewMaskSource``: the saved brush PNG, the same subject provider over
+/// the same preview decode). A batch photo therefore matches both exporting it
+/// alone and what the canvas showed.
 ///
 /// ## Why the work leaves the main actor
 ///
@@ -251,6 +374,9 @@ public final class ExportController {
     /// Overrides the face source derived from `model.live`. Tests only.
     @ObservationIgnored
     private let faceSourceOverride: (any ExportFaceSource)?
+    /// Overrides the mask source derived from `model`. Tests only.
+    @ObservationIgnored
+    private let maskSourceOverride: (any ExportMaskSource)?
 
     /// Unified-log channel, so a real-device export can be followed with
     /// `devicectl device process launch --console` (docs/ADR-0015: a message
@@ -271,13 +397,15 @@ public final class ExportController {
         runner: (any ExportRunning)?,
         thermal: any ThermalStateProviding = SystemThermalState(),
         thermalPollInterval: Duration = .seconds(5),
-        faceSource: (any ExportFaceSource)? = nil
+        faceSource: (any ExportFaceSource)? = nil,
+        maskSource: (any ExportMaskSource)? = nil
     ) {
         self.runner = runner
         self.queue = runner.map {
             BatchQueue(runner: $0, thermal: thermal, thermalPollInterval: thermalPollInterval)
         }
         self.faceSourceOverride = faceSource
+        self.maskSourceOverride = maskSource
     }
 
     /// The app's controller. `MetalContext.shared` is `nil` only where there is
@@ -353,6 +481,10 @@ public final class ExportController {
         // no-op when nothing changed, and when something did the file on disk
         // must agree with the pixels that were just exported.
         await model.commitEditState()
+        // Same reason for the brush: a stroke on a shot the user left a moment
+        // ago may still be in the write queue, and that shot's mask is about
+        // to be read from disk.
+        await model.live?.flushManualMaskWrites()
 
         let folder = ExportDestination.resolve(options)
         // Stop pressed while the document was being saved: the queue was not
@@ -417,12 +549,23 @@ public final class ExportController {
         {
             liveFaces = ExportFaces(faces: live.faces, referenceSize: live.sourceSize)
         }
+        // The canvas's masks, snapshotted now (main actor, button press) like
+        // the document: a stroke painted mid-export must not half-apply.
+        let maskSource = maskSourceOverride ?? Self.maskSource(for: model)
+        var liveMasks: ExportMasks?
+        var liveSubjectAndBodyReady = false
+        if let live = model.live, let shot = model.activeShot {
+            liveMasks = live.exportMasks(forContentHash: shot.contentHash ?? shot.id.rawValue)
+            liveSubjectAndBodyReady = liveMasks != nil && live.shotMasksReady
+        }
 
         return shots.map { shot in
             let sourceURL = store.originalURL(for: shot)
             let isActive = shot.id == activeID
             let knownState: EditState? = isActive ? activeState : nil
             let knownFaces: ExportFaces? = isActive ? liveFaces : nil
+            let knownMasks: ExportMasks? = isActive ? liveMasks : nil
+            let knownMasksComplete = isActive && liveSubjectAndBodyReady
             return BatchExportItem(shotID: shot.id, fileName: shot.originalFileName) { index in
                 let editState = try knownState ?? store.loadEditState(for: shot.id)
                 let faces: ExportFaces
@@ -448,17 +591,80 @@ public final class ExportController {
                     Self.log.error(
                         "export \(shot.originalFileName, privacy: .public): \(note, privacy: .public)")
                 }
+                let masks = try await Self.masks(
+                    for: shot, originalURL: sourceURL, editState: editState,
+                    known: knownMasks, knownComplete: knownMasksComplete, source: maskSource,
+                    index: index)
                 return ExportJob(
                     sourceURL: sourceURL,
                     editState: editState,
                     faces: faces.faces,
                     faceReferenceSize: faces.referenceSize,
+                    masks: masks,
                     originalFileName: shot.originalFileName,
                     index: index,
                     settings: settings,
                     destinationDirectory: folder)
             }
         }
+    }
+
+    /// The shot's masks: the canvas's when it is the open shot (topped up from
+    /// `source` if its subject/body masks were still being computed), else
+    /// `source`'s. Logged in the same shape as the face line.
+    nonisolated private static func masks(
+        for shot: Shot, originalURL: URL, editState: EditState,
+        known: ExportMasks?, knownComplete: Bool, source: any ExportMaskSource, index: Int
+    ) async throws -> ExportMasks {
+        var masks: ExportMasks
+        var notes: [String] = []
+        let origin: String
+        if let known, knownComplete {
+            masks = known
+            origin = "canvas"
+        } else if let known {
+            // Brush from the canvas (freshest), subject/body built now.
+            let built = try await source.masks(
+                for: shot, originalURL: originalURL, editState: editState)
+            notes = built.notes
+            let hasBuilt = built.masks.subjectMask != nil || built.masks.bodySkinMask != nil
+            let reference = hasBuilt ? built.masks.referenceSize : known.referenceSize
+            masks = ExportMasks(
+                referenceSize: reference,
+                manualMask: known.manualMask.map {
+                    reference == known.referenceSize ? $0 : RenderMask.wholeFrame($0, onto: reference)
+                },
+                subjectMask: built.masks.subjectMask,
+                bodySkinMask: built.masks.bodySkinMask)
+            origin = "canvas brush + analysed"
+        } else {
+            let built = try await source.masks(
+                for: shot, originalURL: originalURL, editState: editState)
+            notes = built.notes
+            masks = built.masks
+            origin = "analysed"
+        }
+        var present: [String] = []
+        if masks.manualMask != nil { present.append("brush") }
+        if masks.subjectMask != nil { present.append("subject") }
+        if masks.bodySkinMask != nil { present.append("bodySkin") }
+        log.log(
+            """
+            export [\(index, privacy: .public)] \(shot.originalFileName, privacy: .public): \
+            masks [\(present.joined(separator: ","), privacy: .public)] on \
+            \(Int(masks.referenceSize.width), privacy: .public)×\
+            \(Int(masks.referenceSize.height), privacy: .public) (\(origin, privacy: .public))
+            """)
+        for note in notes {
+            log.error("export \(shot.originalFileName, privacy: .public): \(note, privacy: .public)")
+        }
+        return masks
+    }
+
+    private static func maskSource(for model: EditorModel) -> any ExportMaskSource {
+        PreviewMaskSource(
+            store: model.store,
+            subjectProvider: model.live?.subjectProvider ?? NoSubjectMaskProvider())
     }
 
     /// `nil` when there is no provider or it is the "no faces, ever" one —
@@ -481,7 +687,8 @@ public final class ExportController {
             \(Int(result.pixelSize.width), privacy: .public)×\
             \(Int(result.pixelSize.height), privacy: .public), \
             \(result.writtenBitsPerComponent, privacy: .public)-bit, \
-            nodes \(result.nodes.joined(separator: "→"), privacy: .public)) in \
+            nodes \(result.nodes.joined(separator: "→"), privacy: .public), \
+            masks \(result.appliedMasks.isEmpty ? "none" : result.appliedMasks.joined(separator: ","), privacy: .public)) in \
             \(String(format: "%.0f", result.timings.total), privacy: .public) ms \
             [decode \(String(format: "%.0f", result.timings.decode), privacy: .public) \
             upload \(String(format: "%.0f", result.timings.upload), privacy: .public) \

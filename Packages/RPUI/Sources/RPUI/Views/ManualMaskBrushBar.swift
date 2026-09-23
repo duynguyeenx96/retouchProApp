@@ -292,6 +292,11 @@ struct ManualMaskBrushHeader: View {
 
     private var strokeCountText: String {
         let count = model.live?.manualMaskStrokeCount ?? 0
-        return count == 0 ? "chưa có nét nào" : "\(count) nét"
+        // A mask reopened from `masks/<shot>/brush.png` has pixels but no
+        // strokes behind it (it is the session's baseline) — "no strokes yet"
+        // would be a lie about a mask that is visibly gating the sliders.
+        let hasSaved = model.live?.hasManualMask ?? false
+        if count > 0 { return "\(count) nét" }
+        return hasSaved ? "mask đã lưu" : "chưa có nét nào"
     }
 }

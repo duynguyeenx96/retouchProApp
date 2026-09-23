@@ -101,6 +101,7 @@ extension LivePreviewController {
         guard let manualMask else { return nil }
         let finished = manualMask.endStroke()
         invalidate()
+        if finished != nil { persistManualMask() }
         return finished
     }
 
@@ -112,18 +113,68 @@ extension LivePreviewController {
     }
 
     public func undoManualMaskStroke() {
-        paint { _ = $0.undo() }
+        if paint({ _ = $0.undo() }) { persistManualMask() }
     }
 
     public func redoManualMaskStroke() {
-        paint { _ = $0.redo() }
+        if paint({ _ = $0.redo() }) { persistManualMask() }
     }
 
-    /// "Xoá mask": every stroke **and** any mask loaded from disk. Not undoable —
-    /// the session says so, and the button asks nothing extra of the user here
-    /// because nothing has been written to disk yet in this phase.
+    /// "Xoá mask": every stroke **and** any mask loaded from disk — the saved
+    /// PNG is deleted too. Not undoable; the session says so.
     public func clearManualMask() {
-        paint { $0.clearAll() }
+        if paint({ $0.clearAll() }) { persistManualMask() }
+    }
+
+    // MARK: - Saving (masks/<shot id>/brush.png — ManualMaskPersistence.swift)
+
+    /// Writes the session's current state to ``manualMaskStore``: the PNG when
+    /// anything is painted, a delete when the session is empty.
+    ///
+    /// The GPU read-back happens here, on the main actor that owns the session
+    /// (≈ 1 ms for 2.8 MB, and ordered after every splat already committed on
+    /// the queue); the PNG encode and the atomic write happen off it, chained
+    /// behind the previous write so strokes land on disk in order.
+    func persistManualMask() {
+        guard let store = manualMaskStore, let session = manualMask else { return }
+        let values: [UInt8]?
+        if session.isEmpty {
+            values = nil
+        } else {
+            do {
+                values = try session.readValues()
+            } catch {
+                Self.log.error(
+                    "manual mask read-back failed: \(String(describing: error), privacy: .public)")
+                return
+            }
+        }
+        let width = session.width
+        let height = session.height
+        let previous = manualMaskWrite
+        manualMaskWrite = Task.detached(priority: .utility) {
+            await previous?.value
+            do {
+                if let values {
+                    let png = try ManualMaskSession.pngData(
+                        values: values, width: width, height: height)
+                    try store.saveManualMask(png)
+                    Self.log.log("manual mask saved: \(png.count, privacy: .public) B")
+                } else {
+                    try store.deleteManualMask()
+                    Self.log.log("manual mask deleted")
+                }
+            } catch {
+                Self.log.error(
+                    "manual mask save failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    /// Waits for every queued mask write — called before an export reads
+    /// masks from disk, so a shot painted a moment ago is exported with it.
+    public func flushManualMaskWrites() async {
+        await manualMaskWrite?.value
     }
 
     /// One line per finished stroke, for the device console.
@@ -155,11 +206,14 @@ extension LivePreviewController {
     }
 
     /// Runs `body` on the session, then redraws **only if the pixels moved**.
-    private func paint(_ body: (ManualMaskSession) -> Void) {
-        guard let manualMask else { return }
+    /// Returns whether they did.
+    @discardableResult
+    private func paint(_ body: (ManualMaskSession) -> Void) -> Bool {
+        guard let manualMask else { return false }
         let before = manualMask.generation
         body(manualMask)
-        guard manualMask.generation != before else { return }
+        guard manualMask.generation != before else { return false }
         invalidate()
+        return true
     }
 }

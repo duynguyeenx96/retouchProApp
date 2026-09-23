@@ -45,7 +45,10 @@ public final class LivePreviewController {
     /// Read by the batch export (``PreviewFaceSource``) so a shot that is not
     /// open gets its faces from the very same provider the canvas uses.
     public let faceProvider: any FaceInputProviding
-    private let subjectProvider: any SubjectMaskProviding
+    /// Read by the export (``PreviewMaskSource``) for the same reason as
+    /// ``faceProvider``: a shot that is not open gets its subject mask from the
+    /// provider — and the provider's content-hash cache — the canvas uses.
+    public let subjectProvider: any SubjectMaskProviding
 
     /// Unified-log channel, so a face-analysis failure is visible with
     /// `devicectl device process launch --console` on a real iPhone and not only
@@ -148,6 +151,25 @@ public final class LivePreviewController {
     /// only the ownership.
     public private(set) var manualMask: ManualMaskSession?
 
+    /// Where the open shot's brush mask is saved (`masks/<shot id>/brush.png`),
+    /// or `nil` when the caller gave none (tests, previews) — then the mask
+    /// lives only as long as the shot is open, the pre-2026-09-23 behaviour.
+    /// Written by the paint API in `LivePreviewController+ManualMask.swift`.
+    @ObservationIgnored
+    var manualMaskStore: (any ManualMaskStoring)?
+    /// The last queued mask write. Each write awaits the one before it, so two
+    /// quick strokes can never land on disk out of order.
+    @ObservationIgnored
+    var manualMaskWrite: Task<Void, Never>?
+
+    /// `true` once ``prepareShotMasks(for:contentHash:)`` has finished for the
+    /// open shot (including the fast "both flags off" return), i.e. once
+    /// ``subjectMask`` and ``bodySkinMask`` are *final* rather than "not yet".
+    /// The export reuses them only then; before that it builds its own the way
+    /// this class would (``PreviewMaskSource``), rather than exporting a shot
+    /// without a mask the canvas is about to show.
+    public private(set) var shotMasksReady = false
+
     /// Which quality level the subject mask is asked for.
     ///
     /// `.balanced`, and this is a measured choice rather than a middle one.
@@ -230,7 +252,13 @@ public final class LivePreviewController {
     ///   pixels, so the faces need no rescaling — the class of bug
     ///   `RenderRequest.faces` documents ("the graph does not scale them
     ///   itself") cannot happen here.
-    public func open(_ image: PreviewImage, contentHash: String, editState: EditState) async {
+    ///
+    /// - Parameter manualMaskStore: where this shot's brush mask is loaded from
+    ///   and saved to. `nil` keeps the mask in memory only.
+    public func open(
+        _ image: PreviewImage, contentHash: String, editState: EditState,
+        manualMaskStore: (any ManualMaskStoring)? = nil
+    ) async {
         self.editState = editState
         guard openContentHash != contentHash || sourceSize != image.pixelSize else {
             // Same shot, new edits: keep the texture and the faces.
@@ -262,6 +290,7 @@ public final class LivePreviewController {
         // Synchronous and before the analyses: the brush is user input, so the
         // canvas has to be paintable the moment the picture is on screen rather
         // than after a 36 ms Core ML pass the brush does not depend on.
+        self.manualMaskStore = manualMaskStore
         prepareManualMask(for: image)
         invalidate()
 
@@ -300,6 +329,7 @@ public final class LivePreviewController {
         faceAnalysisRan = false
         detectionNotices = [:]
         clearShotMasks()
+        manualMaskStore = nil
         invalidate()
     }
 
@@ -345,6 +375,10 @@ public final class LivePreviewController {
     /// docs/ADR-0013 records for face analysis, applied to a second Vision
     /// request).
     private func prepareShotMasks(for image: PreviewImage, contentHash: String) async {
+        // Every exit below leaves the masks final for this shot — unless the
+        // shot changed meanwhile, which the hash check keeps from marking the
+        // *new* shot ready.
+        defer { if openContentHash == contentHash { shotMasksReady = true } }
         guard RPEngineFeatureFlags.bodySkinSync || RPEngineFeatureFlags.backgroundLock else {
             return
         }
@@ -461,10 +495,12 @@ public final class LivePreviewController {
         let height = Int(image.pixelSize.height)
         guard width > 0, height > 0 else { return }
         do {
-            manualMask = try ManualMaskSession(
+            let session = try ManualMaskSession(
                 context: renderer.context, width: width, height: height)
+            manualMask = session
             Self.log.log(
                 "manual mask session: \(width, privacy: .public)x\(height, privacy: .public)")
+            loadSavedManualMask(into: session)
         } catch {
             // Not a canvas failure: every node keeps working, there is just
             // nothing to paint with.
@@ -473,7 +509,28 @@ public final class LivePreviewController {
         }
     }
 
+    /// Reopens the shot's saved brush mask as the session's baseline.
+    ///
+    /// Synchronous, like the session it fills: one small PNG read and decode
+    /// (≈ 0.1 MB for a typical mask at 2048 px) once per shot, and the canvas
+    /// must not show the photo unmasked for a frame and then snap. A PNG of
+    /// the wrong size (a preview size that changed between versions) or an
+    /// unreadable one is logged and ignored: the shot opens, unmasked, and the
+    /// file stays on disk untouched until the user paints again.
+    private func loadSavedManualMask(into session: ManualMaskSession) {
+        guard let store = manualMaskStore else { return }
+        do {
+            guard let data = try store.loadManualMask() else { return }
+            try session.load(pngData: data)
+            Self.log.log("manual mask loaded: \(data.count, privacy: .public) B")
+        } catch {
+            Self.log.error(
+                "manual mask load failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     private func clearShotMasks() {
+        shotMasksReady = false
         manualMask = nil
         bodySkinMask = nil
         bodySkinCoverageFraction = nil
@@ -542,6 +599,47 @@ public final class LivePreviewController {
             request.gateMasks.append(manualMask.coverage)
         }
         return request
+    }
+
+    /// The whole-frame masks ``renderRequest`` renders with, as CPU values the
+    /// export can carry (`RPEngine.ExportMasks`), or `nil` when `contentHash`
+    /// is not the open shot.
+    ///
+    /// All three are in the preview texture's pixels, so the reference size is
+    /// ``sourceSize`` and the export rescales them the way it rescales
+    /// ``faces``. The **raw** masks are handed over — not the
+    /// `BodySkinSync`/`BackgroundLock`-filtered ones — because the export runs
+    /// those same filters against the document it renders, which is the one
+    /// captured when the button was pressed.
+    ///
+    /// * The brush is always taken from here when a session exists: it is the
+    ///   freshest copy (the PNG on disk may still be in the write queue), and a
+    ///   read-back is ~1 ms. Empty session ⇒ `nil`, the rule ``renderRequest``
+    ///   applies.
+    /// * `subjectMask`/`bodySkinMask` are only reported once ``shotMasksReady``;
+    ///   the caller reads that flag to tell "no person found" (`nil`, final)
+    ///   from "not computed yet" and builds its own in the second case.
+    public func exportMasks(forContentHash contentHash: String) -> ExportMasks? {
+        guard openContentHash == contentHash, sourceSize.width > 0, sourceSize.height > 0 else {
+            return nil
+        }
+        var manual: RenderMask?
+        if let manualMask, !manualMask.isEmpty {
+            do {
+                manual = RenderMask(
+                    width: manualMask.width, height: manualMask.height,
+                    values: try manualMask.readValues(), maskToImage: .identity)
+            } catch {
+                Self.log.error(
+                    "manual mask read-back for export failed: \(String(describing: error), privacy: .public)"
+                )
+            }
+        }
+        return ExportMasks(
+            referenceSize: sourceSize,
+            manualMask: manual,
+            subjectMask: shotMasksReady ? subjectMask : nil,
+            bodySkinMask: shotMasksReady ? bodySkinMask : nil)
     }
 
     /// `true` when the GPU path can put pixels on screen.

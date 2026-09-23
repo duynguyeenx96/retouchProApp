@@ -461,3 +461,22 @@ No `RenderGraph` node, no `EditState` field, no `ManualMaskSession` API changed.
 `Packages/RPUI/Tests/RPUITests/ManualMaskBrushWiringTests.swift` gained one test
 pinning the disarm-clears-preview behavior; the rest of the suite (203 RPUI
 tests) is unchanged and green.
+
+---
+
+## Addendum 2026-09-23 — the brush is saved, and reaches the export
+
+Everything above is unchanged; this records what filled in §8 "Still not done" (first bullet).
+
+* **Saved**: `masks/<shot id>/brush.png` (one fixed `MaskID` per shot, `RPUI.ProjectManualMaskStore`), written through
+  `ProjectStore.saveMask` after every stroke / undo / redo, **deleted** when the session becomes empty or "Xoá mask"
+  is pressed, and loaded as the session's baseline when the shot is reopened. File present ⇔ the canvas gates.
+* **Deviation from §8: no `perImage["manualMask"]` reference is written.** Since 2026-09-22 `EditState` has its own
+  undo stack, separate from the brush's stroke replay. A reference in `edits/<id>.json` could be rolled back by a
+  slider undo while the pixels stayed, and the canvas (which reads the session) and the export (which would read the
+  reference) would disagree. With one fixed id per shot the file itself is the reference. `ManualMaskReference`
+  stays in RPCore unused.
+* **Export**: `ExportJob.masks` (`RPEngine.ExportMasks`) carries the brush (and the "Khoá nền" / body-skin masks) with
+  its reference size; `ExportRenderer` scales it per axis to the render and applies it only while
+  `RPEngineFeatureFlags.manualMask` is on. Measured in `ExportMasksTests` and on the real Mac app (docs/PLAN.md
+  Phase 3, 2026-09-23).

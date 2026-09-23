@@ -562,7 +562,8 @@ struct CanvasView: View {
             await model.live?.open(
                 decoded,
                 contentHash: shot.contentHash ?? shot.id.rawValue,
-                editState: model.activeEditState)
+                editState: model.activeEditState,
+                manualMaskStore: ProjectManualMaskStore(store: model.store, shotID: shot.id))
         } catch {
             guard !Task.isCancelled else { return }
             original = nil
