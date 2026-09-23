@@ -225,18 +225,17 @@ struct PresetLibraryTests {
 
     // MARK: - Applying with intensity (2026-09-22, replaces "Áp cho" + "Áp dụng")
 
-    @Test("Selecting a preset previews it live at full strength, uncommitted")
-    func selectingPreviewsAtFullStrength() async throws {
+    @Test("Picking a preset applies it at full strength and writes it to disk")
+    func selectingAppliesAndSaves() async throws {
         let temp = try TempProject()
         defer { temp.cleanUp() }
         let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
         model.setSlider("smooth", in: EditState.SectionKey.skin, to: 40)
         model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
         await model.commitEditState()
-        let before = model.activeEditState
         let look = BuiltInPresets.looks[4]  // "Điện ảnh"
 
-        model.selectPresetForApply(look)
+        await model.selectPresetForApply(look)
 
         #expect(model.presetApply?.presetID == look.id)
         #expect(model.presetApply?.intensity == 100)
@@ -245,7 +244,48 @@ struct PresetLibraryTests {
                 == look.sections[EditState.SectionKey.color])
         // A Look never touches skin, selecting one included.
         #expect(model.slider("smooth", in: EditState.SectionKey.skin) == 40)
-        // Nothing has reached disk yet.
+        // The 2026-09-23 bug: picking used to be preview-only.
+        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
+        #expect(onDisk == model.activeEditState)
+        #expect(model.canUndo)
+    }
+
+    @Test("Leaving the preset panel keeps the preset, so Màu shows and fine-tunes its values")
+    func leavingThePanelKeepsThePreset() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        let look = BuiltInPresets.looks[4]
+        let contrast = try #require(look.sections[EditState.SectionKey.color])
+            .slider(ColorSliders.Key.contrast)
+
+        await model.selectPresetForApply(look)
+        await model.endPresetApply()
+
+        #expect(model.presetApply == nil)
+        #expect(model.slider(ColorSliders.Key.contrast, in: EditState.SectionKey.color) == contrast)
+        // Fine-tuning on top of the preset in the Màu panel keeps the rest of it.
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 12)
+        await model.commitEditState()
+        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
+        #expect(onDisk.slider(ColorSliders.Key.contrast, in: EditState.SectionKey.color) == contrast)
+        #expect(onDisk.slider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color) == 12)
+    }
+
+    @Test("Undo takes a picked preset back off")
+    func undoRemovesThePreset() async throws {
+        let temp = try TempProject()
+        defer { temp.cleanUp() }
+        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
+        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
+        await model.commitEditState()
+        let before = model.activeEditState
+
+        await model.selectPresetForApply(BuiltInPresets.looks[4])
+        await model.undo()
+
+        #expect(model.presetApply == nil)
+        #expect(model.activeEditState == before)
         let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
         #expect(onDisk == before)
     }
@@ -261,7 +301,7 @@ struct PresetLibraryTests {
         #expect(goc.name == "Gốc")
         #expect(goc.sections.isEmpty)
 
-        model.selectPresetForApply(goc)
+        await model.selectPresetForApply(goc)
 
         #expect(model.slider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color) == 0)
     }
@@ -281,7 +321,7 @@ struct PresetLibraryTests {
         let targetContrast = section.slider(ColorSliders.Key.contrast)
         #expect(targetContrast == 18)
 
-        model.selectPresetForApply(look)
+        await model.selectPresetForApply(look)
         model.setPresetApplyIntensity(50)
 
         // Halfway from -20 toward the preset's own contrast (18): -1.
@@ -293,18 +333,18 @@ struct PresetLibraryTests {
         #expect(model.slider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color) == 25)
     }
 
-    @Test("Committing writes the current blend to disk and clears the selection")
+    @Test("Releasing the intensity slider writes the blend and keeps the session for another drag")
     func committingWritesToDisk() async throws {
         let temp = try TempProject()
         defer { temp.cleanUp() }
         let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
         let look = BuiltInPresets.looks[4]
 
-        model.selectPresetForApply(look)
+        await model.selectPresetForApply(look)
         model.setPresetApplyIntensity(40)
         await model.commitPresetApply()
 
-        #expect(model.presetApply == nil)
+        #expect(model.presetApply?.intensity == 40)
         let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
         #expect(
             onDisk[section: EditState.SectionKey.color]
@@ -313,26 +353,7 @@ struct PresetLibraryTests {
         #expect(onDisk.slider(ColorSliders.Key.contrast, in: EditState.SectionKey.color) == 18 * 0.4)
     }
 
-    @Test("Cancelling restores exactly what was there before selecting; nothing reaches disk")
-    func cancellingRestoresBaseline() async throws {
-        let temp = try TempProject()
-        defer { temp.cleanUp() }
-        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
-        model.setSlider(ColorSliders.Key.vibrance, in: EditState.SectionKey.color, to: 5)
-        await model.commitEditState()
-        let before = model.activeEditState
-
-        model.selectPresetForApply(BuiltInPresets.looks[4])
-        model.setPresetApplyIntensity(70)
-        model.cancelPresetApply()
-
-        #expect(model.presetApply == nil)
-        #expect(model.activeEditState == before)
-        let onDisk = try temp.store.loadEditState(for: model.activeShot!.id)
-        #expect(onDisk == before)
-    }
-
-    @Test("Switching to a second preset before committing keeps blending from the original baseline")
+    @Test("Picking a second preset replaces the first instead of stacking on it")
     func switchingPresetsKeepsTheOriginalBaseline() async throws {
         let temp = try TempProject()
         defer { temp.cleanUp() }
@@ -341,28 +362,30 @@ struct PresetLibraryTests {
         await model.commitEditState()
         let before = model.activeEditState
 
-        model.selectPresetForApply(BuiltInPresets.looks[4])
-        model.selectPresetForApply(BuiltInPresets.looks[1])
+        await model.selectPresetForApply(BuiltInPresets.looks[4])
+        await model.selectPresetForApply(BuiltInPresets.looks[1])
 
         #expect(model.presetApply?.presetID == BuiltInPresets.looks[1].id)
         #expect(
             model.activeEditState[section: EditState.SectionKey.color]
                 == BuiltInPresets.looks[1].sections[EditState.SectionKey.color])
-
-        model.cancelPresetApply()
+        // Two picks, two undo steps, back to the photo as it was.
+        await model.undo()
+        await model.undo()
         #expect(model.activeEditState == before)
     }
 
-    @Test("cancelPresetApply with nothing selected is a no-op")
-    func cancelWithNoSelectionDoesNothing() async throws {
+    @Test("Ending a session with nothing picked does nothing")
+    func endWithNoSelectionDoesNothing() async throws {
         let temp = try TempProject()
         defer { temp.cleanUp() }
         let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
         let before = model.activeEditState
 
-        model.cancelPresetApply()
+        await model.endPresetApply()
 
         #expect(model.activeEditState == before)
+        #expect(!model.canUndo)
     }
 
     // MARK: - Auto-apply

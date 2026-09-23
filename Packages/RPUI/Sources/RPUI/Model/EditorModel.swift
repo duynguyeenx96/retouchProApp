@@ -390,6 +390,9 @@ public final class EditorModel {
         _ step: (inout ShotHistory, inout ShotSnapshot) -> Bool
     ) async {
         guard activeShot != nil else { return }
+        // An open preset "Cường độ" session blends from a baseline that undo
+        // is about to move out from under it; the next touch starts afresh.
+        presetApply = nil
         var snapshot = ShotSnapshot(editState: activeEditState, strokes: activeStrokes)
         let before = snapshot
         guard step(&history, &snapshot) else { return }

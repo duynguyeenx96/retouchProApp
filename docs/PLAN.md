@@ -831,6 +831,16 @@ cuối, không phải nhật ký từng đợt):
   build xuất hiện) qua `swift test` đầy đủ của RPEngine; cần tách nhỏ biểu thức `@Test(arguments:)` trong file
   đó hoặc chờ toolchain, không phải việc của tính năng này.
 
+**Sửa lỗi (2026-09-23) — chọn preset giờ là áp thật, rời panel không mất preset.** User báo lỗi nghiêm trọng: áp
+preset xong sang tab Màu để tinh chỉnh thì preset biến mất, panel Màu không hiện thông số preset. Nguyên nhân: bản
+2026-09-22 cho "chọn 1 dòng preset" chỉ là **xem thử** (chỉ ghi đĩa khi thả thanh Cường độ), và `onDisappear` của
+panel gọi `cancelPresetApply()` trả ảnh về như cũ. Sửa: `selectPresetForApply` (giờ `async`) **áp + ghi đĩa + 1 bước
+undo** ngay khi chọn; Cường độ chỉ để tinh chỉnh (kéo xem, thả ghi); rời panel gọi `endPresetApply()` — giữ nguyên,
+không revert; muốn bỏ thì Hoàn tác. Chọn preset thứ hai trong cùng phiên panel vẫn blend từ baseline gốc (thay thế,
+không chồng), mỗi lần chọn 1 bước undo. Undo/redo đóng phiên blend. Test RPUI viết lại theo hành vi mới (xanh); **đã
+tự click trên app Mac**: chọn "Urban Black Orange" → sang Màu → panel hiện đúng Tương phản +45/Vùng sáng +74/HSL…,
+file edits trên đĩa có đúng giá trị → Hoàn tác trả về trạng thái trước.
+
 **Cập nhật (2026-09-23) — `BatchQueue`: xuất hàng loạt thật.** Gạch đầu dòng "`BatchQueue` export nền, giới hạn
 theo GPU memory, thermal-aware" ở trên giờ đã ship; dialog xuất không còn dòng "1 ảnh · batch: Phase 3":
 - `BatchQueue` (RPUI Model, `BatchQueue.swift`) chạy **lần lượt từng ảnh** qua đúng 1 `ExportRunning` dùng chung

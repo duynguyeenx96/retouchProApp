@@ -170,21 +170,30 @@ extension EditorModel {
 
     // MARK: - Applying with intensity
 
-    /// Selects `preset` for the "Cường độ" slider (2026-09-22, replacing the
-    /// old "Áp cho" scope row + "Áp dụng" button): picking it previews the
-    /// look immediately at full strength, live on the canvas next to the
-    /// panel — the visual feedback hovering used to give, now folded into
-    /// selection since a user has to select before the slider means anything
-    /// anyway. Dragging the slider afterwards dials the strength up or down;
-    /// ``commitPresetApply()`` on release is the one call that reaches disk,
-    /// the same "drag previews, release commits" contract every slider in
-    /// this app follows.
+    /// Picking a preset **applies it** — to the canvas and to disk, one undo
+    /// step — at full strength. The "Cường độ" slider below then dials it up
+    /// or down (drag previews, release writes, like every slider).
     ///
-    /// Selecting a **second** preset without committing the first keeps the
-    /// original baseline rather than starting from the half-applied first
-    /// one — switching around while browsing must always compare against the
-    /// photo as it actually was, not wherever the last preview left it.
-    public func selectPresetForApply(_ preset: Preset) {
+    /// 2026-09-23 fix: selecting used to be preview-only, written only when
+    /// the slider was released, and closing the panel reverted it. So picking
+    /// a preset and moving on to the Màu panel to fine-tune threw the preset
+    /// away, and that panel never showed its values. Now what you pick is what
+    /// the photo has; to get rid of it, Hoàn tác.
+    ///
+    /// Picking a **second** preset while the panel is still open blends from
+    /// the same baseline as the first (the photo as it was before this panel
+    /// session), so browsing presets replaces rather than stacks them. Each
+    /// pick is its own undo step.
+    public func selectPresetForApply(_ preset: Preset) async {
+        guard activeShot != nil else { return }
+        beginPresetBlend(preset)
+        await commitEditState()
+    }
+
+    /// Opens a blending session for `preset` at full strength on the canvas
+    /// without writing — for the "Cường độ" slider when it is touched after
+    /// the session was ended (e.g. by an undo); its release writes.
+    public func beginPresetBlend(_ preset: Preset) {
         guard activeShot != nil else { return }
         let baseline = presetApply?.baseline ?? activeEditState
         presetApply = PresetIntensityPreview(
@@ -200,20 +209,20 @@ extension EditorModel {
         applyPresetIntensityPreview()
     }
 
-    /// Writes the current blend to disk and clears the pending selection.
+    /// Slider released: writes the current blend. The session stays open so
+    /// the slider can be dragged again from the same baseline.
     public func commitPresetApply() async {
         guard presetApply != nil else { return }
-        presetApply = nil
         await commitEditState()
     }
 
-    /// Deselecting (closing the panel, or about to select a different preset
-    /// from a clean slate) restores exactly what was there before. Safe to
-    /// call with nothing selected.
-    public func cancelPresetApply() {
-        guard let preview = presetApply else { return }
-        replaceActiveEditState(preview.baseline)
+    /// The preset panel went away. Whatever was picked is already applied
+    /// and saved, so nothing is reverted; only the blending session ends
+    /// (a drag still in flight is written first).
+    public func endPresetApply() async {
+        guard presetApply != nil else { return }
         presetApply = nil
+        await commitEditState()
     }
 
     /// Blends every key of every section `presetApply` scopes, from the

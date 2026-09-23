@@ -71,11 +71,9 @@ struct PresetLibraryView: View {
             selectedID = nil
             await library.reload()
         }
-        // Belt-and-suspenders: if the screen goes away with a preset still
-        // mid-preview (dismissing with a shortcut before the slider was
-        // touched, say), the canvas must not get stuck showing a look nobody
-        // committed.
-        .onDisappear { model.cancelPresetApply() }
+        // Leaving the panel (e.g. for Màu to fine-tune) keeps the preset: it
+        // was applied when picked. Only the blending session ends.
+        .onDisappear { Task { await model.endPresetApply() } }
         .alert("Lưu preset", isPresented: $isNamingPreset) {
             TextField("Tên preset", text: $newPresetName)
             Button("Huỷ", role: .cancel) {}
@@ -184,11 +182,8 @@ struct PresetLibraryView: View {
                     )
                     .onTapGesture {
                         selectedID = preset.id
-                        // Selecting previews immediately at full strength —
-                        // the live feedback hovering used to give, folded
-                        // into selection since the "Cường độ" slider below
-                        // needs a selection before it means anything anyway.
-                        model.selectPresetForApply(preset)
+                        // Picking applies it (canvas + disk, one undo step).
+                        Task { await model.selectPresetForApply(preset) }
                     }
                 }
             }
@@ -256,7 +251,7 @@ struct PresetLibraryView: View {
                     range: Slider.range,
                     onChange: { value in
                         if model.presetApply?.presetID != preset.id {
-                            model.selectPresetForApply(preset)
+                            model.beginPresetBlend(preset)
                         }
                         model.setPresetApplyIntensity(value)
                     },
