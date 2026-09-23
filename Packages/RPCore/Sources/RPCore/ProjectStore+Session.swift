@@ -92,14 +92,19 @@ extension ProjectStore {
     /// before the batch write and silently throw the batch away with it. An
     /// unreadable history is replaced rather than failing the write: the edit
     /// is what the user asked for.
+    ///
+    /// **History first, document second** (the rule `EditorModel`'s write
+    /// queue follows too): if the process dies between the two writes, disk
+    /// holds an undo step for an edit that never landed — undoing it restores
+    /// the state that is already there — rather than an edit nothing can undo.
     public func saveEditStateRecordingHistory(
         _ state: EditState, replacing previous: EditState, for shotID: ShotID,
         fileManager: FileManager = .default
     ) throws {
-        try saveEditState(state, for: shotID, fileManager: fileManager)
         var history = (try? loadShotHistory(for: shotID, fileManager: fileManager)) ?? ShotHistory()
         history.record(.edit(previous))
         try saveShotHistory(history, for: shotID, fileManager: fileManager)
+        try saveEditState(state, for: shotID, fileManager: fileManager)
     }
 
     // MARK: - Session position — session.json

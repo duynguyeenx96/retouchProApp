@@ -158,6 +158,43 @@ struct ProjectSessionFilesTests {
         #expect(throws: ProjectStoreError.self) { try store.loadShotHistory(for: shot) }
     }
 
+    @Test("A batch write lands its history step before the document it undoes")
+    func batchWriteOrdersHistoryFirst() throws {
+        let temp = try TemporaryDirectory("order")
+        final class Names: @unchecked Sendable {
+            let lock = NSLock()
+            var list: [String] = []
+        }
+        let names = Names()
+        let (created, _) = try ProjectStore.create(name: "Shoot", in: temp.url)
+        let store = ProjectStore(
+            bundleURL: created.bundleURL,
+            writer: AtomicFileWriter(synchronizesToDisk: false, beforeCommit: { url in
+                names.lock.withLock { names.list.append(url.deletingLastPathComponent().lastPathComponent) }
+            }))
+        var pasted = EditState()
+        pasted.setSlider("exposure", in: "color", to: 50)
+        let shot = ShotID("shot-1")!
+        try store.saveEditStateRecordingHistory(pasted, replacing: EditState(), for: shot)
+        #expect(names.lock.withLock { names.list } == ["history", "edits"])
+
+        // A failure writing the document leaves the step, never the reverse.
+        let failing = ProjectStore(
+            bundleURL: created.bundleURL,
+            writer: AtomicFileWriter(synchronizesToDisk: false, beforeCommit: { url in
+                if url.deletingLastPathComponent().lastPathComponent == "edits" {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            }))
+        var again = pasted
+        again.setSlider("exposure", in: "color", to: 80)
+        #expect(throws: (any Error).self) {
+            try failing.saveEditStateRecordingHistory(again, replacing: pasted, for: shot)
+        }
+        #expect(try store.loadShotHistory(for: shot).undoSteps.count == 2)
+        #expect(try store.loadEditState(for: shot) == pasted)
+    }
+
     // MARK: - Session position
 
     @Test("session.json round-trips, and tolerates bad ids and a bad viewport")

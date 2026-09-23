@@ -149,6 +149,66 @@ struct ManualMaskTests {
         }
     }
 
+    /// Review of fb27550: the bounding-box dispatch clamps each batch's box to
+    /// the mask, so the borders are where it could clip or leak. Stamps whose
+    /// discs overflow every edge — strokes through both corners and one that
+    /// starts and ends off the mask — against the Double reference, plus a
+    /// subtract stroke across a corner so the read-back side is covered too.
+    @Test("Stamps overflowing the mask edges match the Double reference (bounding-box borders)")
+    func splatAtTheBordersMatchesReference() throws {
+        guard let context = SpikeS3Support.context else { return }
+        try Self.withManualMask {
+            let w = Double(Self.width)
+            let h = Double(Self.height)
+            // Radius larger than the distance to the edge at every endpoint.
+            var corners = BrushStroke(radius: 30, hardness: 0.3, flow: 1, mode: .add)
+            corners.points = [
+                BrushPoint(location: CGPoint(x: 0, y: 0)),
+                BrushPoint(location: CGPoint(x: w - 1, y: h - 1)),
+            ]
+            var offMask = BrushStroke(radius: 22, hardness: 0.8, flow: 0.9, mode: .add)
+            offMask.points = [
+                BrushPoint(location: CGPoint(x: -15, y: h + 10)),
+                BrushPoint(location: CGPoint(x: w + 12, y: h - 8)),
+            ]
+            var erase = BrushStroke(radius: 18, hardness: 0.5, flow: 1, mode: .subtract)
+            erase.points = [
+                BrushPoint(location: CGPoint(x: w - 1, y: 0)),
+                BrushPoint(location: CGPoint(x: w + 20, y: -20)),
+            ]
+            var tl = BrushStroke(radius: 40, hardness: 1, flow: 1, mode: .add)
+            tl.points = [BrushPoint(location: CGPoint(x: w - 1, y: 0))]
+            let strokes = [corners, offMask, tl, erase]
+
+            let session = try ManualMaskSession(
+                context: context, width: Self.width, height: Self.height)
+            for stroke in strokes { try Self.draw(stroke, in: session) }
+            let measured = try session.readValues().map { Double($0) / 255 }
+            let reference = ManualMaskSplatReference.rasterise(
+                strokes, width: Self.width, height: Self.height)
+            var worst = 0.0
+            for i in 0..<reference.count { worst = max(worst, abs(reference[i] - measured[i])) }
+            print("P6.1 border splat vs Double reference: max abs diff = \(worst)")
+            #expect(worst < 4.1e-3, "max abs diff \(worst)")
+
+            // The borders are actually painted: every corner pixel and edge row.
+            let last = Self.width * Self.height - 1
+            #expect(measured[0] > 0.5)
+            #expect(measured[last] > 0.5)
+            #expect(measured[(Self.height - 1) * Self.width] > 0.5)  // bottom-left, off-mask stroke
+            // The top-right corner was painted hard, then erased.
+            #expect(measured[Self.width - 1] < 0.1)
+            #expect(reference[Self.width - 1] < 0.1)
+
+            // A replay from the stored list (whole-list batches, different box
+            // per batch) lands on the same bytes.
+            let replayed = try ManualMaskSession(
+                context: context, width: Self.width, height: Self.height)
+            try replayed.replaceStrokes(session.strokes)
+            #expect(try replayed.readValues() == session.readValues())
+        }
+    }
+
     @Test("Subtract rubs coverage back out")
     func subtractRemovesCoverage() throws {
         guard let context = SpikeS3Support.context else { return }

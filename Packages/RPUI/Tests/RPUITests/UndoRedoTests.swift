@@ -209,6 +209,44 @@ struct UndoRedoTests {
         #expect(model.slider(exposure.0, in: exposure.1) == 0)
     }
 
+    /// Review of fb27550: the undo step must reach disk before the edit it
+    /// undoes, so a crash between the two never leaves an un-undoable edit.
+    @Test("A commit writes its history step before the document; a stroke before its strokes file")
+    func historyIsWrittenBeforeTheChange() async throws {
+        let temp = try TempProject(shots: 1)
+        defer { temp.cleanUp() }
+        final class Order: @unchecked Sendable {
+            let lock = NSLock()
+            var names: [String] = []
+            func add(_ url: URL) {
+                // The temp file sits in the destination's directory; for
+                // `edits/` tell the document from the strokes file by what is
+                // being written (no strokes exist before this test paints).
+                lock.withLock { names.append(url.deletingLastPathComponent().lastPathComponent) }
+            }
+            var snapshot: [String] { lock.withLock { names } }
+        }
+        let order = Order()
+        let store = ProjectStore(
+            bundleURL: temp.store.bundleURL,
+            writer: AtomicFileWriter(synchronizesToDisk: false, beforeCommit: { order.add($0) }))
+        let project = try store.load().project
+        let model = EditorModel(
+            session: ProjectSession(store: store, project: project), store: store, project: project)
+        await model.loadActiveEditState()
+
+        model.setSlider(ColorSliders.Key.exposure, in: EditState.SectionKey.color, to: 20)
+        await model.commitEditState()
+        await model.flushPendingWrites()
+        #expect(order.snapshot == ["history", "edits"])
+
+        model.recordBrushStroke(ExportMaskWiringTests.pixelStroke(), maskSize: CGSize(width: 40, height: 40))
+        await model.flushPendingWrites()
+        #expect(order.snapshot == ["history", "edits", "history", "edits"])
+        let id = try #require(model.activeShot?.id)
+        #expect(FileManager.default.fileExists(atPath: store.manualMaskStrokesURL(for: id).path))
+    }
+
     @Test("\"Xoá mask\" is one undoable step that brings every stroke back")
     func clearingStrokesIsUndoable() async throws {
         let temp = try TempProject(shots: 1)

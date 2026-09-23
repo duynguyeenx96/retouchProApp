@@ -8,8 +8,10 @@ import RPEngine
 /// ## Why this is chrome and not `EditState`
 ///
 /// A brush setting is *where the user's hand is*, not part of the document: the
-/// document's half of the feature is the painted PNG and the `perImage`
-/// reference to it (`RPCore.ManualMaskReference`, ADR-0019 §8). Putting a radius
+/// document's half of the feature is the strokes themselves, stored normalised
+/// in `edits/<shot id>.strokes.json` (`RPCore.ManualMaskStroke`, ADR-0019's
+/// 2026-09-23 addendum) — each stroke carries its own radius as a fraction of
+/// the image, so the *setting* is not needed to replay it. Putting a radius
 /// into `EditState` would put it into every `Preset` too, and a preset carrying
 /// "64 px brush" is meaningless on another image. So it lives in
 /// ``EditorChrome`` beside `macTool`, which is never written to disk

@@ -417,8 +417,9 @@ public final class EditorModel {
         activeStrokes.append(stroke.normalized(imageSize: maskSize))
         history.record(.removeLastStroke)
         live?.setManualMaskStrokes(activeStrokes)
-        persistStrokes()
+        // History first: the undo step lands before the change it undoes.
         persistHistory()
+        persistStrokes()
     }
 
     /// "Xoá mask": every stroke goes, **undoably** — the whole list is the one
@@ -429,28 +430,44 @@ public final class EditorModel {
         history.record(.replaceStrokes(activeStrokes))
         activeStrokes = []
         live?.setManualMaskStrokes([])
-        persistStrokes()
+        // History first: the undo step lands before the change it undoes.
         persistHistory()
+        persistStrokes()
     }
 
-    // MARK: - Side-file writes (strokes, history, session position)
+    // MARK: - Per-shot writes (edits, strokes, history) — one ordered queue
 
-    /// Writes queued in order, each after the one before it, off the main
-    /// actor. Two quick strokes can never land on disk out of order.
+    /// Every per-shot file write — `edits/<id>.json`, the strokes file and the
+    /// history — goes through this one queue, each after the one before it,
+    /// off the main actor. Two quick strokes can never land out of order, and
+    /// (review of fb27550) **a commit's history step is always on disk before
+    /// the edit it undoes**: ``commitEditState()`` enqueues the history first
+    /// and the document second, so a crash between the two leaves at worst an
+    /// undo step for an edit that never landed (undoing it is a no-op), never
+    /// an edit on disk that cannot be undone.
     @ObservationIgnored private var pendingWrite: Task<Void, Never>?
     nonisolated static let log = Logger(subsystem: "com.duynguyen.RetouchPro", category: "project")
 
-    private func enqueueWrite(_ label: String, _ body: @escaping @Sendable () throws -> Void) {
+    /// Queues `body` and returns a task that finishes when it has run, with its
+    /// error (also logged) or `nil`.
+    @discardableResult
+    private func enqueueWrite(
+        _ label: String, _ body: @escaping @Sendable () throws -> Void
+    ) -> Task<(any Error)?, Never> {
         let previous = pendingWrite
-        pendingWrite = Task.detached(priority: .utility) {
+        let write = Task.detached(priority: .utility) { () -> (any Error)? in
             await previous?.value
             do {
                 try body()
+                return nil
             } catch {
                 Self.log.error(
                     "\(label, privacy: .public) write failed: \(String(describing: error), privacy: .public)")
+                return error
             }
         }
+        pendingWrite = Task { _ = await write.value }
+        return write
     }
 
     /// Waits for every queued side-file write — an export reads other shots'
@@ -484,15 +501,15 @@ public final class EditorModel {
         guard let shot = activeShot else { return }
         let store = self.store
         let id = shot.id
-        do {
-            try await Task.detached { try store.saveEditState(state, for: id) }.value
-            if state.isDefault {
-                editedShotIDs.remove(id)
-            } else {
-                editedShotIDs.insert(id)
-            }
-        } catch {
-            lastErrorMessage = "Could not save edits for \(shot.originalFileName): \(error)"
+        // Through the same ordered queue as the history (see `enqueueWrite`):
+        // whatever history step the caller recorded is already queued ahead.
+        let failure = await enqueueWrite("edits") { try store.saveEditState(state, for: id) }.value
+        if let failure {
+            lastErrorMessage = "Could not save edits for \(shot.originalFileName): \(failure)"
+        } else if state.isDefault {
+            editedShotIDs.remove(id)
+        } else {
+            editedShotIDs.insert(id)
         }
     }
 

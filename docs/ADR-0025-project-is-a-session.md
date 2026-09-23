@@ -92,3 +92,17 @@ Checked for this ADR, and nothing changes.
   batch paste) and `SessionPositionTests` (restore, debounce, stale ids, corrupt/future file).
 * Not done: iOS device verification of the new files in the sandboxed container (macOS-only by standing rule), and no
   history UI (list/jump) — just undo/redo.
+
+## Review follow-up — 2026-09-23
+
+* **Write order.** Every per-shot file write — `edits/<id>.json` included, which used to be its own detached
+  task — now goes through `EditorModel`'s one ordered queue. **The history step is queued before the change it
+  undoes** (commit: history → document; stroke / "Xoá mask": history → strokes file), and
+  `ProjectStore.saveEditStateRecordingHistory` writes history before the document too. A crash between the two
+  leaves at worst an undo step for an edit that never landed, never an edit nothing can undo.
+  `lastSavedEditState` is still assigned before the await. Pinned by `UndoRedoTests.historyIsWrittenBeforeTheChange`
+  and `ProjectSessionFilesTests.batchWriteOrdersHistoryFirst` (order observed through `AtomicFileWriter.beforeCommit`).
+* **`ManualMaskReference` removed** (RPCore): nothing wrote `perImage["manualMask"]` after strokes replaced the PNG.
+* **Bounding-box splat at the borders**: `ManualMaskTests.splatAtTheBordersMatchesReference` has strokes whose discs
+  overflow every edge and corner, including one that runs entirely off the mask and an erase across a corner. It
+  compares them against the Double reference: max abs diff 1/255, i.e. r8 quantisation only.

@@ -10,13 +10,10 @@ import Testing
 /// (`ProjectSessionFilesTests`). The generic `masks/` API these tests pin is
 /// kept for `removeShot`'s clean-up and has no writer in the app.
 ///
-/// The pixels are RPEngine's problem (`ManualMaskTests` measures the brush).
-/// This suite is only about the two halves of the *storage* decision:
-///
-/// 1. the bytes go to `masks/<shot id>/<mask id>.png` inside the `.rpproj`
-///    bundle, and are cleaned up with the shot;
-/// 2. `EditState` holds **only an id**, in `perImage`, so it never travels in a
-///    preset and never bloats the JSON that is rewritten on every slider release.
+/// What is left pinned here: the bytes go to `masks/<shot id>/<mask id>.png`
+/// inside the `.rpproj` bundle and are cleaned up with the shot. The `perImage`
+/// reference half (`ManualMaskReference`) was removed after the fb27550 review:
+/// nothing wrote `perImage["manualMask"]` any more.
 @Suite("Phase 6.1 manual mask storage")
 struct ManualMaskStorageTests {
     /// Stand-in "PNG": nothing here decodes it, and using real pixels would test
@@ -90,50 +87,5 @@ struct ManualMaskStorageTests {
         #expect(MaskID("a/b") == nil)
         #expect(MaskID("") == nil)
         #expect(MaskID("mask-a") != nil)
-    }
-
-    // MARK: - The reference in the document
-
-    @Test("The reference round-trips through EditState.perImage")
-    func referenceRoundTrips() {
-        var state = EditState()
-        #expect(ManualMaskReference(state).maskID == nil)
-        #expect(ManualMaskReference(state).hasMask == false)
-
-        ManualMaskReference(maskID: MaskID("mask-a")!).write(into: &state)
-        #expect(state.perImage[ManualMaskReference.key] == .string("mask-a"))
-        #expect(ManualMaskReference(state).maskID == MaskID("mask-a"))
-
-        // Clearing removes the key rather than writing a null, so an untouched
-        // document stays untouched.
-        ManualMaskReference().write(into: &state)
-        #expect(state.perImage[ManualMaskReference.key] == nil)
-        #expect(state.isDefault)
-    }
-
-    @Test("A malformed id in a document reads as 'no mask', not as an error")
-    func aMalformedReferenceReadsAsAbsent() {
-        var state = EditState()
-        state.perImage[ManualMaskReference.key] = .string("../escape")
-        #expect(ManualMaskReference(state).maskID == nil)
-
-        state.perImage[ManualMaskReference.key] = .int(7)
-        #expect(ManualMaskReference(state).maskID == nil)
-    }
-
-    @Test("A mask reference never travels inside a preset")
-    func presetsDropTheReference() {
-        var state = EditState()
-        state.setSlider("smooth", in: EditState.SectionKey.skin, to: 90)
-        ManualMaskReference(maskID: MaskID("mask-a")!).write(into: &state)
-
-        let preset = Preset(name: "Soft", from: state)
-        var other = EditState()
-        other = other.applying(preset)
-
-        // The slider transfers, the mask does not: it was painted around one
-        // person's jaw on one frame and means nothing on the next.
-        #expect(other.slider("smooth", in: EditState.SectionKey.skin) == 90)
-        #expect(ManualMaskReference(other).maskID == nil)
     }
 }
