@@ -62,22 +62,67 @@ struct ExportOptionRows: View {
     }
 }
 
+/// "Xuất" row: the filmstrip selection or the whole project, each with its
+/// real count — the number the button will actually write.
+struct ExportScopeRow: View {
+    @Binding var scope: ExportScope
+    let selectedCount: Int
+    let projectCount: Int
+    var fontSize: CGFloat = 13.5
+    var pillFontSize: CGFloat = 12
+
+    var body: some View {
+        HStack {
+            Text("Xuất")
+                .font(RPTheme.text(fontSize))
+                .foregroundStyle(RPTheme.textLabel)
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                pill("Đã chọn (\(selectedCount))", .selection)
+                pill("Cả project (\(projectCount))", .allShots)
+            }
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Rectangle().fill(RPTheme.hairline).frame(height: 1) }
+    }
+
+    private func pill(_ title: String, _ value: ExportScope) -> some View {
+        RPChoicePill(
+            title: title, isSelected: scope == value, fontSize: pillFontSize,
+            horizontalPadding: 12, verticalPadding: 5, cornerRadius: 7
+        ) { scope = value }
+        .accessibilityLabel(value.title)
+    }
+}
+
+/// How many photos `scope` covers.
+func exportCount(scope: ExportScope, selectedCount: Int, projectCount: Int) -> Int {
+    scope == .selection ? selectedCount : projectCount
+}
+
 // MARK: - Screen 2b — iPhone export sheet
 
 /// **Screen 2b** — the modal export sheet over a dimmed canvas.
 ///
-/// The primary button runs one export of the shot the editor has open, through
-/// ``ExportController``. The file lands in the app's container
+/// The primary button exports the scope row's photos (the selection — the open
+/// photo unless "Chọn" picked more — or the whole project) through
+/// ``ExportController`` / ``BatchQueue``. The files land in the app's container
 /// (``ExportDestination``), which on iOS is not somewhere the user can browse —
-/// so the finished row carries a `ShareLink`, which is how the picture gets into
-/// Files, Photos or anywhere else. `docs/PLAN.md` Phase 3's batch queue is not
-/// here: this button is one photo.
+/// so the finished row carries a `ShareLink` over every file written, which is
+/// how the pictures get into Files, Photos or anywhere else.
 struct PhoneExportSheet: View {
     @Bindable var chrome: EditorChrome
     let shot: Shot?
+    let selectedCount: Int
+    let projectCount: Int
     var exporter: ExportController
     let export: () -> Void
     let dismiss: () -> Void
+
+    private var count: Int {
+        exportCount(
+            scope: chrome.export.scope, selectedCount: selectedCount, projectCount: projectCount)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,6 +143,9 @@ struct PhoneExportSheet: View {
             }
             .padding(.bottom, 14)
 
+            ExportScopeRow(
+                scope: Binding(get: { chrome.export.scope }, set: { chrome.export.scope = $0 }),
+                selectedCount: selectedCount, projectCount: projectCount)
             ExportOptionRows(options: Binding(get: { chrome.export }, set: { chrome.export = $0 }))
 
             statusRow
@@ -105,8 +153,10 @@ struct PhoneExportSheet: View {
                 .padding(.vertical, 10)
 
             HStack(spacing: 10) {
-                Button(action: dismiss) {
-                    Text(exporter.lastSummary == nil ? "Huỷ" : "Xong")
+                Button {
+                    if exporter.isExporting { exporter.cancel() } else { dismiss() }
+                } label: {
+                    Text(secondaryTitle)
                         .font(RPTheme.text(14, weight: .medium))
                         .foregroundStyle(RPTheme.textPrimary)
                         .frame(maxWidth: .infinity)
@@ -115,9 +165,10 @@ struct PhoneExportSheet: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
+                .disabled(exporter.isCancelling)
 
                 Button(action: export) {
-                    Text(exporter.isExporting ? "Đang xuất…" : "Xuất 1 ảnh")
+                    Text(exporter.isExporting ? "Đang xuất…" : "Xuất \(count) ảnh")
                         .font(RPTheme.text(14, weight: .semibold))
                         .foregroundStyle(RPTheme.onAccent)
                         .frame(maxWidth: .infinity)
@@ -128,7 +179,7 @@ struct PhoneExportSheet: View {
                 .frame(maxWidth: .infinity)
                 .opacity(canExport ? 1 : 0.45)
                 .disabled(!canExport)
-                .accessibilityLabel("Xuất 1 ảnh")
+                .accessibilityLabel("Xuất \(count) ảnh")
             }
             .padding(.bottom, 16)
         }
@@ -136,21 +187,60 @@ struct PhoneExportSheet: View {
         .background(RPTheme.sheet)
     }
 
+    /// While running, the left button stops the batch after the current photo
+    /// — closing the sheet would hide the only progress there is.
+    private var secondaryTitle: String {
+        if exporter.isCancelling { return "Đang dừng…" }
+        if exporter.isExporting { return "Dừng" }
+        return exporter.lastBatch == nil ? "Huỷ" : "Xong"
+    }
+
     private var canExport: Bool {
-        shot != nil && exporter.isAvailable && !exporter.isExporting
+        shot != nil && count > 0 && exporter.isAvailable && !exporter.isExporting
     }
 
     /// One line, four states: running, finished, failed, idle. The finished one
-    /// carries the `ShareLink` — without it the file is in a container the user
-    /// cannot open.
+    /// carries the `ShareLink` — without it the files are in a container the
+    /// user cannot open.
     @ViewBuilder private var statusRow: some View {
-        if exporter.isExporting {
+        if let progress = exporter.progress {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small).tint(RPTheme.accent)
-                Text("Đang xuất ảnh…")
+                Text(progress.isThermalPaused ? progress.statusText : "Đang xuất ảnh…")
                     .font(RPTheme.text(12))
                     .foregroundStyle(RPTheme.textSecondary)
+                    .lineLimit(1)
                 Spacer()
+                Text("\(progress.completed) / \(progress.total)")
+                    .font(RPTheme.mono(12))
+                    .foregroundStyle(RPTheme.accent)
+            }
+        } else if let batch = exporter.lastBatch, batch.total > 1 {
+            HStack(spacing: 8) {
+                Image(systemName: batch.failures.isEmpty
+                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(batch.failures.isEmpty ? RPTheme.accent : .orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(batch.headline)
+                        .font(RPTheme.text(12, weight: .medium))
+                        .foregroundStyle(RPTheme.textPrimary)
+                        .lineLimit(1)
+                    if let failure = batch.failures.first {
+                        Text("\(failure.fileName): \(failure.reason)")
+                            .font(RPTheme.mono(10.5))
+                            .foregroundStyle(RPTheme.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 6)
+                if !batch.exported.isEmpty {
+                    ShareLink(items: batch.exported.map(\.url)) {
+                        Text("Chia sẻ")
+                            .font(RPTheme.text(12, weight: .medium))
+                            .foregroundStyle(RPTheme.accent)
+                    }
+                    .accessibilityLabel("Chia sẻ ảnh đã xuất")
+                }
             }
         } else if let summary = exporter.lastSummary {
             HStack(spacing: 8) {
@@ -188,7 +278,7 @@ struct PhoneExportSheet: View {
                     .font(RPTheme.text(12))
                     .foregroundStyle(RPTheme.textTertiary)
                 Spacer()
-                Text("1 ảnh · batch: Phase 3")
+                Text("\(count) ảnh · lần lượt từng ảnh")
                     .font(RPTheme.text(12))
                     .foregroundStyle(RPTheme.textTertiary)
             }
@@ -212,17 +302,23 @@ struct PhoneExportSheet: View {
 /// finished file's row afterwards; both come from ``ExportController``, so the
 /// numbers on screen are a real export's or there are none.
 ///
-/// The title still says "Xuất N ảnh" with N = 1: this button exports the
-/// selected photo. The batch queue behind a larger N is `docs/PLAN.md` Phase 3's
-/// next item and is not wired here.
+/// The title says "Xuất N ảnh" with N = what the scope row covers: the
+/// filmstrip selection (⌘/⇧-click) or the whole project. A batch runs through
+/// ``BatchQueue``, one photo at a time.
 struct MacExportDialog: View {
     @Bindable var chrome: EditorChrome
-    let shotCount: Int
+    let selectedCount: Int
+    let projectCount: Int
     var exporter: ExportController
     let export: () -> Void
     let dismiss: () -> Void
 
     private var progress: ExportProgress? { exporter.progress }
+
+    private var shotCount: Int {
+        exportCount(
+            scope: chrome.export.scope, selectedCount: selectedCount, projectCount: projectCount)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -243,6 +339,11 @@ struct MacExportDialog: View {
             }
 
             VStack(spacing: 0) {
+                ExportScopeRow(
+                    scope: Binding(
+                        get: { chrome.export.scope }, set: { chrome.export.scope = $0 }),
+                    selectedCount: selectedCount, projectCount: projectCount,
+                    fontSize: 12.5, pillFontSize: 11.5)
                 ExportOptionRows(
                     options: Binding(get: { chrome.export }, set: { chrome.export = $0 }),
                     fontSize: 12.5, pillFontSize: 11.5)
@@ -268,9 +369,14 @@ struct MacExportDialog: View {
                 if let progress {
                     VStack(spacing: 8) {
                         HStack {
-                            Text("Đang xử lý \(progress.currentFileName)")
+                            if progress.isThermalPaused {
+                                Image(systemName: "thermometer.high")
+                                    .foregroundStyle(.orange)
+                            }
+                            Text(progress.statusText)
                                 .font(RPTheme.text(11.5))
-                                .foregroundStyle(RPTheme.textMono)
+                                .foregroundStyle(
+                                    progress.isThermalPaused ? .orange : RPTheme.textMono)
                                 .lineLimit(1)
                             Spacer()
                             Text("\(progress.completed) / \(progress.total)")
@@ -289,6 +395,8 @@ struct MacExportDialog: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .background(RPTheme.fillFaint, in: RoundedRectangle(cornerRadius: 10))
+                } else if let batch = exporter.lastBatch, batch.total > 1 {
+                    batchCard(batch)
                 } else if let summary = exporter.lastSummary {
                     finishedCard(summary)
                 } else if let message = exporter.lastErrorMessage {
@@ -311,8 +419,10 @@ struct MacExportDialog: View {
 
             HStack(spacing: 10) {
                 Spacer()
-                Button(action: dismiss) {
-                    Text("Huỷ")
+                Button {
+                    if exporter.isExporting { exporter.cancel() } else { dismiss() }
+                } label: {
+                    Text(secondaryTitle)
                         .font(RPTheme.text(13))
                         .foregroundStyle(RPTheme.textPrimary)
                         .padding(.horizontal, 18)
@@ -320,6 +430,8 @@ struct MacExportDialog: View {
                         .background(RPTheme.fillNeutral, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .disabled(exporter.isCancelling)
+                .help(exporter.isExporting ? "Dừng sau ảnh đang xử lý" : "")
 
                 RPPrimaryButton(
                     title: exporter.isExporting ? "Đang xuất…" : "Xuất",
@@ -328,7 +440,7 @@ struct MacExportDialog: View {
                 )
                 .help(
                     exporter.isAvailable
-                        ? "Xuất ảnh đang chọn vào \(chrome.export.destinationDisplayPath)"
+                        ? "Xuất \(shotCount) ảnh vào \(chrome.export.destinationDisplayPath)"
                         : "Máy này không có GPU Metal nên chưa xuất được")
                 .accessibilityLabel("Xuất")
             }
@@ -349,6 +461,68 @@ struct MacExportDialog: View {
 
     private var canExport: Bool {
         shotCount > 0 && exporter.isAvailable && !exporter.isExporting
+    }
+
+    private var secondaryTitle: String {
+        if exporter.isCancelling { return "Đang dừng…" }
+        if exporter.isExporting { return "Dừng" }
+        return exporter.lastBatch == nil ? "Huỷ" : "Đóng"
+    }
+
+    /// A batch's result: the count, the first few failures by name and reason,
+    /// and the folder. Failures are listed, not summarised as a number — "2
+    /// lỗi" with no names sends the user hunting through the whole shoot.
+    private func batchCard(_ batch: BatchExportSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: batch.failures.isEmpty
+                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(batch.failures.isEmpty ? RPTheme.accent : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(batch.headline)
+                        .font(RPTheme.text(12, weight: .medium))
+                        .foregroundStyle(RPTheme.textPrimary)
+                        .lineLimit(1)
+                    Text(
+                        "\(ExportDestination.displayPath(batch.folder)) · "
+                            + String(format: "%.1f s", batch.milliseconds / 1000)
+                    )
+                    .font(RPTheme.mono(11))
+                    .foregroundStyle(RPTheme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                }
+                Spacer(minLength: 6)
+                #if os(macOS)
+                    if !batch.exported.isEmpty {
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                batch.exported.map(\.url))
+                        } label: {
+                            Text("Hiện trong Finder")
+                                .font(RPTheme.text(12, weight: .medium))
+                                .foregroundStyle(RPTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                #endif
+            }
+            ForEach(Array(batch.failures.prefix(3).enumerated()), id: \.offset) { _, failure in
+                Text("\(failure.fileName): \(failure.reason)")
+                    .font(RPTheme.mono(10.5))
+                    .foregroundStyle(RPTheme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            if batch.failures.count > 3 {
+                Text("… và \(batch.failures.count - 3) ảnh lỗi khác (xem log)")
+                    .font(RPTheme.text(10.5))
+                    .foregroundStyle(RPTheme.textTertiary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(RPTheme.fillFaint, in: RoundedRectangle(cornerRadius: 10))
     }
 
     /// The finished file, with the one control that matters on macOS: showing it
@@ -402,22 +576,34 @@ struct MacExportDialog: View {
     }
 }
 
-/// What a running export reports. ``ExportController`` fills it for a single
-/// photo (`total` 1); the batch queue of `docs/PLAN.md` Phase 3 will fill it for
-/// N without this type changing.
+/// What a running export reports. ``BatchQueue`` fills it — `total` 1 for the
+/// single-photo button, N for a batch.
 public struct ExportProgress: Hashable, Sendable {
     public var currentFileName: String
     public var completed: Int
     public var total: Int
+    /// The queue is waiting between photos for the device to cool down
+    /// (`ProcessInfo.thermalState` `.serious` / `.critical`).
+    public var isThermalPaused: Bool
 
-    public init(currentFileName: String, completed: Int, total: Int) {
+    public init(
+        currentFileName: String, completed: Int, total: Int, isThermalPaused: Bool = false
+    ) {
         self.currentFileName = currentFileName
         self.completed = completed
         self.total = total
+        self.isThermalPaused = isThermalPaused
     }
 
     public var fraction: CGFloat {
         guard total > 0 else { return 0 }
         return min(1, max(0, CGFloat(completed) / CGFloat(total)))
+    }
+
+    /// The progress card's line.
+    public var statusText: String {
+        isThermalPaused
+            ? "Máy đang nóng, tạm dừng…"
+            : "Đang xử lý \(currentFileName)"
     }
 }

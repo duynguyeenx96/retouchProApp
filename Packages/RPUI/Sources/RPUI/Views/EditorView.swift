@@ -130,12 +130,15 @@ public struct EditorView: View {
         #if os(iOS)
             .sheet(isPresented: exportSheetBinding) {
                 PhoneExportSheet(
-                    chrome: chrome, shot: model.activeShot, exporter: exporter,
+                    chrome: chrome, shot: model.activeShot,
+                    selectedCount: model.selection.selectedShots(in: model.shots).count,
+                    projectCount: model.shots.count,
+                    exporter: exporter,
                     export: runExport
                 ) {
                     chrome.isShowingExport = false
                 }
-                .presentationDetents([.height(430)])
+                .presentationDetents([.height(480)])
                 .presentationDragIndicator(.hidden)
                 .presentationBackground(RPTheme.sheet)
                 .preferredColorScheme(.dark)
@@ -206,7 +209,8 @@ public struct EditorView: View {
                         }
                     MacExportDialog(
                         chrome: chrome,
-                        shotCount: model.activeShot == nil ? 0 : 1,
+                        selectedCount: model.selection.selectedShots(in: model.shots).count,
+                        projectCount: model.shots.count,
                         exporter: exporter,
                         export: runExport
                     ) {
@@ -218,10 +222,12 @@ public struct EditorView: View {
         #endif
     }
 
-    /// One photo, the one the editor has open. `ExportController` refuses a
-    /// second call while the first is running, so a double-click is one file.
+    /// The scope row's photos — the selection (just the open photo unless more
+    /// are selected) or the whole project. `ExportController` refuses a second
+    /// call while the first is running, so a double-click is one batch.
     private func runExport() {
-        Task { await exporter.exportActiveShot(of: model, options: chrome.export) }
+        let options = chrome.export
+        Task { await exporter.export(scope: options.scope, of: model, options: options) }
     }
 
     // MARK: - Banners

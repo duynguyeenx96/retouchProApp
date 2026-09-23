@@ -26,6 +26,12 @@ import RPEngine
 ///   --environment-variables '{"RP_EXPORT_SELFTEST":"1"}' com.duynguyen.RetouchPro
 /// ```
 ///
+/// `RP_EXPORT_SELFTEST=batch` (or `batch:<project name>`) runs the Phase 3
+/// batch path instead: every shot of the newest (or the named) project through
+/// ``ExportController/export(scope:of:options:)`` — the dialog's "Cả project"
+/// button — with the app's face provider, so non-open shots get their faces the
+/// way a real batch does.
+///
 /// It is **off unless the variable is set**, it writes only into the app's own
 /// export folder (``ExportDestination``), and it runs after the UI is on screen
 /// so it cannot delay launch.
@@ -39,13 +45,23 @@ public enum ExportSelfTest {
         case firstShot
         /// A bare original file name (`DSC05259.jpg`), looked up across projects.
         case fileName(String)
+        /// `batch` / `batch:<project name>`: every shot of the newest (or the
+        /// named) project, as one batch.
+        case batch(project: String?)
 
         public init?(_ raw: String) {
             let value = raw.trimmingCharacters(in: .whitespaces)
             switch value {
             case "": return nil
             case "1", "first-shot", "first": self = .firstShot
-            default: self = .fileName(value)
+            case "batch": self = .batch(project: nil)
+            default:
+                if value.hasPrefix("batch:") {
+                    let name = String(value.dropFirst("batch:".count))
+                    self = .batch(project: name.isEmpty ? nil : name)
+                } else {
+                    self = .fileName(value)
+                }
             }
         }
     }
@@ -92,9 +108,16 @@ public enum ExportSelfTest {
             return .failure("no project with a shot under \(libraryRoot.path)")
         }
         switch target {
-        case .firstShot:
+        case .firstShot, .batch(project: nil):
             return .resolved(
                 Resolution(bundleURL: entries[0].bundleURL, originalFileName: nil))
+        case .batch(project: let name?):
+            guard let entry = entries.first(where: { $0.name == name }) else {
+                return .failure(
+                    "no project named \(name) under \(libraryRoot.path); have "
+                        + entries.map(\.name).joined(separator: ", "))
+            }
+            return .resolved(Resolution(bundleURL: entry.bundleURL, originalFileName: nil))
         case .fileName(let name):
             for entry in entries {
                 let originals = entry.bundleURL.appendingPathComponent(
@@ -122,6 +145,7 @@ public enum ExportSelfTest {
         target: Target,
         options: ExportOptions = ExportOptions(),
         controller: ExportController? = nil,
+        faceProvider: (any FaceInputProviding)? = nil,
         log: @escaping (String) -> Void
     ) async {
         let libraryRoot = try? ProjectLibrary.defaultRoot()
@@ -150,11 +174,38 @@ public enum ExportSelfTest {
             return
         }
 
-        let exporter = controller ?? ExportController.standard()
+        let exporter =
+            controller
+            ?? ExportController(
+                runner: MetalContext.shared.map { MetalExportRunner(context: $0) },
+                faceSource: faceProvider.map { PreviewFaceSource(provider: $0) })
         guard exporter.isAvailable else {
             log("export-selftest: no Metal device, nothing to export")
             return
         }
+        if case .batch = target {
+            log(
+                "export-selftest: batch of \(model.shots.count) from "
+                    + "\(resolution.bundleURL.lastPathComponent) as \(options.format.title) "
+                    + "\(options.size.title) \(options.colorSpace.title), faces "
+                    + (faceProvider == nil ? "OFF" : "on") + " → "
+                    + ExportDestination.resolve(options).path)
+            await exporter.export(scope: .allShots, of: model, options: options)
+            guard let batch = exporter.lastBatch else {
+                log("export-selftest: FAILED — \(exporter.lastErrorMessage ?? "no batch summary")")
+                return
+            }
+            log("export-selftest: \(batch.headline) in \(Int(batch.milliseconds)) ms")
+            for summary in batch.exported {
+                log("export-selftest: OK \(summary.url.path) — \(summary.detailText)")
+                for note in summary.notes { log("export-selftest: note — \(note)") }
+            }
+            for failure in batch.failures {
+                log("export-selftest: FAILED \(failure.fileName) — \(failure.reason)")
+            }
+            return
+        }
+
         log(
             "export-selftest: exporting \(shot.originalFileName) from "
                 + "\(resolution.bundleURL.lastPathComponent) as \(options.format.title) "

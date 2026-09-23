@@ -327,6 +327,20 @@ struct PhoneLibraryView: View {
                     .buttonStyle(.plain)
                     .font(RPTheme.text(12.5))
                     .foregroundStyle(RPTheme.accent)
+                // Batch export (docs/PLAN.md Phase 3): the export sheet is
+                // presented by `EditorView` over either tab, so this opens it on
+                // the selection without leaving "Chọn" mode — leaving the mode
+                // collapses the selection, which is exactly what must not
+                // happen before the export reads it.
+                Button("Xuất") {
+                    chrome.export.scope = .selection
+                    chrome.isShowingExport = true
+                }
+                .buttonStyle(.plain)
+                .font(RPTheme.text(12.5, weight: .semibold))
+                .foregroundStyle(RPTheme.accent)
+                .padding(.leading, 10)
+                .accessibilityLabel("Xuất \(count) ảnh đã chọn")
             }
             if let message = model.lastSettingsMessage {
                 Text(message)

@@ -830,6 +830,52 @@ cuối, không phải nhật ký từng đợt):
   build xuất hiện) qua `swift test` đầy đủ của RPEngine; cần tách nhỏ biểu thức `@Test(arguments:)` trong file
   đó hoặc chờ toolchain, không phải việc của tính năng này.
 
+**Cập nhật (2026-09-23) — `BatchQueue`: xuất hàng loạt thật.** Gạch đầu dòng "`BatchQueue` export nền, giới hạn
+theo GPU memory, thermal-aware" ở trên giờ đã ship; dialog xuất không còn dòng "1 ảnh · batch: Phase 3":
+- `BatchQueue` (RPUI Model, `BatchQueue.swift`) chạy **lần lượt từng ảnh** qua đúng 1 `ExportRunning` dùng chung
+  (`MetalExportRunner` → 1 `ExportRenderer`), mỗi ảnh 1 task detached. **Tuần tự chính là giới hạn GPU memory**:
+  1 render 24 MP giữ source + tới 2 texture `rgba16Float` full-size (~384 MB), Da + Mắt/Răng ~936 MB scratch
+  (ADR-0011); 2 render song song vượt mức iPhone cho app foreground, còn GPU vốn đã bão hoà với 1 ảnh nên chạy song
+  song cũng không nhanh hơn — chỉ đẩy đỉnh bộ nhớ lên. Giới hạn nằm ở hình dạng vòng lặp, không phải 1 con số
+  concurrency có thể bị chỉnh nhầm thành OOM.
+- Ảnh lỗi (đọc edit/giải mã/render/ghi) được ghi lại tên file + lý do, **không dừng cả batch**. Nút "Dừng" dừng
+  **sau ảnh đang render** (không bỏ dở giữa chừng; `ExportRenderer` ghi atomic nên không có file dở). Tổng kết:
+  "Đã xuất n/N ảnh · k lỗi" / "Đã dừng — xuất n/N ảnh", liệt kê ảnh lỗi, "Hiện trong Finder" chọn sẵn các file (Mac),
+  `ShareLink` nhiều file (iPhone).
+- **Thermal**: trước mỗi ảnh đọc `ProcessInfo.thermalState`; ở `.serious`/`.critical` thì chờ (đọc lại mỗi 5 s),
+  thẻ tiến trình hiện "Máy đang nóng, tạm dừng…". `.fair` **không** dừng (bình thường khi tải dài). Chỉ dừng
+  *giữa* 2 ảnh, không bao giờ giữa 1 ảnh. Nguồn thermal inject được (`ThermalStateProviding`) để test.
+- Phạm vi trong dialog/sheet: hàng "Xuất" = **Đã chọn (n)** (`FilmstripSelection.selectedShotIDs`, luôn gồm ảnh
+  đang mở) hoặc **Cả project (m)**, theo thứ tự project; `{n}` = vị trí trong batch (1-based). Ảnh đang mở: commit
+  trước rồi lấy `EditState` trong bộ nhớ như cũ; ảnh khác: đọc `edits/<id>.json` **đến lượt mới đọc** (không giữ
+  300 preview/face list cùng lúc). iPhone: thanh "Chọn" ở thư viện có thêm nút "Xuất" mở sheet ngay trên vùng chọn
+  (thoát mode "Chọn" sẽ gộp vùng chọn về 1 ảnh, nên phải mở từ đây). `exportActiveShot` giờ là batch 1 ảnh, hành vi
+  cũ giữ nguyên (lỗi 1 ảnh vẫn hiện thành message).
+- **Khuôn mặt cho ảnh không mở**: giải mã preview đúng cỡ canvas (`ImageDecoder`, cạnh dài 2048) rồi gọi đúng
+  `FaceInputProviding` của canvas (`LivePreviewController.faceProvider`, giờ `public`) với cùng content hash ⇒ cùng
+  cache key `hash@WxH`; ảnh đang mở dùng luôn `live.faces` nếu phân tích xong. Phân tích lỗi ⇒ xuất không mặt + ghi
+  log (đúng như canvas fallback), không đánh lỗi cả ảnh.
+- **Mask — nói thẳng**: export 1 ảnh **trước nay đã không** truyền mask toàn khung (cọ mask thủ công — flag đang
+  bật mặc định —, "Khoá nền", mask da toàn thân) vì `ExportJob` không có field cho chúng; batch khớp đúng export
+  1 ảnh (không thêm, không bớt), nên cả hai **khác canvas** ở chỗ có mask đang hoạt động. Mask cọ lại chỉ sống trong
+  session GPU của ảnh đang mở (không lưu đĩa), nên ảnh không mở không có mask để lấy. Đây là gap có từ trước, cần
+  1 việc riêng ở RPEngine (thêm mask vào `ExportJob` + lưu mask cọ theo ảnh) — không làm lén trong việc này.
+- Log: kênh `export` có 1 dòng/ảnh (`export [i/N] wrote … nodes … ms`, `export [i] <file>: k face(s) on WxH
+  (canvas|analysed)`) + dòng tổng batch. `RP_EXPORT_SELFTEST=batch` / `batch:<tên project>` chạy batch cả project
+  qua đúng `ExportController` + face provider của app.
+- **Đo trên Mac (build Debug thật, ảnh thật "Shoot 2026-09-07 2": DSC00657.jpg 1 mặt, DSC01660.jpg 5 mặt)**: 2/2
+  ảnh, 5.9 s cả batch (gồm 0.8 + 0.6 s phân tích mặt lần đầu), render 746 / 563 ms/ảnh, node chạy `color→skin→
+  eyesTeeth` / `eyesTeeth`. Đối chứng không mặt (`RP_DISABLE_GROUPS=face`): khác bản có mặt ở 0.66% pixel (>1
+  mức, full-res) — đúng vùng mặt; file batch của DSC01660 **trùng từng byte** với export 1 ảnh cùng tấm.
+- Test: RPUI 287 (+14 `BatchQueueTests`: thứ tự/đánh số, không bao giờ 2 render cùng lúc, cô lập lỗi, đếm tiến trình,
+  dừng, dừng lúc đang nóng, tạm dừng/tiếp tục theo nhiệt, phạm vi, edit từ đĩa vs bộ nhớ, mặt cho ảnh không mở; +
+  self-test `batch`), RPCore 120 — xanh. Không đụng RPEngine.
+- **Còn treo**: (1) hành vi nhiệt trên **iPhone thật chưa đo** (Mac luôn `.nominal`; chưa biết batch dài trên
+  iPhone có chạm `.serious` không, và 5 s poll có hợp lý không) — cần chạy `RP_EXPORT_SELFTEST=batch` trên máy;
+  (2) chiều cao sheet iPhone tăng 430 → 480 pt cho hàng phạm vi, chưa xem trên iPhone thật; (3) gap mask ở trên;
+  (4) chưa có ETA/thời gian còn lại trên thẻ tiến trình; (5) test cấp scheme (`xcodebuild test`) vẫn bị chặn bởi
+  `RPEngineTests` không build (type-check timeout đã ghi ở mục 2026-09-22).
+
 ### Phase 3B — Share Extension "Mở với RetouchPro" (~1.5–2 tuần, chạy song song Phase 3)
 
 Hướng kỹ thuật và UX đích **đã chốt với user** (`docs/HANDOFF-remaining-features-2026-09-10.md` §4.1) — phần dưới

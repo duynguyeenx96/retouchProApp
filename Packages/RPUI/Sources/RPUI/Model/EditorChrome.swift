@@ -266,10 +266,9 @@ public final class EditorChrome {
 
 /// The choices in the export sheet (2b) and the export dialog (2d).
 ///
-/// **No renderer behind it yet.** Export is `docs/PLAN.md` Phase 3, and
-/// ADR-0011 records the open question it depends on (Da + Mắt/Răng together are
-/// ~936 MB of scratch at 24 MP, unmeasured on a real iPhone). So this value type
-/// and its UI exist, the button says so, and nothing writes a file.
+/// ``ExportOptions/engineSettings`` turns the pills into what
+/// `RPEngine.ExportRenderer` takes; ``ExportController`` runs them through
+/// ``BatchQueue`` for ``scope``'s photos.
 public struct ExportOptions: Hashable, Sendable {
     public enum Format: String, CaseIterable, Hashable, Sendable {
         case jpeg, heif, tiff
@@ -312,6 +311,9 @@ public struct ExportOptions: Hashable, Sendable {
     public var quality: Quality = .low
     public var size: Size = .original
     public var colorSpace: ColorSpace = .sRGB
+    /// Which photos the button exports: the filmstrip selection (the open
+    /// photo alone unless more are selected) or the whole project.
+    public var scope: ExportScope = .selection
     /// The macOS dialog's destination folder row. `nil` until the user picks
     /// one, in which case the export lands in
     /// ``ExportDestination/defaultDirectory(fileManager:)``.

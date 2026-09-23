@@ -56,7 +56,8 @@ struct RootView: View {
             // the sandbox-shaped risks (decode, GPU memory, where the file is
             // written) are checked on the device and not only on the Mac.
             if let target = ExportSelfTest.target() {
-                await ExportSelfTest.run(target: target, log: AppLog.write)
+                await ExportSelfTest.run(
+                    target: target, faceProvider: container.faceProvider, log: AppLog.write)
             }
             // And for the preset library, off unless RP_PRESET_SELFTEST is set:
             // "Nổi bật" reads JSON out of RPCore's resource bundle and "Của

@@ -318,11 +318,12 @@ struct DesignShellTests {
         // nothing renders, which is all a "does it build" test needs.
         let exporter = ExportController(runner: nil)
         _ = PhoneExportSheet(
-            chrome: chrome, shot: model.activeShot, exporter: exporter, export: {},
-            dismiss: {}
+            chrome: chrome, shot: model.activeShot, selectedCount: 1, projectCount: 3,
+            exporter: exporter, export: {}, dismiss: {}
         ).body
         _ = MacExportDialog(
-            chrome: chrome, shotCount: 3, exporter: exporter, export: {}, dismiss: {}
+            chrome: chrome, selectedCount: 1, projectCount: 3, exporter: exporter, export: {},
+            dismiss: {}
         ).body
 
         // …and the pieces they share, in every group including the locked ones.

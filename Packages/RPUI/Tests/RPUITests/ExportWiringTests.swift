@@ -305,6 +305,13 @@ struct ExportWiringTests {
             ExportSelfTest.target(
                 environment: [ExportSelfTest.environmentKey: "DSC05259.jpg"])
                 == .fileName("DSC05259.jpg"))
+        #expect(
+            ExportSelfTest.target(environment: [ExportSelfTest.environmentKey: "batch"])
+                == .batch(project: nil))
+        #expect(
+            ExportSelfTest.target(
+                environment: [ExportSelfTest.environmentKey: "batch:Shoot 2026-09-07 2"])
+                == .batch(project: "Shoot 2026-09-07 2"))
     }
 
     @Test("The self-test resolves a real library, and says why when it cannot")
@@ -336,6 +343,18 @@ struct ExportWiringTests {
         }
         #expect(named.bundleURL.lastPathComponent == bundleName)
         #expect(named.originalFileName == "DSC00001.png")
+
+        guard
+            case .resolved(let batch) = ExportSelfTest.resolve(
+                .batch(project: "Test Shoot"), libraryRoot: root)
+        else {
+            Issue.record("a named batch project did not resolve")
+            return
+        }
+        #expect(batch.bundleURL.lastPathComponent == bundleName)
+        if case .resolved = ExportSelfTest.resolve(.batch(project: "nope"), libraryRoot: root) {
+            Issue.record("a missing batch project resolved to something")
+        }
 
         // The two ways it can have nothing to do, both explained rather than
         // silently skipped.

@@ -42,7 +42,9 @@ public final class LivePreviewController {
     /// directly on the draw callback — going through this class for every frame
     /// would just be a hop.
     public let renderer: LivePreviewRenderer
-    private let faceProvider: any FaceInputProviding
+    /// Read by the batch export (``PreviewFaceSource``) so a shot that is not
+    /// open gets its faces from the very same provider the canvas uses.
+    public let faceProvider: any FaceInputProviding
     private let subjectProvider: any SubjectMaskProviding
 
     /// Unified-log channel, so a face-analysis failure is visible with
