@@ -1231,6 +1231,45 @@ làm Apple Intelligence**; API cloud (Gemini/Claude qua key) **pending**, chưa 
   thực bằng `==`; (3) 4 file Xcode do Xcode tự ghi lại (entitlements macOS có App Group, Info.plist, pbxproj,
   scheme) vẫn chưa commit, **chờ user xác nhận** đã làm bước App Groups và có giữ App Group trên bản Mac hay không.
 
+**Quy trình 6.5b: code trên cloud session, build/test/merge ở local (chốt 2026-09-25)**
+
+Cloud session (Linux, không có Xcode, không có Apple Intelligence, không có ảnh thật) **chỉ viết code + test
+unit, không build, không chạy app, không merge**. Mọi thứ cần Mac/iPhone thật (build, click-through, spike đo)
+làm ở local session. Ghi đè tạm quy tắc "làm thẳng trên main" cho riêng đợt này: mỗi feature một branch,
+local test xong mới merge vào `main`.
+
+| Branch | Base | Nội dung | Ghi chú |
+|---|---|---|---|
+| `fix/6.5b-test-flakes` | `main` | (1) `UndoRedoTests` thứ tự ghi chập chờn; (2) `FaceAnalysisRenderBridgeTests.renderScale` so số thực bằng `==` → so với sai số | Độc lập, merge trước |
+| `feat/6.5b-auto-metrics` | `main` | Struct `AutoRetouchMetrics` + tính số đo từ pipeline có sẵn: histogram (thiếu/dư sáng, cháy), trong mask da BiSeNet (texture, lệch màu, đỏ), lòng trắng mắt so với da, lệch màu da so với trung tính | Không đụng UI |
+| `feat/6.5b-ai-suggester` | `feat/6.5b-auto-metrics` (stack) | Protocol `AutoRetouchSuggesting`; `FixedRecipeSuggester` (30/20/15/40); `AppleIntelligenceSuggester` (`FoundationModels`, `@Generable` + `@Guide` giới hạn khoảng, gate `@available` + `SystemLanguageModel.default.isAvailable`, fallback nói rõ lý do); panel Tự động hiện câu lý do; lưu cặp (đề xuất, giá trị cuối) vào project | Merge sau `auto-metrics`; spike đo làm ở local sau khi branch này build được |
+
+Luật cho cloud session:
+- Không chạy `xcodebuild`, `swift build`, `swift test`, không cố cài toolchain. Kiểm tra bằng đọc code; test mới
+  viết ra nhưng ghi rõ "chưa chạy" trong commit message.
+- Không sửa `RetouchPro.xcodeproj`, entitlements, `Config/*.plist` (4 file này đang chờ user ở local). File mới
+  đặt trong `Packages/*` (SPM tự nhận). Nếu buộc phải đụng project file thì dừng lại, ghi vào phần bàn giao.
+- Không commit/push lên `main`, không merge branch, không mở PR tự merge. Push từng branch lên `origin`.
+- Cuối mỗi branch, thêm vào bảng "Bàn giao" dưới đây (trên chính branch đó): file đã đổi, test đã viết, chỗ
+  chưa chắc, bước local cần kiểm.
+
+Checklist local session cho mỗi branch (theo thứ tự bảng trên):
+1. `git fetch && git checkout <branch>`; branch stack thì rebase lên `main` mới sau khi branch base đã merge.
+2. `swift test` các package bị đổi + `xcodebuild test` app scheme (macOS). Test flake: chạy full 5 lần liền.
+3. Build + click-through macOS Debug thật (cliclick), đúng luật "verify UI by clicking". Riêng `ai-suggester`:
+   chạy spike 6.5b (ổn định 5 lần/ảnh, ms/ảnh, so với chỉnh tay trên ~20 ảnh) → `Research/bench/`.
+4. iPhone thật chỉ khi user yêu cầu (chiều cao panel Tự động trong tool sheet vẫn là số tạm).
+5. Pass → merge `--no-ff` vào `main`, xoá branch local + remote, dọn DerivedData/`.build-*`; cập nhật trạng
+   thái trong bảng Bàn giao. Fail → ghi lỗi vào bảng, sửa ngay trên branch đó.
+
+Bàn giao (cloud điền, local cập nhật trạng thái):
+
+| Branch | Trạng thái | File đổi / test mới | Local cần kiểm |
+|---|---|---|---|
+| `fix/6.5b-test-flakes` | chưa bắt đầu | | |
+| `feat/6.5b-auto-metrics` | chưa bắt đầu | | |
+| `feat/6.5b-ai-suggester` | chưa bắt đầu | | |
+
 **6.6 — Tự động v2: cá nhân hoá theo khuôn mặt đã nhận diện (mới, đề xuất 2026-09-11)**
 
 Ý của user: nếu khuôn mặt trong ảnh đang sửa **trùng với một khuôn mặt đã từng được chỉnh trước đó** (nhận
