@@ -8,9 +8,15 @@ import RPCore
 ///
 /// The raw values are the sort key, spaced so a stage can be inserted without
 /// renumbering the ones around it.
+///
+/// ``hair`` (Phase 5, docs/ADR-0026) is the one stage §2 did not list, and it
+/// sits **before** the warp on purpose: its mask comes from the unwarped frame,
+/// so a colour change has to happen while the pixels are still where the mask
+/// says they are, and the warp then carries it along with the hair.
 public enum RenderStage: Int, Sendable, Comparable, CaseIterable {
     case color = 100
     case skin = 200
+    case hair = 250
     case warp = 300
     case eyesTeeth = 400
     case makeup = 500
@@ -309,6 +315,9 @@ public final class RenderGraph: @unchecked Sendable {
         }
         if RPEngineFeatureFlags.eyesTeethSliders {
             nodes.append(try EyesTeethRenderNode(context: context))
+        }
+        if RPEngineFeatureFlags.hairSliders {
+            nodes.append(try HairRenderNode(context: context))
         }
         return RenderGraph(context: context, nodes: nodes)
     }

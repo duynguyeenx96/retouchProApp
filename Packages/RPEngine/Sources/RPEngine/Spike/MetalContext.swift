@@ -105,6 +105,10 @@ public final class MetalContext: @unchecked Sendable {
         // it anywhere else would move every later file's line numbers in the
         // concatenated source.
         ("RenderShaderSources", "HistogramShaders"),
+        // Phase 5: the "Tóc" group (HairShaders.metal, docs/ADR-0026). Reads
+        // SkinShaders' `kRPLuma` only; appended last for the line-number reason
+        // above.
+        ("RenderShaderSources", "HairShaders"),
     ]
 
     public init(device: (any MTLDevice)? = nil) throws {

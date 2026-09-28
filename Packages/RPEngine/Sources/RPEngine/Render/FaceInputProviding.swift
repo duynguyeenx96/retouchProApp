@@ -80,6 +80,7 @@ public enum RenderMaskRequirements {
             kinds.formUnion(EyesTeethRenderNode.maskKinds)
         }
         if RPEngineFeatureFlags.headSliders { kinds.formUnion(WarpRenderNode.maskKinds) }
+        if RPEngineFeatureFlags.hairSliders { kinds.formUnion(HairRenderNode.maskKinds) }
         return kinds
     }
 }

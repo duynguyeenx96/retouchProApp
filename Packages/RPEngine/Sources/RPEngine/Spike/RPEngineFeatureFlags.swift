@@ -305,7 +305,7 @@ public enum RPEngineFeatureFlags {
     /// says, and `RenderGraph.standard()` throwing is the honest report.
     public static func disableSkinRenderGraph() {
         skinSliders = false
-        if !eyesTeethSliders { guidedFilter = false }
+        if !eyesTeethSliders && !hairSliders { guidedFilter = false }
     }
 
     /// The "Mặt" equivalent of ``enableSkinRenderGraph()``: ``warpSliders`` and
@@ -338,7 +338,33 @@ public enum RPEngineFeatureFlags {
     /// the other group that needs it is off.
     public static func disableEyesTeethRenderGraph() {
         eyesTeethSliders = false
-        if !skinSliders { guidedFilter = false }
+        if !skinSliders && !hairSliders { guidedFilter = false }
+    }
+
+    /// Phase 5: the "Tóc" slider group (``HairRenderNode``, docs/ADR-0026).
+    ///
+    /// Owned entirely by that group and **default off**: the node's golden and
+    /// selectivity numbers come from a synthetic fixture, and nothing about its
+    /// speed or its look has been measured on a device (docs/PLAN.md Phase 5,
+    /// "việc cho local"). The node also needs ``guidedFilter`` for the gloss
+    /// layer — the third group on that kernel flag, so every disable helper
+    /// that clears it now asks all three group flags first.
+    public static var hairSliders: Bool {
+        get { value("hairSliders") }
+        set { setValue("hairSliders", newValue) }
+    }
+
+    /// ``hairSliders`` plus ``guidedFilter``, like ``enableEyesTeethRenderGraph()``.
+    public static func enableHairRenderGraph() {
+        hairSliders = true
+        guidedFilter = true
+    }
+
+    /// The inverse of ``enableHairRenderGraph()``: the shared kernel flag is only
+    /// cleared when neither other group on it still wants it.
+    public static func disableHairRenderGraph() {
+        hairSliders = false
+        if !skinSliders && !eyesTeethSliders { guidedFilter = false }
     }
 
     /// The "Color" equivalent of ``enableSkinRenderGraph()`` — except that there

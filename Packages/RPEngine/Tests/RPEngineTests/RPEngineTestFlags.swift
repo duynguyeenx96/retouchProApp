@@ -78,6 +78,12 @@ enum RPEngineTestFlags {
         enter { RPEngineFeatureFlags.enableEyesTeethRenderGraph() }
     }
 
+    /// Same, for the Phase 5 "Tóc" path. Pair with
+    /// `defer { flags.leave { RPEngineFeatureFlags.disableHairRenderGraph() } }`.
+    static func enterHairRenderGraph() -> Scope {
+        enter { RPEngineFeatureFlags.enableHairRenderGraph() }
+    }
+
     /// Same, for the Phase 2 "Color" path. Pair with
     /// `defer { flags.leave { RPEngineFeatureFlags.disableColorRenderGraph() } }`
     /// — `Scope.leave`'s default restore is the *skin* one, because that path
