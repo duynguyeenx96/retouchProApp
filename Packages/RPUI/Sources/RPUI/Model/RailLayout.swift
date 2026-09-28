@@ -414,6 +414,9 @@ public enum RailLayout {
             presentation: .presetLibrary(.templates)),
         // "Tự động" (one-tap auto retouch) was removed on 2026-09-28 — see
         // docs/PLAN.md §6.5.
+        // Unlocked in Phase 5 (2026-09-28): the panel has four real rows now,
+        // gated by `RPEngineFeatureFlags.makeupSliders` inside the panel rather
+        // than by a lock here — the "Tạo khối" treatment (docs/ADR-0027).
         RailItemDescriptor(
             id: "makeup", label: "Trang điểm", systemImage: "paintbrush.pointed",
             sectionKey: EditState.SectionKey.makeup),
@@ -421,6 +424,7 @@ public enum RailLayout {
         RailItemDescriptor(
             id: "body", label: "Cơ thể", systemImage: "figure.stand",
             children: Self.bodyChildren),
+        // Unlocked in Phase 5 the same way (docs/ADR-0026, flag `hairSliders`).
         RailItemDescriptor(
             id: "hair", label: "Tóc", systemImage: "comb",
             sectionKey: EditState.SectionKey.hair),

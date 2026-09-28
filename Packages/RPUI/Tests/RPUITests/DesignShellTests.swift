@@ -47,13 +47,16 @@ struct DesignShellTests {
         #expect(!SliderPanelLayout.sections.map(\.title).contains("Da"))
     }
 
-    @Test("Only the two Phase 5 groups are locked, and they still list their names")
+    /// Until 2026-09-28 the two Phase 5 groups were the locked ones. They got
+    /// real sliders (docs/ADR-0026 / ADR-0027), gated inside the panel by their
+    /// default-off flags, so no panel is locked any more.
+    @Test("No slider group is locked; the Phase 5 groups are gated instead")
     func lockedGroups() {
-        let locked = SliderPanelLayout.sections.filter(\.isLocked).map(\.key)
-        #expect(locked == [EditState.SectionKey.makeup, EditState.SectionKey.hair])
-        for section in SliderPanelLayout.sections where section.isLocked {
-            #expect(section.sectionCaption == "Phase 5 · chưa khả dụng")
-            #expect(!section.plannedParameters.isEmpty)
+        #expect(SliderPanelLayout.sections.filter(\.isLocked).isEmpty)
+        let gated = SliderPanelLayout.sections.filter { $0.phase == "Phase 5" }.map(\.gatedBy)
+        #expect(gated == [.makeupSliders, .hairSliders])
+        for section in SliderPanelLayout.sections {
+            #expect(section.sectionCaption != "Phase 5 · chưa khả dụng", "\(section.key)")
         }
     }
 
@@ -90,7 +93,7 @@ struct DesignShellTests {
 
     // MARK: - Chrome
 
-    @Test("Tapping a locked group does nothing; tapping a working one switches")
+    @Test("Tapping an unknown group does nothing; tapping a working one switches")
     func selectingGroups() {
         let chrome = EditorChrome()
         // "Mịn da" since the skin split — the first working panel, which is what
@@ -99,8 +102,11 @@ struct DesignShellTests {
         #expect(chrome.activeGroupKey == SliderPanelLayout.PanelKey.smooth)
         chrome.selectGroup(EditState.SectionKey.color)
         #expect(chrome.activeGroupKey == EditState.SectionKey.color)
+        // "Trang điểm" is a working (flag-gated) panel since Phase 5, so it
+        // switches; an unknown key is the remaining "does nothing" case.
         chrome.selectGroup(EditState.SectionKey.makeup)
-        #expect(chrome.activeGroupKey == EditState.SectionKey.color)
+        #expect(chrome.activeGroupKey == EditState.SectionKey.makeup)
+        chrome.selectGroup(EditState.SectionKey.color)
         chrome.selectGroup("nope")
         #expect(chrome.activeGroupKey == EditState.SectionKey.color)
     }

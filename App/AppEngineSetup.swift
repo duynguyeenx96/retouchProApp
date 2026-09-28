@@ -104,6 +104,7 @@ enum AppEngineSetup {
     ///
     /// ```
     /// defaults write com.duynguyen.RetouchPro RPEnableExperiments -string "bodySkinSync"
+    /// defaults write com.duynguyen.RetouchPro RPEnableExperiments -string "hair,makeup"
     /// ```
     ///
     /// This is deliberately **not** a UI toggle: docs/PLAN.md §6.2's toggle waits
@@ -122,8 +123,14 @@ enum AppEngineSetup {
                 .filter { !$0.isEmpty })
     }
 
-    /// The one experiment this key recognises today, spelled once.
+    /// The experiments this key recognises, each spelled once.
     static let bodySkinSyncExperiment = "bodySkinSync"
+    /// Phase 5 "Tóc" (docs/ADR-0026): written in a cloud session, default off
+    /// until a Mac has run its tests and someone has looked at real renders —
+    /// this is how that look happens without editing code.
+    static let hairExperiment = "hair"
+    /// Phase 5 "Trang điểm" (docs/ADR-0027), same state as ``hairExperiment``.
+    static let makeupExperiment = "makeup"
 
     /// Turns on the experiments this launch asked for, and returns the ones that
     /// were actually recognised (an unknown name is ignored, not fatal).
@@ -141,6 +148,16 @@ enum AppEngineSetup {
             RPEngineFeatureFlags.bodySkinSync = true
             RPVisionFeatureFlags.personSegmentation = true
             enabled.append(bodySkinSyncExperiment)
+        }
+        // RPEngine only: both groups read masks the face pipeline already
+        // produces, so there is no RPVision flag to pair them with.
+        if requested.contains(hairExperiment) {
+            RPEngineFeatureFlags.enableHairRenderGraph()
+            enabled.append(hairExperiment)
+        }
+        if requested.contains(makeupExperiment) {
+            RPEngineFeatureFlags.makeupSliders = true
+            enabled.append(makeupExperiment)
         }
         return enabled
     }

@@ -102,6 +102,30 @@ struct AppEngineSetupTests {
         #expect(AppEngineSetup.disabledGroups(defaults: defaults, environment: [:]) == ["face"])
     }
 
+    @Test("The hair and makeup experiments turn on exactly their own flags")
+    func phaseFiveExperiments() {
+        let hair = RPEngineFeatureFlags.hairSliders
+        let makeup = RPEngineFeatureFlags.makeupSliders
+        let guided = RPEngineFeatureFlags.guidedFilter
+        defer {
+            RPEngineFeatureFlags.hairSliders = hair
+            RPEngineFeatureFlags.makeupSliders = makeup
+            RPEngineFeatureFlags.guidedFilter = guided
+        }
+        RPEngineFeatureFlags.hairSliders = false
+        RPEngineFeatureFlags.makeupSliders = false
+        let none = AppEngineSetup.enableExperiments(["unknown"])
+        #expect(none.isEmpty)
+        #expect(!RPEngineFeatureFlags.hairSliders)
+        #expect(!RPEngineFeatureFlags.makeupSliders)
+
+        let enabled = AppEngineSetup.enableExperiments(["hair", "makeup"])
+        #expect(Set(enabled) == ["hair", "makeup"])
+        #expect(RPEngineFeatureFlags.hairSliders)
+        #expect(RPEngineFeatureFlags.guidedFilter)
+        #expect(RPEngineFeatureFlags.makeupSliders)
+    }
+
     @Test("Face analysis has its own switch, separate from the render graph")
     func faceAnalysisIsSeparate() {
         let landmarks = RPVisionFeatureFlags.faceLandmarks478

@@ -207,9 +207,11 @@ public struct SliderSectionDescriptor: Identifiable, Hashable, Sendable {
 
     public var id: String { key }
 
-    /// `true` for the Phase 5 groups. They are drawn dimmed and inert rather
-    /// than hidden, so the shell shows the full future taxonomy
-    /// (docs/design/SPEC.md cross-cutting rule 4).
+    /// `true` for a group with no control behind it yet — the Phase 5 groups
+    /// until 2026-09-28, none today. Such a group is drawn dimmed and inert
+    /// rather than hidden, so the shell shows the full future taxonomy
+    /// (docs/design/SPEC.md cross-cutting rule 4); the rule stays for the next
+    /// namespace that is declared before its engine exists.
     ///
     /// "Has no control of **either** kind", not "has no slider": "Sửa da" is one
     /// toggle and no sliders, and calling it locked would tell the user its
@@ -319,12 +321,23 @@ public enum PanelFeatureGate: Hashable, Sendable {
     /// blocker (docs/ADR-0018).
     case headSliders
 
+    /// "Tóc" — docs/ADR-0026 (Phase 5). Unlike the three above, **nothing** has
+    /// been measured on any device yet: the node was written in a cloud session
+    /// and its golden / selectivity tests wait on a Mac. The flag stays off until
+    /// those pass *and* there is a speed number, the same bar as the others.
+    case hairSliders
+
+    /// "Trang điểm" — docs/ADR-0027 (Phase 5). Same state as ``hairSliders``.
+    case makeupSliders
+
     /// Whether this build has the effect switched on.
     public var isOn: Bool {
         switch self {
         case .contourSliders: RPEngineFeatureFlags.contourSliders
         case .bodySkinSync: RPEngineFeatureFlags.bodySkinSync
         case .headSliders: RPEngineFeatureFlags.headSliders
+        case .hairSliders: RPEngineFeatureFlags.hairSliders
+        case .makeupSliders: RPEngineFeatureFlags.makeupSliders
         }
     }
 
@@ -339,12 +352,18 @@ public enum PanelFeatureGate: Hashable, Sendable {
             "Sửa da đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
         case .headSliders:
             "Đầu đang tắt trong bản dựng này — chưa đo tốc độ trên iPhone thật."
+        case .hairSliders:
+            "Tóc đang tắt trong bản dựng này — chưa kiểm thử và đo trên máy thật."
+        case .makeupSliders:
+            "Trang điểm đang tắt trong bản dựng này — chưa kiểm thử và đo trên máy thật."
         }
     }
 }
 
 /// The slider taxonomy: **eleven panels over seven `EditState` namespaces**,
-/// nine of the panels working.
+/// all eleven working since Phase 5 gave "Trang điểm" and "Tóc" real sliders
+/// (2026-09-28, docs/ADR-0026 / ADR-0027) — five of them behind a
+/// ``SliderSectionDescriptor/gatedBy`` flag that is off by default.
 ///
 /// It is data, not view code, for two reasons: the order and grouping is the
 /// thing the render graph has to honour, and a test can assert that the panels
@@ -750,27 +769,69 @@ public enum SliderPanelLayout {
             ),
             needsFace: false
         ),
+        // Phase 5 (docs/ADR-0027): three of the six names this panel carried
+        // while locked — the three with a region to act on. "Nền" is the Da
+        // group's "Đều màu da" under another name, and "Phấn mắt" / "Kẻ mắt"
+        // need a lid / lash-line band no current mask gives, so they are not
+        // offered rather than faked. The four rows are the engine's
+        // `MakeupSliders.Key.all` in its order; "Tông son" does nothing on its
+        // own and its direction line says so.
+        //
+        // Gated like "Tạo khối" / "Sửa da" / "Đầu": the rail opens it, the rows
+        // are real, and the panel says the build has it off. No
+        // `notifiesFromNodeNamed` — every region comes from face parsing, and
+        // "no face" is already `needsFace`'s line.
         SliderSectionDescriptor(
             key: EditState.SectionKey.makeup,
             title: "Trang điểm",
             panelTitle: "Trang điểm",
-            sectionCaption: "Phase 5 · chưa khả dụng",
+            sectionCaption: "Môi · má · lông mày",
             systemImage: "paintbrush.pointed",
             phase: "Phase 5",
-            plannedParameters: [
-                "Nền", "Má hồng", "Son môi", "Phấn mắt", "Kẻ mắt", "Lông mày",
-            ],
-            needsFace: true
+            parameters: Self.parameters(
+                in: EditState.SectionKey.makeup,
+                keys: MakeupSliders.Key.all,
+                labels: [
+                    MakeupSliders.Key.lipstick: ("Son môi", "môi đậm màu son hơn"),
+                    MakeupSliders.Key.lipTone: (
+                        "Tông son", "nude → cam san hô → đỏ → mận → tím (cần Son môi > 0)"
+                    ),
+                    MakeupSliders.Key.blush: ("Má hồng", "gò má hồng hơn, không tối đi"),
+                    MakeupSliders.Key.brows: ("Lông mày", "lông mày đậm hơn"),
+                ]),
+            needsFace: true,
+            gatedBy: .makeupSliders
         ),
+        // Phase 5 (docs/ADR-0026): "Tối / sáng" ships as two one-directional
+        // rows because only "Màu" is signed (ADR-0016), and "Màu tóc" as an
+        // amount plus a modifier tone because a hue has no neutral 0. "Tóc con
+        // bay" is inpainting (Phase 6, LaMa) and is not in this panel.
+        //
+        // `notifiesFromNodeNamed: "hair"` — `HairRenderNode.detectionNotice`
+        // says "Không phát hiện được tóc." on a frame with a face but no hair
+        // mask (a hat, a shaved head), the "Đầu" arrangement.
         SliderSectionDescriptor(
             key: EditState.SectionKey.hair,
             title: "Tóc",
             panelTitle: "Tóc",
-            sectionCaption: "Phase 5 · chưa khả dụng",
+            sectionCaption: "Vùng tóc",
             systemImage: "comb",
             phase: "Phase 5",
-            plannedParameters: ["Bóng tóc", "Tối / sáng", "Màu tóc", "Tóc con bay"],
-            needsFace: true
+            parameters: Self.parameters(
+                in: EditState.SectionKey.hair,
+                keys: HairSliders.Key.all,
+                labels: [
+                    HairSliders.Key.gloss: ("Bóng tóc", "tóc bóng hơn, rõ sợi hơn"),
+                    HairSliders.Key.lighten: ("Sáng tóc", "tóc sáng hơn, giữ màu"),
+                    HairSliders.Key.darken: ("Tối tóc", "tóc tối hơn, giữ màu"),
+                    HairSliders.Key.dye: ("Nhuộm màu", "đổi màu tóc, giữ độ sáng"),
+                    HairSliders.Key.dyeTone: (
+                        "Tông màu", "nâu tro → đồng → đỏ rượu → tím → xám khói (cần Nhuộm màu > 0)"
+                    ),
+                ]),
+            needsFace: true,
+            notifiesFromNodeNamed: "hair",
+            gatedBy: .hairSliders
         ),
     ]
 

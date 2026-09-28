@@ -52,7 +52,7 @@ struct LivePreviewWiringTests {
             let section = try #require(SliderPanelLayout.section(forKey: key))
             #expect(section.parameters.map(\.key) == keys, "\(key)")
         }
-        #expect(SliderPanelLayout.workingParameterCount == 8 + 15 + 3 + 3 + 4 + 18)
+        #expect(SliderPanelLayout.workingParameterCount == 8 + 15 + 3 + 3 + 4 + 18 + 4 + 5)
     }
 
     @Test("Every working slider has a label and a stated direction")
@@ -67,14 +67,25 @@ struct LivePreviewWiringTests {
         }
     }
 
-    @Test("Phase 5 groups still carry names only")
-    func phaseFiveGroupsHaveNoWorkingSliders() throws {
-        for key in [EditState.SectionKey.makeup, EditState.SectionKey.hair] {
+    /// Phase 5 (2026-09-28): the two groups that used to carry names only now
+    /// carry the engine's own keys, in the engine's order, gated by their flags.
+    @Test("Phase 5 groups carry the engine's keys and are flag-gated")
+    func phaseFiveGroupsAreWiredAndGated() throws {
+        let expected: [(String, [String], PanelFeatureGate)] = [
+            (EditState.SectionKey.makeup, MakeupSliders.Key.all, .makeupSliders),
+            (EditState.SectionKey.hair, HairSliders.Key.all, .hairSliders),
+        ]
+        for (key, keys, gate) in expected {
             let section = try #require(SliderPanelLayout.section(forKey: key))
-            #expect(section.parameters.isEmpty)
-            #expect(!section.plannedParameters.isEmpty)
+            #expect(section.parameters.map(\.key) == keys, "\(key)")
+            #expect(!section.isLocked)
             #expect(section.phase == "Phase 5")
+            #expect(section.gatedBy == gate)
+            #expect(section.needsFace)
+            for parameter in section.parameters { #expect(parameter.range == 0...100) }
         }
+        let hair = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.hair))
+        #expect(hair.notifiesFromNodeNamed == "hair")
     }
 
     @Test("Only the Color group works without a face")
@@ -239,9 +250,24 @@ struct LivePreviewWiringTests {
                 section: panel, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
                 notices: ["skin": "Không phát hiện được da."]) == "Không phát hiện được da.")
 
-        // A locked panel has nothing to switch either way.
+        // A build-gated panel is inert whatever its controls are. (This used to
+        // use the locked "Tóc" panel; no panel is locked since Phase 5, and the
+        // hair panel is now the gated case.)
         let hair = try #require(SliderPanelLayout.section(forKey: EditState.SectionKey.hair))
+        let previousHair = RPEngineFeatureFlags.hairSliders
+        defer { RPEngineFeatureFlags.hairSliders = previousHair }
+        RPEngineFeatureFlags.hairSliders = false
         #expect(!GroupAvailability.togglesEnabled(section: hair))
+        #expect(
+            GroupAvailability.blockedReason(
+                section: hair, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: [:]) == PanelFeatureGate.hairSliders.offReason)
+        // Flag on: the node's "no hair" notice is what disables the rows.
+        RPEngineFeatureFlags.hairSliders = true
+        #expect(
+            GroupAvailability.blockedReason(
+                section: hair, detectedFaceCount: 1, preview: .ready(faceAnalysisRan: true),
+                notices: ["hair": "Không phát hiện được tóc."]) == "Không phát hiện được tóc.")
     }
 
     // MARK: - Face selection

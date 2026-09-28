@@ -89,7 +89,7 @@ struct RailLayoutTests {
     /// `RPEngineFeatureFlags.headSliders` off.
     private static let activeLabels: Set<String> = [
         "Hình dáng mặt", "Mịn da", "Kiềm dầu", "Mắt", "Răng", "Đầu", "Tạo khối",
-        "Sửa da",
+        "Sửa da", "Trang điểm", "Tóc",
     ]
 
     /// The one item that opens a **screen** instead of a slider group: "Mẫu"
@@ -236,15 +236,15 @@ struct RailLayoutTests {
                 .map(\.key) == [SliderPanelLayout.PanelKey.skinFix])
     }
 
-    /// SPEC's wiring table, restated for the hierarchy: eight working leaves —
-    /// five under "Mặt", three under "Da" — each opening its own panel and
-    /// nothing else's.
+    /// SPEC's wiring table, restated for the hierarchy: ten working leaves —
+    /// five under "Mặt", three under "Da", plus the Phase 5 top-level
+    /// "Trang điểm" and "Tóc" — each opening its own panel and nothing else's.
     ///
     /// Pinned off, so "the active items" is the list this table describes
     /// rather than one that grows a nineteenth entry when another suite happens
     /// to have the brush switched on.
     @MainActor
-    @Test("The eight active leaves point at the panels the wiring table names")
+    @Test("The ten active leaves point at the panels the wiring table names")
     func wiringTable() async throws {
         try await Self.withManualMask(false) {
         let byLabel = Dictionary(
@@ -257,6 +257,10 @@ struct RailLayoutTests {
         #expect(byLabel["Đầu"]?.sectionKey == SliderPanelLayout.PanelKey.head)
         #expect(byLabel["Tạo khối"]?.sectionKey == SliderPanelLayout.PanelKey.contour)
         #expect(byLabel["Sửa da"]?.sectionKey == SliderPanelLayout.PanelKey.skinFix)
+        // Phase 5 (2026-09-28): the two top-level leaves whose panels got real
+        // sliders, gated inside the panel (docs/ADR-0026 / ADR-0027).
+        #expect(byLabel["Trang điểm"]?.sectionKey == EditState.SectionKey.makeup)
+        #expect(byLabel["Tóc"]?.sectionKey == EditState.SectionKey.hair)
 
         // The user-visible half of the same fact: one slider under "Răng" and
         // one under "Kiềm dầu", three under "Mắt", seven under "Mịn da" — and
@@ -295,39 +299,35 @@ struct RailLayoutTests {
         }
     }
 
-    /// Eight locked leaves with the brush switched off, for four different
-    /// reasons: four with no section at all, Trang điểm and Tóc whose sections
-    /// exist but are themselves Phase 5, "Khoá nền", which has a finished
+    /// Six locked leaves with the brush switched off, for three different
+    /// reasons: four with no section at all, "Khoá nền", which has a finished
     /// engine and is held back on purpose, and "Cọ mask", which is locked only
     /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
     /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
-    /// in Phase 3; "Tự động" was removed on 2026-09-28; "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
-    /// left this list on 2026-09-21** when they got panels — their own flags
-    /// being off disables the controls inside those panels instead of locking
-    /// the items.)
+    /// in Phase 3; "Tự động" was removed on 2026-09-28; "Bọng mắt" was deleted;
+    /// **"Tạo khối", "Sửa da" and "Đầu" left this list on 2026-09-21**, and
+    /// **"Trang điểm" and "Tóc" on 2026-09-28** (Phase 5), when they got panels
+    /// — their own flags being off disables the controls inside those panels
+    /// instead of locking the items.)
     @MainActor
-    @Test("The other eight leaves are locked, for the four different reasons")
+    @Test("The other six leaves are locked, for the three different reasons")
     func lockedItems() async throws {
         try await Self.withManualMask(false) {
         let locked = RailLayout.leafItems.filter(\.isLocked)
-        #expect(locked.count == 8)
+        #expect(locked.count == 6)
         #expect(
             locked.map(\.label) == [
-                "Căng mọng", "Mụn",
-                "Trang điểm", "Thu gọn", "Săn chắc", "Tóc", "Khoá nền", "Cọ mask",
+                "Căng mọng", "Mụn", "Thu gọn", "Săn chắc", "Khoá nền", "Cọ mask",
             ])
 
-        // No section behind it at all and no specific reason: four of the eight.
+        // No section behind it at all and no specific reason: four of the six.
         let unbacked = locked.filter { $0.sectionKey == nil && $0.lockedReason == nil }
         #expect(unbacked.count == 4)
         for item in unbacked { #expect(item.lockedHint == "chưa khả dụng", "\(item.id)") }
 
-        // The two Phase 5 groups keep the panel's own wording.
-        let phaseFive = locked.filter { $0.sectionKey != nil && $0.lockedReason == nil }
-        #expect(phaseFive.map(\.sectionKey) == [
-            EditState.SectionKey.makeup, EditState.SectionKey.hair,
-        ])
-        for item in phaseFive { #expect(item.lockedHint == "Phase 5 · chưa khả dụng") }
+        // No locked leaf points at a section any more: the "Phase 5 · chưa khả
+        // dụng" wording has nothing left to describe.
+        #expect(locked.filter { $0.sectionKey != nil && $0.lockedReason == nil }.isEmpty)
         }
     }
 
@@ -377,7 +377,7 @@ struct RailLayoutTests {
             uniqueKeysWithValues: RailLayout.leafItems.map { ($0.label, $0) })
         chrome.activeGroupKey = SliderPanelLayout.PanelKey.smooth
 
-        for label in ["Thu gọn", "Trang điểm", "Tóc", "Khoá nền", "Mụn"] {
+        for label in ["Thu gọn", "Khoá nền", "Mụn"] {
             chrome.selectRailItem(try #require(byLabel[label]))
             #expect(
                 chrome.activeGroupKey == SliderPanelLayout.PanelKey.smooth,
@@ -393,6 +393,15 @@ struct RailLayoutTests {
         #expect(
             RailLayout.leafItems.filter { $0.opensPanel(chrome.activeGroupKey) }.map(\.label)
                 == ["Mắt"])
+
+        // Phase 5: "Tóc" and "Trang điểm" open their own panels now, even with
+        // their flags off (the rows are disabled inside, not the item).
+        chrome.selectRailItem(try #require(byLabel["Tóc"]))
+        #expect(chrome.activeGroupKey == EditState.SectionKey.hair)
+        #expect(chrome.activeSection.parameters.map(\.key) == HairSliders.Key.all)
+        chrome.selectRailItem(try #require(byLabel["Trang điểm"]))
+        #expect(chrome.activeGroupKey == EditState.SectionKey.makeup)
+        #expect(chrome.activeSection.parameters.map(\.key) == MakeupSliders.Key.all)
 
         chrome.selectRailItem(try #require(byLabel["Răng"]))
         #expect(chrome.activeGroupKey == SliderPanelLayout.PanelKey.teeth)
@@ -737,14 +746,23 @@ struct RailLayoutTests {
 
     /// The gate is scoped to the panels that need it, so it did not become a
     /// second, quieter way of marking a group unavailable.
-    @Test("gatedBy is set on exactly the three panels whose engine flag is off")
+    @Test("gatedBy is set on exactly the five panels whose engine flag is off")
     func panelGateIsScoped() {
         #expect(
             SliderPanelLayout.sections.filter { $0.gatedBy != nil }.map(\.key)
                 == [
                     SliderPanelLayout.PanelKey.skinFix, SliderPanelLayout.PanelKey.head,
                     SliderPanelLayout.PanelKey.contour,
+                    // Phase 5 (2026-09-28, docs/ADR-0026 / ADR-0027).
+                    EditState.SectionKey.makeup, EditState.SectionKey.hair,
                 ])
+        #expect(
+            SliderPanelLayout.section(forKey: EditState.SectionKey.makeup)?.gatedBy
+                == .makeupSliders)
+        #expect(
+            SliderPanelLayout.section(forKey: EditState.SectionKey.hair)?.gatedBy == .hairSliders)
+        #expect(PanelFeatureGate.hairSliders.isOn == RPEngineFeatureFlags.hairSliders)
+        #expect(PanelFeatureGate.makeupSliders.isOn == RPEngineFeatureFlags.makeupSliders)
         // Each panel names the flag that actually governs it — a copy/paste of
         // another group's gate would show as the wrong sentence on screen and
         // as a panel that lights up when someone else's flag flips.
@@ -870,7 +888,7 @@ struct RailLayoutTests {
     @Test("Every unlocked slider panel is reachable from the rail")
     func noWorkingSectionIsOrphaned() {
         let working = Set(SliderPanelLayout.sections.filter { !$0.isLocked }.map(\.key))
-        #expect(working.count == 9)
+        #expect(working.count == 11)
         #expect(RailLayout.reachableSectionKeys == working)
     }
 
