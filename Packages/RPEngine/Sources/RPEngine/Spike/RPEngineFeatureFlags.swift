@@ -354,6 +354,16 @@ public enum RPEngineFeatureFlags {
         set { setValue("hairSliders", newValue) }
     }
 
+    /// Phase 5: the "Trang điểm" slider group (``MakeupRenderNode``,
+    /// docs/ADR-0027). Owned entirely by that group, **default off** for the
+    /// same reason as ``hairSliders``, and it needs no other flag: the node owns
+    /// its one kernel and borrows no blur — so, like ``colorSliders``, there is
+    /// nothing shared to reason about when it is turned off.
+    public static var makeupSliders: Bool {
+        get { value("makeupSliders") }
+        set { setValue("makeupSliders", newValue) }
+    }
+
     /// ``hairSliders`` plus ``guidedFilter``, like ``enableEyesTeethRenderGraph()``.
     public static func enableHairRenderGraph() {
         hairSliders = true

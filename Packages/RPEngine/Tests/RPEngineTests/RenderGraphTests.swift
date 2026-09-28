@@ -234,14 +234,18 @@ struct RenderGraphTests {
             ).map(\.name) == ["eyesTeeth"])
     }
 
-    @Test("Nodes run in the order docs/PLAN.md §2 fixes, not in registration order")
+    /// Makeup and hair colour through masks of the *unwarped* frame, so they run
+    /// before the warp (docs/ADR-0026, ADR-0027) — the one change to §2's order.
+    @Test("Nodes run in stage order, not in registration order")
     func nodesAreSortedByStage() throws {
         guard let context = SpikeS3Support.context else { return }
         let makeup = InertNode(name: "makeup", stage: .makeup, context: context)
         let color = InertNode(name: "color", stage: .color, context: context)
         let warp = InertNode(name: "warp", stage: .warp, context: context)
-        let graph = RenderGraph(context: context, nodes: [makeup, warp, color])
-        #expect(graph.nodes.map(\.name) == ["color", "warp", "makeup"])
+        let hair = InertNode(name: "hair", stage: .hair, context: context)
+        let eyes = InertNode(name: "eyesTeeth", stage: .eyesTeeth, context: context)
+        let graph = RenderGraph(context: context, nodes: [eyes, makeup, warp, hair, color])
+        #expect(graph.nodes.map(\.name) == ["color", "hair", "makeup", "warp", "eyesTeeth"])
     }
 
     /// The 0-default rule at the graph level: an untouched document runs no node
@@ -381,11 +385,11 @@ struct RenderGraphTests {
         guard let context = SpikeS3Support.context else { return }
         // Nine files (spike S3 + Da + Mắt/Răng + Color + the live preview's
         // present pass + the Phase 6.1 manual mask + the Phase 6.2 whole-body
-        // skin union + the Phase 6 canvas histogram + the Phase 5 hair
-        // composite), still **one**
+        // skin union + the Phase 6 canvas histogram + the Phase 5 hair and
+        // makeup composites), still **one**
         // `makeLibrary(source:)` call and therefore one compile per process —
         // the property `RenderGraph.prewarm()` relies on.
-        #expect(MetalContext.shaderSources.count == 9)
+        #expect(MetalContext.shaderSources.count == 10)
         // A missing resource would surface as `shaderSourceMissing` at init, but
         // a source that compiled and produced no symbols would not.
         for name in [
@@ -394,7 +398,7 @@ struct RenderGraphTests {
             "rp_color_box_h", "rp_color_box_v", "rp_preview_present",
             "rp_manual_mask_clear", "rp_manual_mask_splat", "rp_manual_mask_modulate",
             "rp_body_skin_union", "rp_histogram_clear", "rp_histogram_accumulate",
-            "rp_hair_composite",
+            "rp_hair_composite", "rp_makeup_composite",
         ] {
             #expect(throws: Never.self) { _ = try context.computePipeline(name) }
         }

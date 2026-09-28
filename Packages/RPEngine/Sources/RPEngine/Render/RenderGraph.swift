@@ -3,23 +3,26 @@ import Foundation
 import Metal
 import RPCore
 
-/// Where a node sits in the pipeline docs/PLAN.md §2 fixes:
-/// `Decode → Color → Skin → Warp(MLS) → Eyes/Teeth → Makeup → Output`.
+/// Where a node sits in the pipeline. docs/PLAN.md §2 first fixed
+/// `Decode → Color → Skin → Warp(MLS) → Eyes/Teeth → Makeup → Output`; since
+/// Phase 5 it is `Color → Skin → Hair → Makeup → Warp(MLS) → Eyes/Teeth`.
 ///
 /// The raw values are the sort key, spaced so a stage can be inserted without
 /// renumbering the ones around it.
 ///
-/// ``hair`` (Phase 5, docs/ADR-0026) is the one stage §2 did not list, and it
-/// sits **before** the warp on purpose: its mask comes from the unwarped frame,
-/// so a colour change has to happen while the pixels are still where the mask
-/// says they are, and the warp then carries it along with the hair.
+/// ``hair`` and ``makeup`` (Phase 5, docs/ADR-0026 / ADR-0027) sit **before**
+/// the warp on purpose, which moves ``makeup`` from where §2 first put it
+/// (after Eyes/Teeth, 500): both colour through parsing masks computed on the
+/// unwarped frame, so they have to run while the pixels are still where the
+/// mask says they are, and the warp then carries lipstick with the lips "Môi
+/// đầy" moves and hair colour with the hairline "Đầu" moves.
 public enum RenderStage: Int, Sendable, Comparable, CaseIterable {
     case color = 100
     case skin = 200
     case hair = 250
+    case makeup = 270
     case warp = 300
     case eyesTeeth = 400
-    case makeup = 500
 
     public static func < (lhs: RenderStage, rhs: RenderStage) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -287,10 +290,10 @@ public final class RenderGraph: @unchecked Sendable {
         self.nodes = nodes.sorted { $0.stage < $1.stage }
     }
 
-    /// The graph Phase 2 ships so far: the "Color", "Da", "Mặt" and
-    /// "Mắt / Răng" groups. Makeup is Phase 5 and is deliberately absent rather
-    /// than stubbed — an inert node in the list would still show up in
-    /// `RenderReport` and in the bench JSON.
+    /// The graph so far: the Phase 2 "Color", "Da", "Mặt" and "Mắt / Răng"
+    /// groups, plus the Phase 5 "Tóc" and "Trang điểm" groups, whose flags are
+    /// off by default. Nothing is stubbed — an inert node in the list would
+    /// still show up in `RenderReport` and in the bench JSON.
     ///
     /// **Each node is registered only if its own flag is on.** The groups ship
     /// independently (`colorSliders`, `skinSliders`, `warpSliders`,
@@ -318,6 +321,9 @@ public final class RenderGraph: @unchecked Sendable {
         }
         if RPEngineFeatureFlags.hairSliders {
             nodes.append(try HairRenderNode(context: context))
+        }
+        if RPEngineFeatureFlags.makeupSliders {
+            nodes.append(try MakeupRenderNode(context: context))
         }
         return RenderGraph(context: context, nodes: nodes)
     }

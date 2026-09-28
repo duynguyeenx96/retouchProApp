@@ -109,6 +109,11 @@ public final class MetalContext: @unchecked Sendable {
         // SkinShaders' `kRPLuma` only; appended last for the line-number reason
         // above.
         ("RenderShaderSources", "HairShaders"),
+        // Phase 5: the "Trang điểm" group (MakeupShaders.metal, docs/ADR-0027).
+        // Reads SkinShaders' `kRPLuma` and ColorShaders' `ContourLobe` /
+        // `rp_contour_mask` (the blush lobes), so it must follow both; appended
+        // last for the line-number reason above.
+        ("RenderShaderSources", "MakeupShaders"),
     ]
 
     public init(device: (any MTLDevice)? = nil) throws {

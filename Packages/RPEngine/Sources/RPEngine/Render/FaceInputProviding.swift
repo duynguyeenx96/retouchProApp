@@ -81,6 +81,7 @@ public enum RenderMaskRequirements {
         }
         if RPEngineFeatureFlags.headSliders { kinds.formUnion(WarpRenderNode.maskKinds) }
         if RPEngineFeatureFlags.hairSliders { kinds.formUnion(HairRenderNode.maskKinds) }
+        if RPEngineFeatureFlags.makeupSliders { kinds.formUnion(MakeupRenderNode.maskKinds) }
         return kinds
     }
 }
