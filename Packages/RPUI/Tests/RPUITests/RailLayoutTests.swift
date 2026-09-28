@@ -14,7 +14,7 @@ import RPEngine
 /// The Turn 3 tool rail (docs/design/SPEC.md §"Turn 3 — expanded toolset rail",
 /// screens 3a-3f), **restructured into two levels on 2026-09-18**.
 ///
-/// What is checkable without a window: the nine top-level entries in the
+/// What is checkable without a window: the eight top-level entries in the
 /// shipped order, each parent's children in theirs, and SPEC's wiring table —
 /// which leaves open a real panel, which are locked, and that no item points at
 /// a section key the panel cannot resolve. The pill/dimming is looked at on a
@@ -44,11 +44,11 @@ import RPEngine
 @Suite("Tool rail structure")
 struct RailLayoutTests {
 
-    /// The nine scrolling top-level entries. Màu is not here — it is pinned
+    /// The eight scrolling top-level entries. Màu is not here — it is pinned
     /// outside the scroll view, at the trailing end (see
     /// ``colorItemIsPinnedAndSeparate``).
     private static let expectedTopLevel = [
-        "Mặt", "Da", "Preset", "Tự động", "Trang điểm", "Cơ thể", "Tóc", "Khoá nền",
+        "Mặt", "Da", "Preset", "Trang điểm", "Cơ thể", "Tóc", "Khoá nền",
         "Cọ mask",
     ]
 
@@ -68,7 +68,7 @@ struct RailLayoutTests {
 
     /// The canvas's original nineteen, kept so the restructuring is checkably a
     /// *regrouping* of a known set rather than an invention: every label below
-    /// is still somewhere in the tree except the two documented removals, plus
+    /// is still somewhere in the tree except the three documented removals, plus
     /// the one rename and the one addition.
     private static let canvasLabels = [
         "Mẫu", "Răng", "Tự động", "Trang điểm", "Mặt", "Thu gọn", "Cơ thể",
@@ -97,10 +97,7 @@ struct RailLayoutTests {
     /// preset library (docs/PLAN.md §Phase 3, *"dùng lại UI rail 'Mẫu' đã khoá
     /// … làm màn preset"*). It is unlocked but has no `sectionKey`, which is
     /// why the two rules below are stated separately.
-    ///
-    /// "Tự động" joined it on 2026-09-23 (docs/PLAN.md §6.5): a one-tap recipe
-    /// panel, also with no `sectionKey`.
-    private static let screenLabels: Set<String> = ["Preset", "Tự động"]
+    private static let screenLabels: Set<String> = ["Preset"]
 
     /// Every label in the tree, parents included.
     private static var everyLabel: [String] {
@@ -126,9 +123,9 @@ struct RailLayoutTests {
         }
     }
 
-    @Test("Nine top-level entries, Mặt first and Cọ mask last")
+    @Test("Eight top-level entries, Mặt first and Cọ mask last")
     func topLevelOrder() {
-        #expect(RailLayout.items.count == 9)
+        #expect(RailLayout.items.count == 8)
         #expect(RailLayout.items.map(\.label) == Self.expectedTopLevel)
         #expect(RailLayout.items.first?.label == "Mặt")
         #expect(RailLayout.items.last?.label == "Cọ mask")
@@ -151,7 +148,7 @@ struct RailLayoutTests {
             // …and exactly one level deep.
             #expect(parent.children?.allSatisfy { !$0.isParent } == true)
         }
-        #expect(RailLayout.items.filter { !$0.isParent }.count == 6)
+        #expect(RailLayout.items.filter { !$0.isParent }.count == 5)
         #expect(!RailLayout.colorItem.isParent)
 
         // The correction itself, stated as a claim: the skin panels hang off
@@ -181,7 +178,7 @@ struct RailLayoutTests {
     }
 
     /// The restructuring regrouped a known set: every canvas member is still
-    /// somewhere in the tree except the two documented removals, with "Mặt"
+    /// somewhere in the tree except the three documented removals, with "Mặt"
     /// surviving as the parent label, its old panel now called "Hình dáng mặt",
     /// "Mẫu" now called "Preset" (2026-09-22, a user could not tell an
     /// icon-only rail apart), and labels the canvas never had — the "Da" group
@@ -191,12 +188,12 @@ struct RailLayoutTests {
         #expect(
             Set(Self.everyLabel)
                 == Set(Self.canvasLabels)
-                .subtracting(["Xoá vật thể", "Bọng mắt", "Mẫu"])
+                .subtracting(["Xoá vật thể", "Bọng mắt", "Mẫu", "Tự động"])
                 .union(["Hình dáng mặt", "Da", "Khoá nền", "Cọ mask", "Preset"]))
         #expect(
             Set(RailLayout.leafItems.map(\.id)) == [
                 "face", "smooth", "shine", "eyes", "teeth", "head", "contour", "plump",
-                "acne", "templates", "auto", "makeup", "slim", "firm", "skinFix", "hair",
+                "acne", "templates", "makeup", "slim", "firm", "skinFix", "hair",
                 "backgroundLock", "manualMask", "color",
             ])
         #expect(
@@ -212,9 +209,9 @@ struct RailLayoutTests {
             #expect(!item.label.isEmpty)
             #expect(!item.systemImage.isEmpty, "\(item.id)")
         }
-        // 19 tappable leaves: 6 top-level ones, 7 under Mặt, 3 under Da, 2 under
+        // 18 tappable leaves: 5 top-level ones, 7 under Mặt, 3 under Da, 2 under
         // Cơ thể, and the pinned Màu chip.
-        #expect(RailLayout.leafItems.count == 19)
+        #expect(RailLayout.leafItems.count == 18)
         #expect(RailLayout.leafItems.last?.id == "color")
     }
 
@@ -287,16 +284,14 @@ struct RailLayoutTests {
             #expect(!item.isLocked, "\(item.label) should open a working panel")
         }
         // The pinned Màu chip is an active item too, and comes last — it is
-        // drawn after the scrolling nine in both shells, because colour is the
+        // drawn after the scrolling eight in both shells, because colour is the
         // user's last step. "Preset" is active as well from Phase 3, but as a
         // screen rather than a section, so it carries no key.
         #expect(
             RailLayout.activeItems.map(\.label) == RailLayout.leafItems.map(\.label).filter {
                 Self.activeLabels.contains($0) || Self.screenLabels.contains($0)
             } + ["Màu"])
-        #expect(
-            RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label)
-                == ["Preset", "Tự động"])
+        #expect(RailLayout.activeItems.filter { $0.sectionKey == nil }.map(\.label) == ["Preset"])
         }
     }
 
@@ -306,7 +301,7 @@ struct RailLayoutTests {
     /// engine and is held back on purpose, and "Cọ mask", which is locked only
     /// in a build that turned `manualMask` off. ("Xoá vật thể" is not among
     /// these — it was cut from scope entirely, not locked; "Mẫu" was unlocked
-    /// in Phase 3; "Tự động" was unlocked 2026-09-23 (§6.5); "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
+    /// in Phase 3; "Tự động" was removed on 2026-09-28; "Bọng mắt" was deleted; **"Tạo khối", "Sửa da" and "Đầu"
     /// left this list on 2026-09-21** when they got panels — their own flags
     /// being off disables the controls inside those panels instead of locking
     /// the items.)
@@ -785,11 +780,11 @@ struct RailLayoutTests {
         #expect(templates.presentation == .presetLibrary(.templates))
         #expect(templates.sectionKey == nil)
         #expect(!templates.isLocked)
-        // Three presentations now: the library, the auto panel (§6.5) and the
-        // brush mode (§6.1) — the rail entries that are not a slider group.
+        // Two presentations now: the library, and the brush mode (§6.1). They
+        // are the two rail entries that are not a slider group.
         #expect(
             RailLayout.leafItems.filter { $0.presentation != nil }.map(\.id)
-                == ["templates", "auto", "manualMask"])
+                == ["templates", "manualMask"])
 
         let chrome = EditorChrome()
         chrome.activeGroupKey = EditState.SectionKey.face
@@ -822,7 +817,7 @@ struct RailLayoutTests {
     /// commit the eighteen working Color sliders had **no** way in.
     /// `docs/design/SPEC.md` §"macOS panel (3f) structural note" asks for it as
     /// an always-visible top-level tab alongside the rail.
-    @Test("Màu is a pinned rail item, last, not one of the scrolling nine")
+    @Test("Màu is a pinned rail item, last, not one of the scrolling eight")
     func colorItemIsPinnedAndSeparate() throws {
         #expect(!RailLayout.items.contains { $0.opensPanel(EditState.SectionKey.color) })
         #expect(RailLayout.colorItem.sectionKey == EditState.SectionKey.color)

@@ -1158,6 +1158,17 @@ khi áp công thức mặc định, 1 thanh trượt riêng scale toàn bộ com
 — kỹ thuật là nhân hệ số scale [0,1] vào từng giá trị trong `Preset` trước khi `applying`, không phải slider
 mới trong `EditState` (không lưu riêng, tính lại mỗi lần user kéo). Effort kỹ thuật ~2-3 ngày.
 
+**GỠ BỎ 2026-09-28 — tính năng "Tự động" (6.5 + 6.5b) đã bị loại khỏi app.** Test trên ảnh thật: bản 6.5b
+(Apple Intelligence đề xuất) để D&B ~50 trên gần như mọi chân dung. "Dodge & Burn tự động" san phẳng độ sáng cục bộ
+trên **toàn khung, không theo mask da** (gain 18: ở 50, lệch sáng ~11 % là bị là phẳng hoàn toàn) nên ảnh đục và
+ngả vàng (burn gamma theo từng kênh kéo kênh xanh dương xuống ở vùng sáng). Bỏ D&B khỏi công thức thì chỉ còn Mịn da /
+Đều màu da / Sáng mắt ở mức nhẹ, ảnh gần như không đổi so với gốc. User: *"loại bỏ tính năng tự động đi!"*.
+Đã làm: revert commit mở khoá 6.5 (`04a6c78`), gỡ luôn mục "Tự động" khỏi rail (không để khoá mờ), không merge
+`feat/6.5b-auto-metrics` / `feat/6.5b-ai-suggester`. Code 6.5b (số đo `AutoRetouchMetrics`, suggester Apple
+Intelligence, bản bỏ D&B) cất ở branch local `archive/6.5b-auto`, không push. Nút "Tự động" trong thư viện Preset
+(tự áp preset khi nhập ảnh) là tính năng khác, **giữ nguyên**. Nếu sau này làm lại: D&B phải giới hạn trong mask da
+trước, và 6.6 (cá nhân hoá theo khuôn mặt) phụ thuộc tính năng này nên cũng tạm dừng. Phần dưới giữ làm lịch sử.
+
 **Cập nhật 2026-09-23 — 6.5 xong (macOS).** Rail "Tự động" đã mở khoá (`RailPresentation.autoRetouch`),
 panel riêng chiếm cùng chỗ với panel slider (Mac: `SliderPanelView`; iPhone: tool sheet), giống cách thư viện
 Preset chiếm chỗ. Công thức map vào đúng key thật, **cả 4 đều đã có sẵn slider + engine**, không thêm render
@@ -1266,9 +1277,9 @@ Bàn giao (cloud điền, local cập nhật trạng thái):
 
 | Branch | Trạng thái | File đổi / test mới | Local cần kiểm |
 |---|---|---|---|
-| `fix/6.5b-test-flakes` | code xong trên cloud, **chưa build/chưa chạy test** | `Packages/RPUI/Tests/RPUITests/UndoRedoTests.swift`: `historyIsWrittenBeforeTheChange` chỉ ghi nhận file trong `history/` và `edits/`. Nguyên nhân đoán (đọc code, chưa tái hiện): cùng `AtomicFileWriter` còn chở lần ghi `session.json` debounce 600 ms do `selection` đổi lúc dựng model; full `xcodebuild test` tải nặng thì lần ghi đó chen vào giữa test. `AppTests/FaceAnalysisRenderBridgeTests.swift`: `renderScaleUsesTheLongEdge` (3 chỗ) + `faceWidth` trong `scalingMovesOnlyTheTransform` so với sai số thay vì `==`. Không đổi code app. Chưa chắc: nếu flake còn thì nguyên nhân khác — xem lại mảng `order` trong log fail. | `swift test` RPUI (lọc `UndoRedoTests`); full `xcodebuild test` macOS **5 lần liền**, `UndoRedoTests` + `FaceAnalysisRenderBridgeTests` đều pass. |
-| `feat/6.5b-auto-metrics` | chưa bắt đầu | | |
-| `feat/6.5b-ai-suggester` | chưa bắt đầu | | |
+| `fix/6.5b-test-flakes` | **merged 2026-09-28** — full `xcodebuild test` macOS 5/5 lần xanh (989 test) | `Packages/RPUI/Tests/RPUITests/UndoRedoTests.swift`: `historyIsWrittenBeforeTheChange` chỉ ghi nhận file trong `history/` và `edits/`. Nguyên nhân đoán (đọc code, chưa tái hiện): cùng `AtomicFileWriter` còn chở lần ghi `session.json` debounce 600 ms do `selection` đổi lúc dựng model; full `xcodebuild test` tải nặng thì lần ghi đó chen vào giữa test. `AppTests/FaceAnalysisRenderBridgeTests.swift`: `renderScaleUsesTheLongEdge` (3 chỗ) + `faceWidth` trong `scalingMovesOnlyTheTransform` so với sai số thay vì `==`. Không đổi code app. Chưa chắc: nếu flake còn thì nguyên nhân khác — xem lại mảng `order` trong log fail. | `swift test` RPUI (lọc `UndoRedoTests`); full `xcodebuild test` macOS **5 lần liền**, `UndoRedoTests` + `FaceAnalysisRenderBridgeTests` đều pass. |
+| `feat/6.5b-auto-metrics` | **không merge** — tính năng Tự động bị gỡ 2026-09-28; code ở `archive/6.5b-auto` | | |
+| `feat/6.5b-ai-suggester` | **không merge** — như trên. Local tìm ra: test RPCore không compile (`recordFinal` gọi trong `#expect`), đã sửa trong archive | | |
 
 **6.6 — Tự động v2: cá nhân hoá theo khuôn mặt đã nhận diện (mới, đề xuất 2026-09-11)**
 

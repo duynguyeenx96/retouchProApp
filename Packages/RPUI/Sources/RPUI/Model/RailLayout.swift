@@ -43,7 +43,7 @@ import RPEngine
 /// the same thing; the locked ones are approximations of the canvas's hand-drawn
 /// vector glyphs, which have no SF Symbol equivalent.
 public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
-    /// Stable slug, e.g. `"templates"`, `"teeth"`, `"auto"`. Not an
+    /// Stable slug, e.g. `"templates"`, `"teeth"`, `"manualMask"`. Not an
     /// `EditState.SectionKey` and never written to disk — several items share
     /// one section key, so the section key cannot identify a row.
     public let id: String
@@ -64,12 +64,11 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
     public let sectionKey: String?
     /// The screen — or the mode — this item opens instead of a slider group.
     ///
-    /// Three items have one, and none can be expressed as a ``sectionKey``
-    /// because none is a set of sliders: "Mẫu" is a **library** (Phase 3,
-    /// docs/PLAN.md §Phase 3 *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset"*),
-    /// "Cọ mask" is a **mode** that changes what a drag on the canvas does
-    /// (docs/PLAN.md §6.1), and "Tự động" is a **one-tap recipe** over four
-    /// sliders that live in three other panels (docs/PLAN.md §6.5). An item with a presentation is unlocked as long as
+    /// Two items have one, and neither can be expressed as a ``sectionKey``
+    /// because neither is a set of sliders: "Mẫu" is a **library** (Phase 3,
+    /// docs/PLAN.md §Phase 3 *"dùng lại UI rail 'Mẫu' đã khoá … làm màn preset"*)
+    /// and "Cọ mask" is a **mode** that changes what a drag on the canvas does
+    /// (docs/PLAN.md §6.1). An item with a presentation is unlocked as long as
     /// the thing behind it is switched on in this build
     /// (``RailPresentation/isAvailable``).
     public let presentation: RailPresentation?
@@ -182,7 +181,7 @@ public struct RailItemDescriptor: Identifiable, Hashable, Sendable {
 /// A rail item that opens a **screen or a mode** rather than selecting a slider
 /// group.
 ///
-/// Three cases, and the enum was written for exactly this: the rail items that
+/// Two cases, and the enum was written for exactly this: the rail items that
 /// *do* something rather than *select* something land here instead of growing a
 /// second boolean on ``RailItemDescriptor``.
 public enum RailPresentation: Hashable, Sendable {
@@ -197,15 +196,6 @@ public enum RailPresentation: Hashable, Sendable {
     /// exactly like "Khoá nền" and for the same reason: it narrows what the
     /// other tools do rather than adding a tool of its own.
     case manualMaskBrush
-    /// "Tự động v1" (docs/PLAN.md §6.5): a fixed recipe — Mịn da 30, Đều màu
-    /// da 20, Sáng mắt 15, Dodge & Burn tự động 40 — applied in one tap, plus
-    /// one "Cường độ tổng" slider that scales all four (`RPCore.AutoRetouch`).
-    /// Not a ``RailItemDescriptor/sectionKey``: its four sliders belong to
-    /// three different panels ("Mịn da", "Mắt", "Màu"), and a panel that
-    /// re-listed them would be a second door into each — the exact duplication
-    /// the 2026-09-18 restructuring removed. Takes over the panel slot the way
-    /// the preset library does.
-    case autoRetouch
 
     /// `false` when the feature behind this presentation is switched off in this
     /// build, which makes the item **locked** (dimmed and inert) rather than a
@@ -216,13 +206,13 @@ public enum RailPresentation: Hashable, Sendable {
     /// a case, so an item's lock has to answer the question *now*.
     public var isAvailable: Bool {
         switch self {
-        case .presetLibrary, .autoRetouch: true
+        case .presetLibrary: true
         case .manualMaskBrush: RPEngineFeatureFlags.manualMask
         }
     }
 }
 
-/// The tool rail: **nine top-level entries plus the pinned "Màu" chip**, two
+/// The tool rail: **eight top-level entries plus the pinned "Màu" chip**, two
 /// levels deep, in the user's workflow order.
 ///
 /// It is data, not view code, for the same reason ``SliderPanelLayout`` is: the
@@ -240,7 +230,7 @@ public enum RailPresentation: Hashable, Sendable {
 /// * **Da** → Mịn da · Kiềm dầu · Sửa da
 /// * **Cơ thể** → Thu gọn · Săn chắc
 /// * everything else stays a top-level leaf, in the relative order it already
-///   had: Mẫu, Tự động (unlocked 2026-09-23, §6.5), Trang điểm, Tóc, Khoá nền — plus "Cọ mask thủ công",
+///   had: Mẫu, Trang điểm, Tóc, Khoá nền — plus "Cọ mask thủ công",
 ///   added after the hierarchy landed (docs/PLAN.md §6.1, docs/ADR-0019).
 ///
 /// **"Da" is its own parent, not a sub-feature of "Mặt"** (user's correction,
@@ -422,13 +412,8 @@ public enum RailLayout {
         RailItemDescriptor(
             id: "templates", label: "Preset", systemImage: "square.stack",
             presentation: .presetLibrary(.templates)),
-        // One-tap auto retouch — **unlocked 2026-09-23** (docs/PLAN.md §6.5).
-        // A fixed preset formula over existing sliders, not a new node, so it
-        // opens a panel of its own (``RailPresentation/autoRetouch``) rather
-        // than pointing at a slider section.
-        RailItemDescriptor(
-            id: "auto", label: "Tự động", systemImage: "wand.and.stars",
-            presentation: .autoRetouch),
+        // "Tự động" (one-tap auto retouch) was removed on 2026-09-28 — see
+        // docs/PLAN.md §6.5.
         RailItemDescriptor(
             id: "makeup", label: "Trang điểm", systemImage: "paintbrush.pointed",
             sectionKey: EditState.SectionKey.makeup),
@@ -502,7 +487,7 @@ public enum RailLayout {
     /// than dropping it."*
     ///
     /// So it is **pinned outside the scroll view** in both shells — visibly not
-    /// one of the nine, and impossible to scroll off. Label and icon are
+    /// one of the eight, and impossible to scroll off. Label and icon are
     /// read from the section itself, so the affordance cannot drift from the
     /// panel it opens; the literals are only the unreachable fallback for a
     /// missing section, which would make the item locked and inert anyway.
@@ -522,11 +507,11 @@ public enum RailLayout {
     }()
 
     /// Everything the rail draws at the top level, in the order it is drawn: the
-    /// scrolling nine, then the pinned Màu chip. **Not** the children — those
+    /// scrolling eight, then the pinned Màu chip. **Not** the children — those
     /// are drawn one level in, by the panel's own strip.
     public static var allItems: [RailItemDescriptor] { items + [colorItem] }
 
-    /// Every item a tap can land on: the top-level nine, each parent's children
+    /// Every item a tap can land on: the top-level eight, each parent's children
     /// spliced in after it, then the pinned Màu chip. Use this — not
     /// ``allItems`` — to ask "can the user get anywhere from here".
     public static var leafItems: [RailItemDescriptor] {
