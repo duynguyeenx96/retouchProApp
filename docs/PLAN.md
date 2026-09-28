@@ -1004,6 +1004,46 @@ Vision nên làm song song Phase 3 được, không đụng file nào Phase 3/6 
 ### Phase 5 — Makeup, Heal, Hair v1 (3 tuần)
 - Makeup sliders; xoá mụn auto + brush heal/clone; hair: bóng, tối/sáng, đổi màu.
 
+**Đợt cloud 2026-09-28 — Tóc v1 + Trang điểm v1 (engine sau cờ tắt), cùng quy trình cloud-code / local-build của
+§6.5b.** Vì sao chọn hai việc này trước: 6.5/6.5b đã gỡ (6.6 tạm dừng theo), 6.0/S6 là spike đo cần ảnh/máy thật,
+6.3/6.4 phụ thuộc spike/Khoá nền chưa bật, Phase 4 cần a6300 thật. Phase 5 là mục đầu tiên còn lại theo thứ tự
+PLAN. Trong Phase 5, Tóc và Trang điểm là "mask + blend" trên mask BiSeNet **đã có sẵn trong seam**
+(`RenderMaskKind.hair/.lips/.brows`, `FaceAnalysisRenderBridge.groups` đã map đủ, nên **không đụng App target**),
+test được bằng fixture tổng hợp + reference `Double` như ADR-0011. **Xoá mụn (DoG + PatchMatch/LaMa) + brush
+heal/clone không làm đợt này**: LaMa cần convert model (~200 MB) và cả phần detect lẫn heal phải chỉnh ngưỡng trên
+ảnh mụn thật — việc cho local. Cọ mask 6.1 đã xong nên brush heal sau này tái dùng nó, đúng ghi chú đã có.
+
+Quyết định kỹ thuật (chi tiết trong ADR-0026/0027 trên từng branch):
+- **Hai node mới đặt TRƯỚC warp** (`RenderStage.hair = 250`, `.makeup` dời 500 → 270): mask BiSeNet tính trên ảnh
+  chưa warp, nên tô màu trước warp thì son/màu tóc đi theo môi/tóc khi "Môi đầy"/"Đầu" dịch pixel; đặt sau warp
+  thì mask lệch đúng bằng độ dịch đó. Thứ tự §2 cũ (Makeup sau Eyes/Teeth) được sửa có lý do, không âm thầm.
+- **Mọi slider 0–100 một chiều, 0 = đúng identity** (không mở thêm namespace hai chiều trong RPCore): "Tối / sáng"
+  thành hai slider "Sáng tóc" / "Tối tóc"; màu nhuộm/son là cặp "lượng" + "tông" (tông là modifier, chỉ có tác
+  dụng khi lượng > 0 — giống `keepTexture` của nhóm Da).
+- Sáng/tối chỉnh trên **luma rồi nhân lại rgb**, không gamma theo từng kênh — đúng bài học D&B 2026-09-28 (gamma
+  từng kênh kéo lệch màu sang vàng).
+- Cờ mới `RPEngineFeatureFlags.hairSliders` / `.makeupSliders`, **mặc định tắt**; UI dùng
+  `SliderSectionDescriptor.gatedBy` như Tạo khối/Sửa da/Đầu — panel mở được, slider disable kèm câu lý do.
+
+| Branch | Base | Nội dung | Ghi chú |
+|---|---|---|---|
+| `feat/5-hair-sliders` | `main` | `HairSliders` (Bóng tóc, Sáng tóc, Tối tóc, Nhuộm màu + Tông màu), `HairRenderNode` + `HairShaders.metal`, cờ `hairSliders`, `RenderMaskRequirements` thêm `.hair`, detection notice "Không phát hiện được tóc.", ADR-0026, test (golden vs `HairReference`, identity, ngoài mask, selectivity) | Chỉ RPEngine; không đụng UI |
+| `feat/5-makeup-sliders` | `feat/5-hair-sliders` (stack) | `MakeupSliders` (Son môi + Tông son, Má hồng, Lông mày), `MakeupRenderNode` + `MakeupShaders.metal` (má hồng = lobe ellipse neo landmark, tái dùng `ContourLobe`/`rp_contour_mask`), cờ `makeupSliders`, dời `RenderStage.makeup` trước warp, ADR-0027, test | Stack vì cùng sửa `RenderStage`/`RenderGraph.standard`/flags |
+| `feat/5-hair-makeup-ui` | `feat/5-makeup-sliders` (stack) | Panel "Tóc" + "Trang điểm" thật trong `SliderPanelLayout` (`gatedBy: .hairSliders/.makeupSliders`, notice node `"hair"`), rail hết khoá, sửa test RPUI đang ghim hai nhóm này là "khoá" | UI-only |
+
+Bàn giao (cloud điền, local cập nhật trạng thái):
+
+| Branch | Trạng thái | File đổi / test mới | Local cần kiểm |
+|---|---|---|---|
+| `feat/5-hair-sliders` | đang làm | | |
+| `feat/5-makeup-sliders` | chưa bắt đầu | | |
+| `feat/5-hair-makeup-ui` | chưa bắt đầu | | |
+
+Việc Phase 5 **cho local** (cần máy/ảnh thật, cloud không làm): (1) bench ms/frame hai node mới trên Mac + iPhone
+thật → `Research/bench/p5-*.json`, rồi mới bàn bật cờ; (2) nhìn bằng mắt trên ảnh a6300 thật để chỉnh các hằng số
+màu (tông son, màu má hồng, độ bóng) — hiện là số lập luận, chưa ai nhìn render; (3) Xoá mụn auto (DoG + PatchMatch,
+LaMa Core ML) + brush heal/clone; (4) "Tóc con bay" vẫn ở Phase 6 (LaMa).
+
 ### Phase 6 — Nâng cao (viết lại 2026-09-11, theo thứ tự phụ thuộc)
 
 Base cũ (Tóc con bay/flyaway hair qua LaMa, background clean, Canon/Nikon trong PTPStack, iCloud sync) giữ
