@@ -45,7 +45,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPCoreTests"
-               BuildableName = "RPCoreTests.xctest"
+               BuildableName = "RPCoreTests"
                BlueprintName = "RPCoreTests"
                ReferencedContainer = "container:Packages/RPCore">
             </BuildableReference>
@@ -55,7 +55,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPVisionTests"
-               BuildableName = "RPVisionTests.xctest"
+               BuildableName = "RPVisionTests"
                BlueprintName = "RPVisionTests"
                ReferencedContainer = "container:Packages/RPVision">
             </BuildableReference>
@@ -65,7 +65,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPEngineTests"
-               BuildableName = "RPEngineTests.xctest"
+               BuildableName = "RPEngineTests"
                BlueprintName = "RPEngineTests"
                ReferencedContainer = "container:Packages/RPEngine">
             </BuildableReference>
@@ -75,7 +75,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPImportTests"
-               BuildableName = "RPImportTests.xctest"
+               BuildableName = "RPImportTests"
                BlueprintName = "RPImportTests"
                ReferencedContainer = "container:Packages/RPImport">
             </BuildableReference>
@@ -85,7 +85,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPUITests"
-               BuildableName = "RPUITests.xctest"
+               BuildableName = "RPUITests"
                BlueprintName = "RPUITests"
                ReferencedContainer = "container:Packages/RPUI">
             </BuildableReference>
@@ -95,7 +95,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "RPTestKitTests"
-               BuildableName = "RPTestKitTests.xctest"
+               BuildableName = "RPTestKitTests"
                BlueprintName = "RPTestKitTests"
                ReferencedContainer = "container:Packages/RPTestKit">
             </BuildableReference>
