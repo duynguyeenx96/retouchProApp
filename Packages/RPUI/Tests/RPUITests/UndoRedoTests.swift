@@ -222,7 +222,15 @@ struct UndoRedoTests {
                 // The temp file sits in the destination's directory; for
                 // `edits/` tell the document from the strokes file by what is
                 // being written (no strokes exist before this test paints).
-                lock.withLock { names.append(url.deletingLastPathComponent().lastPathComponent) }
+                let directory = url.deletingLastPathComponent().lastPathComponent
+                // Only the per-shot queue is under test. The same writer also
+                // carries the debounced `session.json` write (bundle root),
+                // which `selection` schedules ~600 ms after the model is built;
+                // under a loaded full `xcodebuild test` run that write lands in
+                // the middle of this test and made it fail intermittently
+                // (PLAN §6.5b, cleanup left from 2026-09-23).
+                guard directory == "history" || directory == "edits" else { return }
+                lock.withLock { names.append(directory) }
             }
             var snapshot: [String] { lock.withLock { names } }
         }
