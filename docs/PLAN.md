@@ -1266,7 +1266,7 @@ Bàn giao (cloud điền, local cập nhật trạng thái):
 
 | Branch | Trạng thái | File đổi / test mới | Local cần kiểm |
 |---|---|---|---|
-| `fix/6.5b-test-flakes` | chưa bắt đầu | | |
+| `fix/6.5b-test-flakes` | code xong trên cloud, **chưa build/chưa chạy test** | `Packages/RPUI/Tests/RPUITests/UndoRedoTests.swift`: `historyIsWrittenBeforeTheChange` chỉ ghi nhận file trong `history/` và `edits/`. Nguyên nhân đoán (đọc code, chưa tái hiện): cùng `AtomicFileWriter` còn chở lần ghi `session.json` debounce 600 ms do `selection` đổi lúc dựng model; full `xcodebuild test` tải nặng thì lần ghi đó chen vào giữa test. `AppTests/FaceAnalysisRenderBridgeTests.swift`: `renderScaleUsesTheLongEdge` (3 chỗ) + `faceWidth` trong `scalingMovesOnlyTheTransform` so với sai số thay vì `==`. Không đổi code app. Chưa chắc: nếu flake còn thì nguyên nhân khác — xem lại mảng `order` trong log fail. | `swift test` RPUI (lọc `UndoRedoTests`); full `xcodebuild test` macOS **5 lần liền**, `UndoRedoTests` + `FaceAnalysisRenderBridgeTests` đều pass. |
 | `feat/6.5b-auto-metrics` | chưa bắt đầu | | |
 | `feat/6.5b-ai-suggester` | chưa bắt đầu | | |
 

@@ -161,10 +161,16 @@ struct FaceAnalysisRenderBridgeTests {
 
     @Test("renderScale is renderedLongEdge / analysedLongEdge, from the long edge either way round")
     func renderScaleUsesTheLongEdge() {
+        // Compared with a tolerance, not `==`: the expected value is a
+        // `Double` literal quotient and the bridge divides `CGFloat`s built
+        // from `Int` and `CGSize`, so an exact match depends on the order the
+        // arithmetic happens to be written in (PLAN §6.5b cleanup).
+        let expected: CGFloat = 2048.0 / 6000.0
+        let tolerance: CGFloat = 1e-12
         let landscape = Self.singleFace
         #expect(
-            FaceAnalysisRenderBridge.renderScale(for: landscape, renderedLongEdge: 2048)
-                == 2048.0 / 6000.0)
+            abs(FaceAnalysisRenderBridge.renderScale(for: landscape, renderedLongEdge: 2048) - expected)
+                < tolerance)
 
         // Portrait: the long edge is the height, so the same answer must come out
         // of the other component — a `width`-only implementation passes the case
@@ -173,14 +179,16 @@ struct FaceAnalysisRenderBridgeTests {
             imageSize: CGSize(width: 4000, height: 6000), faces: landscape.faces,
             options: FaceAnalyzerOptions())
         #expect(
-            FaceAnalysisRenderBridge.renderScale(for: portrait, renderedLongEdge: 2048)
-                == 2048.0 / 6000.0)
+            abs(FaceAnalysisRenderBridge.renderScale(for: portrait, renderedLongEdge: 2048) - expected)
+                < tolerance)
 
         // An analysis with no image size must not divide by zero and must not
         // silently scale everything to nothing.
         let degenerate = FaceAnalysis(
             imageSize: .zero, faces: [], options: FaceAnalyzerOptions())
-        #expect(FaceAnalysisRenderBridge.renderScale(for: degenerate, renderedLongEdge: 2048) == 1)
+        #expect(
+            abs(FaceAnalysisRenderBridge.renderScale(for: degenerate, renderedLongEdge: 2048) - 1)
+                < tolerance)
     }
 
     // MARK: - Geometry at scale 1
@@ -343,7 +351,7 @@ struct FaceAnalysisRenderBridgeTests {
         let half = try #require(
             FaceAnalysisRenderBridge.renderInputs(from: analysis, renderScale: scale).first)
 
-        #expect(half.faceWidth == full.faceWidth * scale)
+        #expect(abs(half.faceWidth - full.faceWidth * scale) < 1e-9)
         #expect(half.landmarks.count == full.landmarks.count)
         for (a, b) in zip(full.landmarks, half.landmarks) {
             #expect(abs(b.x - a.x * scale) < 1e-9)
