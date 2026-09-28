@@ -10,11 +10,6 @@ public struct Project: Identifiable, Hashable, Sendable {
     public var modifiedAt: Date
     /// Filmstrip order. The array order *is* the display order.
     public var shots: [Shot]
-    /// Project-level preset library reference: the preset applied automatically
-    /// to every newly imported shot (docs/PLAN.md Phase 3, "auto-apply mọi ảnh
-    /// mới"). The presets themselves live in `presets/` inside the bundle;
-    /// `ProjectStore.listPresets()` enumerates them.
-    public var autoApplyPresetID: PresetID?
     /// Order the preset browser should show `presets/` in. Ids missing from
     /// this list are appended by name; ids that no longer exist are ignored.
     public var presetOrder: [PresetID]
@@ -33,7 +28,6 @@ public struct Project: Identifiable, Hashable, Sendable {
         createdAt: Date = Date(),
         modifiedAt: Date = Date(),
         shots: [Shot] = [],
-        autoApplyPresetID: PresetID? = nil,
         presetOrder: [PresetID] = [],
         removedOriginalPaths: [String] = [],
         additionalValues: [String: JSONValue] = [:]
@@ -43,7 +37,6 @@ public struct Project: Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.shots = shots
-        self.autoApplyPresetID = autoApplyPresetID
         self.presetOrder = presetOrder
         self.removedOriginalPaths = removedOriginalPaths
         self.additionalValues = additionalValues
@@ -74,8 +67,12 @@ public struct Project: Identifiable, Hashable, Sendable {
 
 extension Project: Codable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name, createdAt, modifiedAt, shots, autoApplyPresetID, presetOrder
+        case id, name, createdAt, modifiedAt, shots, presetOrder
         case removedOriginalPaths
+        /// Retired 2026-09-28 with the auto-apply-preset feature. Still a
+        /// *known* key so an old project's value is dropped on read instead of
+        /// being carried forward in ``additionalValues`` forever.
+        case autoApplyPresetID
     }
 
     private static let knownKeys: Set<String> = Set(CodingKeys.allCases.map(\.rawValue))
@@ -87,8 +84,6 @@ extension Project: Codable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         modifiedAt = try container.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
         shots = try container.decodeIfPresent([Shot].self, forKey: .shots) ?? []
-        autoApplyPresetID = try container.decodeIfPresent(
-            PresetID.self, forKey: .autoApplyPresetID)
         presetOrder = try container.decodeIfPresent([PresetID].self, forKey: .presetOrder) ?? []
         removedOriginalPaths =
             try container.decodeIfPresent([String].self, forKey: .removedOriginalPaths) ?? []
@@ -102,7 +97,6 @@ extension Project: Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(modifiedAt, forKey: .modifiedAt)
         try container.encode(shots, forKey: .shots)
-        try container.encodeIfPresent(autoApplyPresetID, forKey: .autoApplyPresetID)
         if !presetOrder.isEmpty {
             try container.encode(presetOrder, forKey: .presetOrder)
         }

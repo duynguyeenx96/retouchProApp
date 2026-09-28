@@ -40,8 +40,7 @@ public struct CopiedSettings: Hashable, Sendable {
 /// The write path is deliberately the preset apply path, not a second one:
 /// paste = `EditState.applying(preset, mode: .replace)` + `saveEditState`, which
 /// is what applying a template preset to every shot already does
-/// (`EditorModel/applyPreset(_:replacingSections:scope:)`, and what a new import
-/// gets from `ProjectStore.autoApplyEditState`).
+/// (`EditorModel/applyPreset(_:replacingSections:scope:)`).
 extension EditorModel {
 
     // MARK: - Selection
@@ -186,7 +185,6 @@ extension EditorModel {
     /// `.replace` and not `.merge`: "paste settings" means the target ends up
     /// looking like the source, so sections the source does **not** carry are
     /// cleared rather than left over from whatever the target had before — the
-    /// same reason `ProjectStore.autoApplyEditState` uses `.replace`, and the
     /// reason copying an untouched photo resets its targets instead of doing
     /// nothing. `EditState.perImage` is never touched, so a paste cannot
     /// retarget the sliders onto a different face or move a crop.

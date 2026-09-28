@@ -27,11 +27,6 @@ struct PresetBarView: View {
                 Text("Presets")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                if model.project.autoApplyPresetID != nil {
-                    Label("auto-apply set", systemImage: "wand.and.stars")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
                 Text("Applying presets is Phase 3")
                     .font(.caption2)
@@ -50,7 +45,6 @@ struct PresetBarView: View {
                     ForEach(model.orderedPresets) { preset in
                         PresetChip(
                             preset: preset,
-                            isAutoApply: preset.id == model.project.autoApplyPresetID,
                             isHighlighted: preset.id == highlighted
                         )
                         .onTapGesture { highlighted = preset.id }
@@ -70,7 +64,6 @@ struct PresetBarView: View {
 
 private struct PresetChip: View {
     let preset: Preset
-    let isAutoApply: Bool
     let isHighlighted: Bool
 
     /// Which of the panels this preset carries — the only honest summary
@@ -87,9 +80,6 @@ private struct PresetChip: View {
                 Text(preset.name)
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
-                if isAutoApply {
-                    Image(systemName: "wand.and.stars").font(.caption2)
-                }
             }
             Text(sectionSummary)
                 .font(.caption2)

@@ -176,10 +176,7 @@ struct PresetLibraryView: View {
             groupHeader(title: title, count: presets.count)
             if !collapsedGroups.contains(title) {
                 ForEach(presets) { preset in
-                    PresetRow(
-                        preset: preset, isSelected: preset.id == selectedID,
-                        isAutoApply: model.isAutoApply(preset)
-                    )
+                    PresetRow(preset: preset, isSelected: preset.id == selectedID)
                     .onTapGesture {
                         selectedID = preset.id
                         // Picking applies it (canvas + disk, one undo step).
@@ -295,32 +292,6 @@ struct PresetLibraryView: View {
                 }
 
                 Spacer(minLength: 0)
-
-                if let preset = selected {
-                    Button {
-                        Task { await toggleAutoApply(preset) }
-                    } label: {
-                        Label(
-                            "Tự động",
-                            systemImage: model.isAutoApply(preset)
-                                ? "wand.and.stars" : "wand.and.stars.inverse"
-                        )
-                        .font(RPTheme.text(12.5, weight: .medium))
-                        .foregroundStyle(
-                            model.isAutoApply(preset) ? RPTheme.accent : RPTheme.textSecondary
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(
-                            model.isAutoApply(preset)
-                                ? RPTheme.accentSoft : RPTheme.fillNeutral,
-                            in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Áp preset này cho mọi ảnh nhập vào project từ giờ")
-                    .accessibilityAddTraits(
-                        model.isAutoApply(preset) ? [.isButton, .isSelected] : .isButton)
-                }
             }
         }
         .padding(.horizontal, 18)
@@ -347,16 +318,6 @@ struct PresetLibraryView: View {
             ? "Đã lưu \"\(preset.name)\" — preset rỗng, áp nó sẽ đưa nhóm này về 0."
             : "Đã lưu \"\(preset.name)\"."
     }
-
-    private func toggleAutoApply(_ preset: Preset) async {
-        if model.isAutoApply(preset) {
-            await model.clearAutoApplyPreset()
-            status = "Đã tắt tự động áp cho ảnh mới."
-        } else {
-            await model.setAutoApplyPreset(preset)
-            status = "Ảnh nhập vào project từ giờ sẽ được áp \"\(preset.name)\"."
-        }
-    }
 }
 
 /// One preset in the list: **its name, and nothing else** — grouped under
@@ -365,9 +326,8 @@ struct PresetLibraryView: View {
 /// star, which a user explicitly asked to have removed (2026-09-22, sent
 /// alongside a Lightroom screenshot: *"mày thêm cái 'không đổi gì' với 'Dựng
 /// sẵn' với cái rating kia làm méo gì thế?"*). Favouriting still exists; it
-/// moved to the footer. The one thing kept on the row is the auto-apply wand
-/// — not named in that complaint, and the only one of the four that answers a
-/// question about *this project* rather than describing the preset itself.
+/// moved to the footer. The auto-apply wand that used to sit on the row went
+/// with the auto-apply feature itself (removed 2026-09-28).
 ///
 /// **No thumbnail image** — that would mean a full render-graph pass per row,
 /// real work with no budget (docs history). Hovering the row instead shows the
@@ -375,7 +335,6 @@ struct PresetLibraryView: View {
 private struct PresetRow: View {
     let preset: Preset
     let isSelected: Bool
-    var isAutoApply: Bool = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -383,11 +342,6 @@ private struct PresetRow: View {
                 .font(RPTheme.text(13))
                 .foregroundStyle(RPTheme.textPrimary)
                 .lineLimit(1)
-            if isAutoApply {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 10))
-                    .foregroundStyle(RPTheme.accent)
-            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)

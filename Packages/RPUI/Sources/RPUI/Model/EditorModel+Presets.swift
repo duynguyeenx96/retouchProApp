@@ -115,59 +115,6 @@ extension EditorModel {
         }
     }
 
-    /// Arms `preset` for **every photo imported from now on**, including the
-    /// ones the folder watcher and the MTP importer bring in
-    /// (`RPImport.ShotIngestor` reads this through
-    /// `ProjectStore.autoApplyEditState(for:)`).
-    ///
-    /// The preset is **copied into the project's `presets/` folder** first. That
-    /// is the whole reason this is not a one-line assignment: a built-in preset
-    /// lives in the app bundle and a "Của tôi" preset lives in Application
-    /// Support, and a project whose auto-apply pointed at either would stop
-    /// working the moment the bundle moved to another machine. After this call
-    /// the project is self-contained.
-    public func setAutoApplyPreset(_ preset: Preset) async {
-        do {
-            try await withProject { project, store in
-                try store.savePreset(preset)
-                project.autoApplyPresetID = preset.id
-                if !project.presetOrder.contains(preset.id) {
-                    project.presetOrder.append(preset.id)
-                }
-                project = try store.save(project, touchingModifiedAt: Date())
-            }
-            await refresh()
-            await reloadPresets()
-        } catch {
-            report("Không đặt được preset tự động: \(error)")
-        }
-    }
-
-    /// Disarms auto-apply. The copied preset stays in `presets/` — it is the
-    /// project's own library now, and deleting a file because a toggle was
-    /// turned off would be surprising.
-    public func clearAutoApplyPreset() async {
-        do {
-            try await withProject { project, store in
-                project.autoApplyPresetID = nil
-                project = try store.save(project, touchingModifiedAt: Date())
-            }
-            await refresh()
-        } catch {
-            report("Không bỏ được preset tự động: \(error)")
-        }
-    }
-
-    /// The preset armed for new imports, if it is still readable.
-    public var autoApplyPreset: Preset? {
-        guard let id = project.autoApplyPresetID else { return nil }
-        return presets.first { $0.id == id } ?? BuiltInPresets.preset(id: id)
-    }
-
-    public func isAutoApply(_ preset: Preset) -> Bool {
-        project.autoApplyPresetID == preset.id
-    }
-
     // MARK: - Applying with intensity
 
     /// Picking a preset **applies it** — to the canvas and to disk, one undo

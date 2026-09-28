@@ -85,7 +85,6 @@ struct ProjectStoreTests {
             $0.rating = 4
             $0.flag = .pick
         }
-        project.autoApplyPresetID = PresetID.generate()
         try store.save(project)
 
         let reloaded = try ProjectStore(bundleURL: store.bundleURL).load()
@@ -93,7 +92,6 @@ struct ProjectStoreTests {
         #expect(reloaded.project.id == project.id)
         #expect(reloaded.project.name == "Shoot")
         #expect(reloaded.project.shots.count == 1)
-        #expect(reloaded.project.autoApplyPresetID == project.autoApplyPresetID)
 
         let loadedShot = try #require(reloaded.project.shot(id: shot.id))
         #expect(loadedShot.originalFileName == "DSC01234.ARW")

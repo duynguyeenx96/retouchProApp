@@ -746,6 +746,7 @@ việc giao task cho coder — mục "Cần quyết định" ở cuối §Phase 
 
 ### Phase 3 — Preset, Batch, Export (2 tuần + ~3-4 ngày cho Mẫu/Looks)
 - Preset theo nhóm (Da/Mặt/Color…), thư viện, áp cho ảnh chọn / cả project, **auto-apply mọi ảnh mới vào project** (kể cả từ FolderWatcher/MTP).
+  **Gỡ 2026-09-28**: auto-apply (nút "Tự động" trong thư viện Preset) bị bỏ theo yêu cầu user, cùng lúc với rail "Tự động" (§6.5). `Project.autoApplyPresetID` không còn; project cũ có key này vẫn mở được, key bị bỏ khi đọc.
 - `BatchQueue` export nền, giới hạn theo GPU memory, thermal-aware trên iPhone.
 - Export JPEG/HEIF/TIFF 8/16‑bit, profile, resize, sharpen sau resize, naming template, về Files/Photos/Share.
 - **Bàn giao workflow đầy đủ (chưa tether)**: chụp → cắm máy/thẻ → ảnh vào project → tấm đầu chỉnh → lock preset → các tấm sau tự áp → export hàng loạt.
@@ -1342,7 +1343,7 @@ spike** — số này để chèn timeline tổng, không phải cam kết cứn
   xcodebuild bỏ hết test target của local Swift package và báo "There are no test bundles available to test"
   (docs/ADR-0001). Chạy thật trên iPhone của user cho bench.
 - Golden render PSNR, eval mask/landmark IoU có control, bench ms/frame và s/ảnh → ghi `Research/bench/*.json`, không đọc screenshot.
-- Phase 3: screen-record workflow import → preset → auto-apply → export trên iPhone thật.
+- Phase 3: screen-record workflow import → preset → export trên iPhone thật (auto-apply đã gỡ 2026-09-28).
 - Phase 4: `PTPStack` test bằng fixture replay; test thật 200 tấm trên Mac, log số tấm nhận/mất.
 - Log app tại `~/Library/Containers/<bundle>/Data/Library/Logs/RetouchPro/`.
 

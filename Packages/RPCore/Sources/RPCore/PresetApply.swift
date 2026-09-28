@@ -34,27 +34,3 @@ extension Preset {
         Set(sections.filter { !$0.value.isEmpty }.map(\.key))
     }
 }
-
-extension ProjectStore {
-    /// The `EditState` a **newly imported** shot should start from, or `nil`
-    /// when the project has no auto-apply preset.
-    ///
-    /// This is docs/PLAN.md §Phase 3's *"auto-apply mọi ảnh mới vào project (kể
-    /// cả từ FolderWatcher/MTP)"*: `Project.autoApplyPresetID` has existed since
-    /// Phase 1 and nothing read it. It is resolved **inside the project's own
-    /// `presets/` folder** on purpose — a built-in or a "Của tôi" preset is
-    /// copied into the bundle when the user arms it, so a project that is moved
-    /// to another machine keeps applying the same look instead of silently
-    /// importing raw frames because the global library is not there.
-    ///
-    /// A missing or unreadable preset file returns `nil` rather than throwing:
-    /// an import must not fail because a preset was deleted.
-    public func autoApplyEditState(
-        for project: Project, fileManager: FileManager = .default
-    ) -> EditState? {
-        guard let id = project.autoApplyPresetID,
-            let preset = try? loadPreset(id: id, fileManager: fileManager)
-        else { return nil }
-        return EditState().applying(preset, mode: .replace)
-    }
-}

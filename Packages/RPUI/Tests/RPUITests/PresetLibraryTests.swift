@@ -388,35 +388,6 @@ struct PresetLibraryTests {
         #expect(!model.canUndo)
     }
 
-    // MARK: - Auto-apply
-
-    @Test("Arming a preset copies it into the project so the bundle is self-contained")
-    func autoApplyCopiesThePresetIntoTheProject() async throws {
-        let temp = try TempProject()
-        defer { temp.cleanUp() }
-        let model = try await EditorModel.open(bundleURL: temp.store.bundleURL)
-        let preset = BuiltInPresets.templates[3]
-
-        await model.setAutoApplyPreset(preset)
-
-        #expect(model.isAutoApply(preset))
-        let reloaded = try temp.reloadedProject()
-        #expect(reloaded.autoApplyPresetID == preset.id)
-        // The copy is what makes a moved project keep working: the built-in
-        // lives in the app bundle, not in the .rpproj.
-        #expect(try temp.store.loadPreset(id: preset.id).sections == preset.sections)
-        #expect(reloaded.presetOrder.contains(preset.id))
-
-        // What a new import will start from.
-        let seeded = try #require(temp.store.autoApplyEditState(for: reloaded))
-        #expect(seeded.sections == preset.sections)
-
-        await model.clearAutoApplyPreset()
-        #expect(try temp.reloadedProject().autoApplyPresetID == nil)
-        // Disarming leaves the copied preset in the project's own library.
-        #expect(try temp.store.listPresets().map(\.id) == [preset.id])
-    }
-
     // MARK: - Device self-test
 
     /// The env-var gate on ``PresetSelfTest`` — the only part of it that can be

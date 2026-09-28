@@ -53,36 +53,22 @@ struct PresetApplyTests {
         #expect(Preset(name: "Rỗng").carriedSectionNames.isEmpty)
     }
 
-    // MARK: - Auto-apply
+    // MARK: - Auto-apply (retired 2026-09-28)
 
-    @Test("A project with no auto-apply preset gives new shots nothing")
-    func noAutoApply() throws {
-        let temp = try TemporaryDirectory("auto-apply")
-        let (store, project) = try ProjectStore.create(name: "Shoot", in: temp.url)
-        #expect(store.autoApplyEditState(for: project) == nil)
-    }
+    @Test("A project written with the retired auto-apply key opens, and the key is dropped")
+    func retiredAutoApplyKeyIsDropped() throws {
+        let project = Project(name: "Shoot")
+        var json = try #require(
+            JSONSerialization.jsonObject(with: RPJSON.compactEncoder.encode(project))
+                as? [String: Any])
+        json["autoApplyPresetID"] = PresetID.generate().rawValue
+        let old = try JSONSerialization.data(withJSONObject: json)
 
-    @Test("An armed preset becomes the EditState a new shot starts from")
-    func autoApplyResolvesFromTheProjectsOwnFolder() throws {
-        let temp = try TemporaryDirectory("auto-apply")
-        var (store, project) = try ProjectStore.create(name: "Shoot", in: temp.url)
-
-        // The library copies the preset into the project before arming it, so
-        // that a project moved to another machine keeps applying the same look.
-        let preset = BuiltInPresets.templates[0]
-        try store.savePreset(preset)
-        project.autoApplyPresetID = preset.id
-
-        let state = try #require(store.autoApplyEditState(for: project))
-        #expect(state.sections == preset.sections)
-        #expect(state.perImage.isEmpty)
-    }
-
-    @Test("A deleted preset disarms silently rather than failing the import")
-    func autoApplyToleratesAMissingFile() throws {
-        let temp = try TemporaryDirectory("auto-apply")
-        var (store, project) = try ProjectStore.create(name: "Shoot", in: temp.url)
-        project.autoApplyPresetID = PresetID.generate()
-        #expect(store.autoApplyEditState(for: project) == nil)
+        let decoded = try RPJSON.decoder.decode(Project.self, from: old)
+        #expect(decoded.additionalValues["autoApplyPresetID"] == nil)
+        let rewritten = try #require(
+            JSONSerialization.jsonObject(with: RPJSON.compactEncoder.encode(decoded))
+                as? [String: Any])
+        #expect(rewritten["autoApplyPresetID"] == nil)
     }
 }
